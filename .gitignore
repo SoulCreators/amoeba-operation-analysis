@@ -19,6 +19,7 @@ application-secret.yml
 .env
 *.key
 *.pem
+.toolchain/
 
 # Real data
 *.xlsx
@@ -26,4 +27,3 @@ application-secret.yml
 *.csv
 !templates/**/*.xlsx
 !tests/**/*.csv
-
