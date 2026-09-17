@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: amoeba-analysis-worker
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
