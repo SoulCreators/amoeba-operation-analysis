@@ -87,34 +87,58 @@
     '义乌基地':{revenue:[2600,2410],materialCost:[1430,1450],materialLoss:[25,20],directLabor:[250,250],outsourcing:[145,150],variableMfg:[105,110],fixedMfg:[95,100],adminFee:[95,100],rdFee:[85,88],assetImpairment:[3,5],creditImpairment:[0,0],otherIncome:[1,2]},
     '泰国基地':{revenue:[1330,1170],materialCost:[730,720],materialLoss:[15,10],directLabor:[120,120],outsourcing:[65,60],variableMfg:[65,60],fixedMfg:[55,50],adminFee:[45,50],rdFee:[40,46],assetImpairment:[0,0],creditImpairment:[0,0],otherIncome:[0,1]}
   };
-  function buildPnl(r){let d={...r};d.salesCost=['预算','实际'].map((_,i)=>['materialCost','materialLoss','directLabor','outsourcing','variableMfg','fixedMfg'].reduce((s,k)=>s+r[k][i],0));d.gross=d.revenue.map((v,i)=>v-d.salesCost[i]);d.periodFee=d.adminFee.map((v,i)=>v+r.rdFee[i]);d.otherPnl=d.assetImpairment.map((v,i)=>v+r.creditImpairment[i]);d.operating=d.gross.map((v,i)=>v-d.periodFee[i]-d.otherPnl[i]+r.otherIncome[i]);return d}
+  function buildPnl(r){let d={...r};d.salesCost=['预算','实际'].map((_,i)=>['materialCost','materialLoss','directLabor','outsourcing','variableMfg','fixedMfg'].reduce((s,k)=>s+r[k][i],0));d.materialNoLoss=r.materialCost;d.idleFee=[110,120].map((v,i)=>Math.round(v*d.revenue[i]/12860));d.gross=d.revenue.map((v,i)=>v-d.salesCost[i]-d.idleFee[i]);d.periodFee=d.adminFee.map((v,i)=>v+r.rdFee[i]);d.otherPnl=d.assetImpairment.map((v,i)=>v+r.creditImpairment[i]);d.operating=d.gross.map((v,i)=>v-d.periodFee[i]-d.otherPnl[i]+r.otherIncome[i]);return d}
   function addRaw(a,b){let out={};Object.keys(a).forEach(k=>out[k]=a[k].map((v,i)=>v+b[k][i]));return out}
   const allRaw=Object.values(pnlRaw).reduce((a,b)=>a?addRaw(a,b):b,null);
   const pnlData={'全部基地':buildPnl(allRaw),...Object.fromEntries(Object.entries(pnlRaw).map(([k,v])=>[k,buildPnl(v)]))};
   const scopeVolume={'全部基地':[5.2,4.82],'南昌基地':[2.2,2.08],'宜昌基地':[1.38,1.31],'义乌基地':[0.9,0.88],'泰国基地':[0.62,0.55]};
   const baseExpenseAll={baseQualityFee:[95,100],basePlanFee:[70,75],baseOperationFee:[20,22],baseOtherFee:[135,145],logisticsFee:[35,42],salesGuarantee:[85,92]};
-  Object.keys(pnlData).forEach(k=>{let d=pnlData[k],scale=k==='全部基地'?1:d.revenue[1]/pnlData['全部基地'].revenue[1];d.volume=scopeVolume[k]||[0,0];Object.keys(baseExpenseAll).forEach(x=>d[x]=baseExpenseAll[x].map(v=>Math.round(v*scale)));d.baseFee=d.revenue.map((v,i)=>d.baseQualityFee[i]+d.basePlanFee[i]+d.baseOperationFee[i]+d.baseOtherFee[i]+d.logisticsFee[i]+d.salesGuarantee[i]);d.profit=d.gross.map((v,i)=>v-d.baseFee[i]-d.assetImpairment[i]+d.otherIncome[i]);d.grossRate=d.gross.map((v,i)=>v/d.revenue[i]);d.profitRate=d.profit.map((v,i)=>v/d.revenue[i])});
+  Object.keys(pnlData).forEach(k=>{let d=pnlData[k],scale=k==='全部基地'?1:d.revenue[1]/pnlData['全部基地'].revenue[1];d.volume=scopeVolume[k]||[0,0];Object.keys(baseExpenseAll).forEach(x=>d[x]=baseExpenseAll[x].map(v=>Math.round(v*scale)));d.baseFee=d.revenue.map((v,i)=>d.baseQualityFee[i]+d.basePlanFee[i]+d.baseOperationFee[i]+d.baseOtherFee[i]+d.logisticsFee[i]+d.salesGuarantee[i]);d.baseProjectProfit=d.gross.map((v,i)=>v-d.baseFee[i]);d.profit=d.baseProjectProfit.map((v,i)=>v-d.rdFee[i]-d.adminFee[i]-d.assetImpairment[i]-d.creditImpairment[i]+d.otherIncome[i]);d.manufacturingRate=d.salesCost.map((v,i)=>v/d.revenue[i]);d.materialRate=d.materialCost.map((v,i)=>v/d.revenue[i]);d.lossRate=d.materialLoss.map((v,i)=>v/d.materialCost[i]);d.grossRate=d.gross.map((v,i)=>v/d.revenue[i]);d.baseProjectRate=d.baseProjectProfit.map((v,i)=>v/d.revenue[i]);d.salesFee=[0,0];d.financeFee=[0,0];d.operationFee=d.salesFee.map((v,i)=>v+d.adminFee[i]+d.financeFee[i]);d.rdRate=d.rdFee.map((v,i)=>v/d.revenue[i]);d.operationRate=d.operationFee.map((v,i)=>v/d.revenue[i]);d.assetRate=d.assetImpairment.map((v,i)=>v/d.revenue[i]);d.creditRate=d.creditImpairment.map((v,i)=>v/d.revenue[i]);d.profitRate=d.profit.map((v,i)=>v/d.revenue[i])});
   function pairMap(d,fn){return [fn(d,0),fn(d,1)]}
   function buildProductPnl(d){let p={volume:d.volume,revenue:d.revenue,manufacturingCost:d.salesCost,materialCost:d.materialCost,materialLoss:d.materialLoss,directLabor:d.directLabor,outsourcing:d.outsourcing,variableMfg:d.variableMfg,fixedMfg:d.fixedMfg};p.idleFee=[110,120].map((v,i)=>Math.round(v*d.revenue[i]/12860));p.manufacturingRate=pairMap(p,(x,i)=>x.manufacturingCost[i]/x.revenue[i]);p.materialRate=pairMap(p,(x,i)=>x.materialCost[i]/x.revenue[i]);p.lossRate=pairMap(p,(x,i)=>x.materialLoss[i]/x.materialCost[i]);p.gross=p.revenue.map((v,i)=>v-p.manufacturingCost[i]-p.idleFee[i]);p.grossRate=p.gross.map((v,i)=>v/p.revenue[i]);p.baseQualityFee=[95,100];p.basePlanFee=[70,75];p.baseOperationFee=[20,22];p.baseOtherFee=[135,145];p.logisticsFee=[35,42];p.salesGuarantee=[85,92];p.baseFee=p.revenue.map((v,i)=>p.baseQualityFee[i]+p.basePlanFee[i]+p.baseOperationFee[i]+p.baseOtherFee[i]+p.logisticsFee[i]+p.salesGuarantee[i]);p.baseProjectProfit=p.gross.map((v,i)=>v-p.baseFee[i]);p.baseProjectRate=p.baseProjectProfit.map((v,i)=>v/p.revenue[i]);p.rdFee=d.rdFee;p.salesFee=[80,85];p.adminFee=d.adminFee;p.financeFee=[18,20];p.operationFee=p.salesFee.map((v,i)=>v+p.adminFee[i]+p.financeFee[i]);p.assetImpairment=d.assetImpairment;p.creditImpairment=d.creditImpairment;p.profit=p.baseProjectProfit.map((v,i)=>v-p.rdFee[i]-p.operationFee[i]-p.assetImpairment[i]-p.creditImpairment[i]+d.otherIncome[i]);p.profitRate=p.profit.map((v,i)=>v/p.revenue[i]);return p}
   const productData=Object.fromEntries(Object.entries(pnlData).map(([k,v])=>[k,buildProductPnl(v)]));
   const basePnlItems=[
-    {key:'volume',label:'销量',cls:'pnl-total',kind:'benefit',format:'volume'},
-    {key:'revenue',label:'营业收入',cls:'pnl-total',kind:'benefit'},
-    {key:'salesCost',label:'减：成本',cls:'pnl-total',kind:'cost'},
-    {key:'materialCost',label:'其中：材料成本',cls:'pnl-sub',kind:'cost'},
-    {key:'materialLoss',label:'材料损耗',cls:'pnl-sub',kind:'cost'},
-    {key:'directLabor',label:'直接人工',cls:'pnl-sub',kind:'cost'},
-    {key:'variableMfg',label:'制造成本-变动',cls:'pnl-sub',kind:'cost'},
-    {key:'fixedMfg',label:'制造成本-固定',cls:'pnl-sub',kind:'cost'},
-    {key:'gross',label:'毛利',cls:'pnl-gross',kind:'benefit'},
-    {key:'grossRate',label:'毛利率',cls:'pnl-sub',kind:'ratio',format:'pct'},
-    {key:'baseFee',label:'减：基地费用',cls:'pnl-total',kind:'cost'},
-    {key:'baseQualityFee',label:'其中：人力费用',cls:'pnl-sub',kind:'cost'},
-    {key:'logisticsFee',label:'仓储物流费',cls:'pnl-sub',kind:'cost'},
-    {key:'salesGuarantee',label:'销售质量保证金',cls:'pnl-sub',kind:'cost'},
-    {key:'assetImpairment',label:'资产减值损失',cls:'pnl-sub',kind:'cost'},
-    {key:'profit',label:'净利润',cls:'pnl-profit',kind:'benefit'},
-    {key:'profitRate',label:'净利润率',cls:'pnl-sub',kind:'ratio',format:'pct'}
+    {key:'volumeHeader',label:'一、销量',cls:'pnl-total',kind:'neutral',format:'blank'},
+    {key:'volume',label:'销量',cls:'pnl-sub',kind:'benefit',format:'volume'},
+    {key:'revenueHeader',label:'二、销售收入',cls:'pnl-total',kind:'neutral',format:'blank'},
+    {key:'revenue',label:'销售收入',cls:'pnl-sub',kind:'benefit'},
+    {key:'costHeader',label:'三、成本',cls:'pnl-total',kind:'neutral',format:'blank'},
+    {key:'manufacturingHeader',label:'1. 制造成本',cls:'pnl-total',kind:'neutral',format:'blank'},
+    {key:'manufacturingRate',label:'占收入比重%',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'materialCost',label:'1.1 材料成本',cls:'pnl-sub',kind:'cost'},
+    {key:'materialRate',label:'占收入比重%',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'materialNoLoss',label:'1.1.1 材料成本-不含损耗',cls:'pnl-sub',kind:'cost'},
+    {key:'materialLoss',label:'1.1.2 材料成本-损耗',cls:'pnl-sub',kind:'cost'},
+    {key:'lossRate',label:'损耗率%',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'directLabor',label:'1.2 直接人工成本',cls:'pnl-sub',kind:'cost'},
+    {key:'outsourcing',label:'1.3 外协加工成本',cls:'pnl-sub',kind:'cost'},
+    {key:'variableMfg',label:'1.4 制造成本-变动',cls:'pnl-sub',kind:'cost'},
+    {key:'fixedMfg',label:'1.5 制造成本-固定',cls:'pnl-sub',kind:'cost'},
+    {key:'idleFee',label:'2.闲置费用',cls:'pnl-sub',kind:'cost'},
+    {key:'gross',label:'四、毛利额',cls:'pnl-gross',kind:'benefit'},
+    {key:'grossRate',label:'五、毛利率',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'baseQualityFee',label:'3.基地质量费用',cls:'pnl-sub',kind:'cost'},
+    {key:'basePlanFee',label:'4.基地计划费用',cls:'pnl-sub',kind:'cost'},
+    {key:'baseOperationFee',label:'5.基地运营费用',cls:'pnl-sub',kind:'cost'},
+    {key:'baseOtherFee',label:'6.基地其他费用',cls:'pnl-sub',kind:'cost'},
+    {key:'logisticsFee',label:'7.物流仓储费',cls:'pnl-sub',kind:'cost'},
+    {key:'salesGuarantee',label:'8.销售质量保证金/售后费用',cls:'pnl-sub',kind:'cost'},
+    {key:'baseProjectProfit',label:'六、基地项目利润额',cls:'pnl-total',kind:'benefit'},
+    {key:'baseProjectRate',label:'七、基地项目利润率',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'rdFee',label:'8.研发费用',cls:'pnl-sub',kind:'cost'},
+    {key:'rdRate',label:'占收入比重%',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'operationFee',label:'9.运营费用',cls:'pnl-total',kind:'cost'},
+    {key:'operationRate',label:'占收入比重%',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'salesFee',label:'9.1 销售费用',cls:'pnl-sub',kind:'cost'},
+    {key:'adminFee',label:'9.2 管理费用',cls:'pnl-sub',kind:'cost'},
+    {key:'financeFee',label:'9.3 财务费用',cls:'pnl-sub',kind:'cost'},
+    {key:'assetImpairment',label:'10.资产减值损失',cls:'pnl-sub',kind:'cost'},
+    {key:'assetRate',label:'占收入比重%',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'creditImpairment',label:'11.信用减值损失',cls:'pnl-sub',kind:'cost'},
+    {key:'creditRate',label:'占收入比重%',cls:'pnl-sub',kind:'ratio',format:'pct'},
+    {key:'otherIncome',label:'12.其他收益',cls:'pnl-sub',kind:'benefit'},
+    {key:'profit',label:'八、利润额',cls:'pnl-profit',kind:'benefit'},
+    {key:'profitRate',label:'九、利润率',cls:'pnl-sub',kind:'ratio',format:'pct'}
   ];
   const productPnlItems=[
     {key:'volume',label:'一、销量',cls:'pnl-total',kind:'benefit',format:'volume'},
@@ -148,7 +172,7 @@
     {key:'profitRate',label:'九、利润率',cls:'pnl-sub',kind:'ratio',format:'pct'}
   ];
   function amt(v){return (v<0?'−':'')+Math.abs(Math.round(v)).toLocaleString('zh-CN')}
-  function fmtValue(v,item){if(v===null||v===undefined||Number.isNaN(v))return '—';if(item.format==='pct')return (v*100).toFixed(1)+'%';if(item.format==='volume')return v.toFixed(2);return amt(v)}
+  function fmtValue(v,item){if(v===null||v===undefined||!Number.isFinite(v))return '—';if(item.format==='pct')return (v*100).toFixed(1)+'%';if(item.format==='volume')return v.toFixed(2);return amt(v)}
   function fmtGap(v,item){if(item.format==='pct')return (v>=0?'+':'')+(v*100).toFixed(1)+'pp';if(item.format==='volume')return (v>=0?'+':'')+v.toFixed(2);return (v>=0?'+':'')+amt(v)}
   function reportForView(){let isBase=document.getElementById('viewType').value==='base';return {items:isBase?basePnlItems:productPnlItems,data:isBase?pnlData:productData}}
   function renderProfitTable(){let report=reportForView(),d=report.data[currentScope]||report.data['全部基地'],body=document.getElementById('profitRows');if(!body)return;body.innerHTML=report.items.map(item=>{let budget=d[item.key][0],actual=d[item.key][1],gap=actual-budget,previous=item.format==='pct'?actual-0.012:actual*0.96,mom=actual-previous;let favorable=item.kind==='cost'?gap<=0:gap>=0;let gapClass=item.kind==='neutral'?'':(favorable?'pnl-favorable':'pnl-adverse');let status=gap===0?'持平':(favorable?'有利':'不利');let statusClass=gap===0?'gray':(favorable?'ok':'warn');let remark=item.format==='pct'?'实际'+fmtValue(actual,item):'达成率 '+(budget===0?'—':(actual/budget*100).toFixed(1)+'%')+' · '+status;return '<tr class="'+item.cls+'"><td>'+item.label+'</td><td>'+fmtValue(actual,item)+'</td><td>'+fmtValue(budget,item)+'</td><td class="'+gapClass+'">'+fmtGap(gap,item)+'</td><td>'+fmtValue(previous,item)+'</td><td class="'+(mom>=0?'pnl-favorable':'pnl-adverse')+'">'+fmtGap(mom,item)+'</td><td><span class="status '+statusClass+'">'+remark+'</span></td></tr>'}).join('')}
@@ -193,15 +217,25 @@
   function togglePvmMetrics(){if(!current().actions.metricConfig)return toast('仅总部财经可以配置PVM指标');document.getElementById('pvmMetricPanel').classList.toggle('show');}
   function applyPvmMetrics(){document.querySelectorAll('[data-pvm-metric]').forEach(x=>document.querySelectorAll('[data-pvm-col="'+x.dataset.pvmMetric+'"]').forEach(c=>c.classList.toggle('pvm-hidden',!x.checked)));toast('PVM指标展示配置已应用（Demo）');}
   function setGrossPeriod(type){document.getElementById('grossCurrentBtn').className='btn '+(type==='当期'?'primary':'');document.getElementById('grossYtdBtn').className='btn '+(type==='累计'?'primary':'');toast('毛利分析已切换为'+type+'口径');}
+  const grossAnalysisData={
+    productType:[['正常产品',8200,8650,1580,1620],['B品',620,540,42,28]],
+    model:[['106Ah',6420,6848,1180,1290],['217Ah',4800,4584,980,760],['280Ah',1600,1732,310,360]],
+    project:[['项目A',3880,4010,720,735],['项目B',3260,3100,640,570],['项目C',2200,2270,390,435],['项目D',3480,3424,680,540]],
+    customer:[['深陶',3520,3680,680,710],['柳汽',2860,2740,510,430],['上通五菱',2980,3040,560,575],['其他客户',3460,3344,680,565]]
+  };
+  function renderGrossAnalysisTable(){const dim=document.getElementById('grossDimension')?.value||'model',type=document.getElementById('grossProductType')?.value||'all',rows=(grossAnalysisData[dim]||[]).filter(r=>type==='all'||(type==='b'&&r[0]==='B品')||(type==='normal'&&r[0]==='正常产品'));const body=document.querySelector('#grossAnalysisRows');if(!body)return;const totalB=rows.reduce((s,r)=>s+r[1],0),totalA=rows.reduce((s,r)=>s+r[2],0);body.innerHTML=rows.map(r=>{const bg=r[1],ag=r[2],gg=ag-bg,bs=totalB?bg/totalB:0,as=totalA?ag/totalA:0,mb=r[3],ma=r[4],mg=ma-mb;return '<tr><td><b>'+r[0]+'</b></td><td>'+bg.toLocaleString()+'</td><td>'+ag.toLocaleString()+'</td><td class="'+(gg>=0?'green':'red')+'">'+(gg>=0?'+':'')+gg.toLocaleString()+'</td><td>'+(bs*100).toFixed(1)+'%</td><td>'+(as*100).toFixed(1)+'%</td><td>'+mb.toLocaleString()+'</td><td>'+ma.toLocaleString()+'</td><td class="'+(mg>=0?'green':'red')+'">'+(mg>=0?'+':'')+mg.toLocaleString()+'</td></tr>'}).join('');}
+  function ensureGrossAnalysis(){const g=document.getElementById('gross');if(!g||document.getElementById('grossAnalysisPanel'))return;const panel=document.createElement('div');panel.id='grossAnalysisPanel';panel.className='panel';panel.style.margin='15px 0';panel.innerHTML='<div class="panel-title">收入与毛利分维度分析 <small>预算、实际、差额及收入占比</small></div><div class="pvm-filter"><label class="muted" style="padding:8px 2px">分析维度</label><select id="grossDimension" onchange="renderGrossAnalysisTable()"><option value="productType">产品类型</option><option value="model" selected>电芯型号</option><option value="project">项目</option><option value="customer">客户简称</option></select><label class="muted" style="padding:8px 2px">产品类型</label><select id="grossProductType" onchange="renderGrossAnalysisTable()"><option value="all">全部</option><option value="normal">正常产品</option><option value="b">B品</option></select><button class="btn primary" onclick="renderGrossAnalysisTable()">刷新分析</button></div><div class="pnl-scroll"><table><thead><tr><th>分析对象</th><th>收入预算</th><th>收入实际</th><th>收入差额</th><th>预算收入占比</th><th>实际收入占比</th><th>毛利预算</th><th>毛利实际</th><th>毛利差额</th></tr></thead><tbody id="grossAnalysisRows"></tbody></table></div><div class="pnl-note">收入占比按当前筛选维度内收入计算；毛利差额=毛利实际−毛利预算。产品类型、型号、项目和客户简称均来自已导入并治理的分析维度。</div>';g.querySelector('.chart-grid').insertAdjacentElement('beforebegin',panel);renderGrossAnalysisTable();}
   function toggleMonthCombo(){document.getElementById('monthComboPanel').classList.toggle('show');}
   function changePeriodMode(){const mode=document.getElementById('periodMode').value;document.getElementById('monthComboBtn').style.display=mode==='custom'?'':'none';if(mode!=='custom'){updatePeriodText(mode==='current'?'当期':'累计（1月至所选月）');toast('已切换为'+(mode==='current'?'当期':'累计')+'口径，条件同步应用于所有页面')}}
   function applyMonthCombo(){const vals=[...document.querySelectorAll('#monthComboPanel input:checked')].map(x=>x.value);if(!vals.length)return toast('至少选择一个月份');document.getElementById('periodMode').value='custom';document.getElementById('monthComboBtn').textContent='已选'+vals.length+'个月';updatePeriodText(vals.map(x=>x.slice(2)).join('+'));toggleMonthCombo();toast('已应用自定义月份组合：'+vals.map(x=>x.slice(2)).join(' + '));}
   document.getElementById('period').addEventListener('change',e=>{if(document.getElementById('periodMode').value==='custom')return;const m=e.target.options[e.target.selectedIndex].text.replace('2026年','');updatePeriodText(document.getElementById('periodMode').value==='current'?m+'·当期':m+'·累计');toast('分析结束月份已切换为'+e.target.options[e.target.selectedIndex].text);});
   function updatePeriodText(text){document.querySelectorAll('[data-period-text]').forEach(e=>e.textContent=text)}
   function ensurePeriodLabels(){const o=document.querySelector('#overview .section-head p');if(o)o.innerHTML='当前展示：<b id="viewName">基地</b>视角 · <span data-period-text>累计（1月至所选月）</span> · <span class="scope-chip" id="overviewScopeText">全域</span>';const p=document.querySelector('#profit .section-head p');if(p)p.innerHTML='按财经损益表逐项展示 · 金额单位：万元（Demo） · <span data-period-text>累计（1月至所选月）</span> · <span class="scope-chip" id="profitScopeText">全域</span>';const g=document.querySelector('#gross p');if(g)g.innerHTML='按当期/累计查看收入与毛利变化 · <span data-period-text>累计（1月至所选月）</span> · <span class="scope-chip" id="grossScopeText">全域</span>';}
+  function ensurePnlSourceNote(){const panel=document.querySelector('#profit .panel');if(!panel||document.getElementById('profitSourceNote'))return;const note=document.createElement('div');note.id='profitSourceNote';note.className='pnl-note';panel.appendChild(note);}
+  renderProfitTable=function(){ensurePnlSourceNote();const report=reportForView(),d=report.data[currentScope]||report.data['全部基地'],body=document.getElementById('profitRows');if(!body)return;const isBase=document.getElementById('viewType').value==='base';const source=document.getElementById('profitSourceNote');if(source)source.innerHTML=isBase?'<b>基地损益取数与计算关系：</b>销量、销售收入、制造成本明细取收入成本明细；材料损耗、闲置费用、减值和其他收益按对应导入表取数；基地质量/计划/运营/其他、物流仓储费、销售质量保证金按三级费用明细及费用匹配规则归集；占收入比重%=对应项目÷销售收入；基地项目利润额=毛利额−基地费用；利润额=基地项目利润额−研发费用−运营费用−资产/信用减值损失＋其他收益。':'<b>当前视角取数：</b>按产品线/事业部标准损益表及已确认导入结果展示。';body.innerHTML=report.items.map(item=>{if(item.format==='blank'){return '<tr class="'+item.cls+'"><td>'+item.label+'</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="status gray">汇总项目</span></td></tr>'}let raw=d[item.key]||[0,0],budget=Number(raw[0]||0),actual=Number(raw[1]||0),gap=actual-budget,previous=item.format==='pct'?actual-0.012:actual*0.96,mom=actual-previous;let favorable=item.kind==='cost'?gap<=0:item.kind==='benefit'?gap>=0:true;let gapClass=item.kind==='neutral'?'':(favorable?'pnl-favorable':'pnl-adverse');let status=gap===0?'持平':(favorable?'有利':'不利');let statusClass=gap===0?'gray':(favorable?'ok':'warn');let remark=item.format==='pct'?'实际'+fmtValue(actual,item):'达成率 '+(budget===0?'—':(actual/budget*100).toFixed(1)+'%')+' · '+status;return '<tr class="'+item.cls+'"><td>'+item.label+'</td><td>'+fmtValue(actual,item)+'</td><td>'+fmtValue(budget,item)+'</td><td class="'+gapClass+'">'+fmtGap(gap,item)+'</td><td>'+fmtValue(previous,item)+'</td><td class="'+(mom>=0?'pnl-favorable':'pnl-adverse')+'">'+fmtGap(mom,item)+'</td><td><span class="status '+statusClass+'">'+remark+'</span></td></tr>'}).join('')};
   applyScope=function(){let s=scopeLabel();['overviewScopeText','profitScopeText','treeScopeText','pvmScopeText','grossScopeText'].forEach(id=>{let e=document.getElementById(id);if(e)e.textContent=s});document.querySelectorAll('.scope-row').forEach(x=>x.classList.toggle('hidden',currentScope!=='全部基地'&&x.dataset.base!==currentScope.replace('基地','')));let rows=document.querySelectorAll('.rank-row.scope-row');if(rows.length&&!Array.from(rows).some(x=>!x.classList.contains('hidden')))rows.forEach(x=>x.classList.remove('hidden'));renderProfitTable();};
-  document.querySelector('.side-foot').innerHTML='Demo数据为脱敏演示值<br>当前版本：Demo-0.5<br>基地财经反馈版';
-  ensurePeriodLabels();ensureOverviewCards();ensureAiSummaryColumn();ensureMetricLibraryRows();ensurePvmConfig();document.getElementById('monthComboBtn').style.display='none';
+  document.querySelector('.side-foot').innerHTML='Demo数据为脱敏演示值<br>当前版本：Demo-0.6<br>基地损益与毛利分析版';
+  ensurePeriodLabels();ensureOverviewCards();ensureAiSummaryColumn();ensureMetricLibraryRows();ensurePvmConfig();ensureGrossAnalysis();document.getElementById('monthComboBtn').style.display='none';
   syncPermissions();
 </script>
 </body>
