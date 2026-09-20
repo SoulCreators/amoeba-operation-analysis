@@ -16,7 +16,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -44,7 +43,10 @@ class PoiPnlFactProviderTest {
         ImportTask task = new ImportTask(1L, "IMP-1", "B-1", "BASE_ACT_INC_COST",
                 "actual.xlsx", null, "tester", LocalDateTime.now());
         task.moveTo(ImportStatus.VALID, 0);
-        PnlFactProviderHolder provider = new PnlFactProviderHolder(task, output.toByteArray());
+        ImportTask budgetTask = new ImportTask(2L, "IMP-2", "B-1", "BASE_BUD_INC_COST",
+                "budget.xlsx", null, "tester", LocalDateTime.now());
+        budgetTask.moveTo(ImportStatus.VALID, 0);
+        PnlFactProviderHolder provider = new PnlFactProviderHolder(Arrays.asList(task, budgetTask), output.toByteArray());
         List<PnlFact> facts = provider.load(new AnalysisBatch(1L, "B-1", "2026-09",
                 AnalysisPerspective.BASE, BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
 
@@ -52,21 +54,23 @@ class PoiPnlFactProviderTest {
         assertEquals("南昌", facts.get(0).getScopeCode());
         assertEquals(1000, facts.get(0).getRevenue().intValue());
         assertEquals(700, facts.get(0).getSalesCost().intValue());
+        assertEquals(1000, facts.get(0).getBudgetRevenue().intValue());
+        assertEquals(700, facts.get(0).getBudgetSalesCost().intValue());
     }
 
     private static class PnlFactProviderHolder extends PoiPnlFactProvider {
-        PnlFactProviderHolder(ImportTask task, byte[] content) {
-            super(new TaskRepository(task), new FileRepository(content));
+        PnlFactProviderHolder(List<ImportTask> tasks, byte[] content) {
+            super(new TaskRepository(tasks), new FileRepository(content));
         }
     }
 
     private static class TaskRepository implements ImportTaskRepository {
-        private final ImportTask task;
-        TaskRepository(ImportTask task) { this.task = task; }
+        private final List<ImportTask> tasks;
+        TaskRepository(List<ImportTask> tasks) { this.tasks = tasks; }
         @Override public ImportTask save(ImportTask value) { return value; }
-        @Override public Optional<ImportTask> findByTaskNo(String taskNo) { return Optional.of(task); }
+        @Override public Optional<ImportTask> findByTaskNo(String taskNo) { return Optional.of(tasks.get(0)); }
         @Override public boolean existsByBatchAndDataset(String batchNo, String datasetCode) { return true; }
-        @Override public List<ImportTask> findByBatchNo(String batchNo) { return Arrays.asList(task); }
+        @Override public List<ImportTask> findByBatchNo(String batchNo) { return tasks; }
     }
 
     private static class FileRepository implements ImportFileRepository {

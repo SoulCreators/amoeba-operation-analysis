@@ -23,8 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.HashSet;
 
 /** 将已校验的收入成本、费用和减值工作表标准化为统一损益事实。 */
 @Primary
@@ -47,7 +45,8 @@ public class PoiPnlFactProvider implements PnlFactProvider {
         boolean hasRevenueCost = false;
         for (ImportTask task : tasks) {
             if (task.getStatus() != ImportStatus.VALID) continue;
-            if (isRevenueCost(task.getDatasetCode(), batch.getPerspective())) hasRevenueCost = true;
+            if (isRevenueCost(task.getDatasetCode(), batch.getPerspective())
+                    && !isBudget(task.getDatasetCode())) hasRevenueCost = true;
             readTask(task, batch.getPerspective(), accumulators);
         }
         if (!hasRevenueCost) {
@@ -80,9 +79,15 @@ public class PoiPnlFactProvider implements PnlFactProvider {
                 }
                 String code = task.getDatasetCode();
                 if (isRevenueCost(code, perspective)) {
-                    accumulator.volume = add(accumulator.volume, number(row, columns, "销量", "电量", "数量"));
-                    accumulator.revenue = add(accumulator.revenue, number(row, columns, "营业收入", "销售收入", "收入"));
-                    accumulator.salesCost = add(accumulator.salesCost, number(row, columns, "销售成本", "成本"));
+                    if (isBudget(code)) {
+                        accumulator.budgetVolume = add(accumulator.budgetVolume, number(row, columns, "销量", "电量", "数量"));
+                        accumulator.budgetRevenue = add(accumulator.budgetRevenue, number(row, columns, "营业收入", "销售收入", "收入"));
+                        accumulator.budgetSalesCost = add(accumulator.budgetSalesCost, number(row, columns, "销售成本", "成本"));
+                    } else {
+                        accumulator.volume = add(accumulator.volume, number(row, columns, "销量", "电量", "数量"));
+                        accumulator.revenue = add(accumulator.revenue, number(row, columns, "营业收入", "销售收入", "收入"));
+                        accumulator.salesCost = add(accumulator.salesCost, number(row, columns, "销售成本", "成本"));
+                    }
                 } else if (code.contains("IDLE")) {
                     accumulator.idleExpense = add(accumulator.idleExpense, number(row, columns, "金额", "闲置费用"));
                 } else if (code.contains("L3_EXP") || code.contains("LAB_MFG_EXP")) {
@@ -104,7 +109,13 @@ public class PoiPnlFactProvider implements PnlFactProvider {
 
     private boolean isRevenueCost(String code, AnalysisPerspective perspective) {
         return "BASE_ACT_INC_COST".equals(code)
-                || "PLBU_ACT_INC_COST".equals(code);
+                || "BASE_BUD_INC_COST".equals(code)
+                || "PLBU_ACT_INC_COST".equals(code)
+                || "PLBU_BUD_INC_COST".equals(code);
+    }
+
+    private boolean isBudget(String code) {
+        return code != null && code.toUpperCase(Locale.ROOT).contains("_BUD_");
     }
 
     private String scope(Row row, Map<String, Integer> columns, AnalysisPerspective perspective) {
@@ -169,10 +180,22 @@ public class PoiPnlFactProvider implements PnlFactProvider {
         private BigDecimal assetImpairment = BigDecimal.ZERO;
         private BigDecimal creditImpairment = BigDecimal.ZERO;
         private BigDecimal otherIncome = BigDecimal.ZERO;
+        private BigDecimal budgetVolume = BigDecimal.ZERO;
+        private BigDecimal budgetRevenue = BigDecimal.ZERO;
+        private BigDecimal budgetSalesCost = BigDecimal.ZERO;
+        private BigDecimal budgetIdleExpense = BigDecimal.ZERO;
+        private BigDecimal budgetBaseExpense = BigDecimal.ZERO;
+        private BigDecimal budgetRdExpense = BigDecimal.ZERO;
+        private BigDecimal budgetAssetImpairment = BigDecimal.ZERO;
+        private BigDecimal budgetCreditImpairment = BigDecimal.ZERO;
+        private BigDecimal budgetOtherIncome = BigDecimal.ZERO;
 
         private PnlFact toFact(String scope) {
             return new PnlFact(scope, volume, revenue, salesCost, idleExpense, baseExpense,
-                    rdExpense, assetImpairment, creditImpairment, otherIncome);
+                    rdExpense, assetImpairment, creditImpairment, otherIncome,
+                    budgetVolume, budgetRevenue, budgetSalesCost, budgetIdleExpense,
+                    budgetBaseExpense, budgetRdExpense, budgetAssetImpairment,
+                    budgetCreditImpairment, budgetOtherIncome);
         }
     }
 }

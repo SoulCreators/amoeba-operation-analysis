@@ -36,6 +36,28 @@ class CalculationServiceImplTest {
         assertEquals(BatchStatus.CALCULATED, repository.findByBatchNo("B-003").get().getStatus());
     }
 
+    @Test
+    void calculatesBudgetAndGapLinesTogether() {
+        FakeBatchRepository repository = new FakeBatchRepository();
+        repository.save(new AnalysisBatch(1L, "B-004", "2026-09", AnalysisPerspective.PRODUCT_LINE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
+        PnlFactProvider provider = batch -> Arrays.asList(new PnlFact(
+                "产品线A", decimal(110), decimal(1100), decimal(760),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
+                decimal(100), decimal(1000), decimal(700),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO));
+
+        CalculationResult result = new CalculationServiceImpl(repository, provider).calculate("B-004");
+
+        Map<String, BigDecimal> lines = result.getResults().get(0).getLines();
+        assertEquals(decimal(1000), lines.get("BUDGET_REVENUE"));
+        assertEquals(decimal(300), lines.get("BUDGET_GROSS_PROFIT"));
+        assertEquals(decimal(100), lines.get("GAP_REVENUE"));
+        assertEquals(decimal(40), lines.get("GAP_GROSS_PROFIT"));
+    }
+
     private static BigDecimal decimal(double value) { return BigDecimal.valueOf(value); }
 
     private static class FakeBatchRepository implements AnalysisBatchRepository {

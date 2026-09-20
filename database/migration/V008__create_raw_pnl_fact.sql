@@ -15,6 +15,15 @@ CREATE TABLE IF NOT EXISTS raw.pnl_fact (
     asset_impairment NUMERIC(24, 8),
     credit_impairment NUMERIC(24, 8),
     other_income NUMERIC(24, 8),
+    budget_volume NUMERIC(24, 8),
+    budget_revenue NUMERIC(24, 8),
+    budget_sales_cost NUMERIC(24, 8),
+    budget_idle_expense NUMERIC(24, 8),
+    budget_base_expense NUMERIC(24, 8),
+    budget_rd_expense NUMERIC(24, 8),
+    budget_asset_impairment NUMERIC(24, 8),
+    budget_credit_impairment NUMERIC(24, 8),
+    budget_other_income NUMERIC(24, 8),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uk_pnl_fact_scope UNIQUE (batch_id, perspective, source_task_no, scope_code)
 );

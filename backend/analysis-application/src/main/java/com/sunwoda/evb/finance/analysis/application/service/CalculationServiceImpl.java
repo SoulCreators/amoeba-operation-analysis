@@ -73,6 +73,15 @@ public class CalculationServiceImpl implements CalculationService {
         private BigDecimal assetImpairment = BigDecimal.ZERO;
         private BigDecimal creditImpairment = BigDecimal.ZERO;
         private BigDecimal otherIncome = BigDecimal.ZERO;
+        private BigDecimal budgetVolume = BigDecimal.ZERO;
+        private BigDecimal budgetRevenue = BigDecimal.ZERO;
+        private BigDecimal budgetSalesCost = BigDecimal.ZERO;
+        private BigDecimal budgetIdleExpense = BigDecimal.ZERO;
+        private BigDecimal budgetBaseExpense = BigDecimal.ZERO;
+        private BigDecimal budgetRdExpense = BigDecimal.ZERO;
+        private BigDecimal budgetAssetImpairment = BigDecimal.ZERO;
+        private BigDecimal budgetCreditImpairment = BigDecimal.ZERO;
+        private BigDecimal budgetOtherIncome = BigDecimal.ZERO;
 
         void add(PnlFact fact) {
             volume = volume.add(fact.getVolume());
@@ -84,6 +93,15 @@ public class CalculationServiceImpl implements CalculationService {
             assetImpairment = assetImpairment.add(fact.getAssetImpairment());
             creditImpairment = creditImpairment.add(fact.getCreditImpairment());
             otherIncome = otherIncome.add(fact.getOtherIncome());
+            budgetVolume = budgetVolume.add(fact.getBudgetVolume());
+            budgetRevenue = budgetRevenue.add(fact.getBudgetRevenue());
+            budgetSalesCost = budgetSalesCost.add(fact.getBudgetSalesCost());
+            budgetIdleExpense = budgetIdleExpense.add(fact.getBudgetIdleExpense());
+            budgetBaseExpense = budgetBaseExpense.add(fact.getBudgetBaseExpense());
+            budgetRdExpense = budgetRdExpense.add(fact.getBudgetRdExpense());
+            budgetAssetImpairment = budgetAssetImpairment.add(fact.getBudgetAssetImpairment());
+            budgetCreditImpairment = budgetCreditImpairment.add(fact.getBudgetCreditImpairment());
+            budgetOtherIncome = budgetOtherIncome.add(fact.getBudgetOtherIncome());
         }
 
         Map<String, BigDecimal> toLines() {
@@ -93,6 +111,13 @@ public class CalculationServiceImpl implements CalculationService {
                     .subtract(rdExpense).subtract(otherLoss).add(otherIncome);
             BigDecimal profitRate = revenue.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
                     : netProfit.divide(revenue, 8, RoundingMode.HALF_UP);
+            BigDecimal budgetGrossProfit = budgetRevenue.subtract(budgetSalesCost);
+            BigDecimal budgetOtherLoss = budgetAssetImpairment.add(budgetCreditImpairment);
+            BigDecimal budgetNetProfit = budgetGrossProfit.subtract(budgetIdleExpense)
+                    .subtract(budgetBaseExpense).subtract(budgetRdExpense)
+                    .subtract(budgetOtherLoss).add(budgetOtherIncome);
+            BigDecimal budgetProfitRate = budgetRevenue.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
+                    : budgetNetProfit.divide(budgetRevenue, 8, RoundingMode.HALF_UP);
             Map<String, BigDecimal> lines = new LinkedHashMap<String, BigDecimal>();
             lines.put("VOLUME", volume);
             lines.put("REVENUE", revenue);
@@ -106,6 +131,24 @@ public class CalculationServiceImpl implements CalculationService {
             lines.put("OTHER_INCOME", otherIncome);
             lines.put("NET_PROFIT", netProfit);
             lines.put("PROFIT_RATE", profitRate);
+            lines.put("BUDGET_VOLUME", budgetVolume);
+            lines.put("BUDGET_REVENUE", budgetRevenue);
+            lines.put("BUDGET_SALES_COST", budgetSalesCost);
+            lines.put("BUDGET_GROSS_PROFIT", budgetGrossProfit);
+            lines.put("BUDGET_IDLE_EXPENSE", budgetIdleExpense);
+            lines.put("BUDGET_BASE_EXPENSE", budgetBaseExpense);
+            lines.put("BUDGET_RD_EXPENSE", budgetRdExpense);
+            lines.put("BUDGET_ASSET_IMPAIRMENT", budgetAssetImpairment);
+            lines.put("BUDGET_CREDIT_IMPAIRMENT", budgetCreditImpairment);
+            lines.put("BUDGET_OTHER_INCOME", budgetOtherIncome);
+            lines.put("BUDGET_NET_PROFIT", budgetNetProfit);
+            lines.put("BUDGET_PROFIT_RATE", budgetProfitRate);
+            lines.put("GAP_VOLUME", volume.subtract(budgetVolume));
+            lines.put("GAP_REVENUE", revenue.subtract(budgetRevenue));
+            lines.put("GAP_SALES_COST", salesCost.subtract(budgetSalesCost));
+            lines.put("GAP_GROSS_PROFIT", grossProfit.subtract(budgetGrossProfit));
+            lines.put("GAP_NET_PROFIT", netProfit.subtract(budgetNetProfit));
+            lines.put("GAP_PROFIT_RATE", profitRate.subtract(budgetProfitRate));
             return lines;
         }
     }

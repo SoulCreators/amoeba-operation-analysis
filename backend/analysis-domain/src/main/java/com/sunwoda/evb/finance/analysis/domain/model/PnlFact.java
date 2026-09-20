@@ -13,11 +13,36 @@ public class PnlFact {
     private final BigDecimal assetImpairment;
     private final BigDecimal creditImpairment;
     private final BigDecimal otherIncome;
+    private final BigDecimal budgetVolume;
+    private final BigDecimal budgetRevenue;
+    private final BigDecimal budgetSalesCost;
+    private final BigDecimal budgetIdleExpense;
+    private final BigDecimal budgetBaseExpense;
+    private final BigDecimal budgetRdExpense;
+    private final BigDecimal budgetAssetImpairment;
+    private final BigDecimal budgetCreditImpairment;
+    private final BigDecimal budgetOtherIncome;
 
     public PnlFact(String scopeCode, BigDecimal volume, BigDecimal revenue,
                    BigDecimal salesCost, BigDecimal idleExpense, BigDecimal baseExpense,
                    BigDecimal rdExpense, BigDecimal assetImpairment,
                    BigDecimal creditImpairment, BigDecimal otherIncome) {
+        this(scopeCode, volume, revenue, salesCost, idleExpense, baseExpense,
+                rdExpense, assetImpairment, creditImpairment, otherIncome,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO);
+    }
+
+    public PnlFact(String scopeCode, BigDecimal volume, BigDecimal revenue,
+                   BigDecimal salesCost, BigDecimal idleExpense, BigDecimal baseExpense,
+                   BigDecimal rdExpense, BigDecimal assetImpairment,
+                   BigDecimal creditImpairment, BigDecimal otherIncome,
+                   BigDecimal budgetVolume, BigDecimal budgetRevenue,
+                   BigDecimal budgetSalesCost, BigDecimal budgetIdleExpense,
+                   BigDecimal budgetBaseExpense, BigDecimal budgetRdExpense,
+                   BigDecimal budgetAssetImpairment, BigDecimal budgetCreditImpairment,
+                   BigDecimal budgetOtherIncome) {
         this.scopeCode = scopeCode;
         this.volume = value(volume);
         this.revenue = value(revenue);
@@ -28,6 +53,15 @@ public class PnlFact {
         this.assetImpairment = value(assetImpairment);
         this.creditImpairment = value(creditImpairment);
         this.otherIncome = value(otherIncome);
+        this.budgetVolume = value(budgetVolume);
+        this.budgetRevenue = value(budgetRevenue);
+        this.budgetSalesCost = value(budgetSalesCost);
+        this.budgetIdleExpense = value(budgetIdleExpense);
+        this.budgetBaseExpense = value(budgetBaseExpense);
+        this.budgetRdExpense = value(budgetRdExpense);
+        this.budgetAssetImpairment = value(budgetAssetImpairment);
+        this.budgetCreditImpairment = value(budgetCreditImpairment);
+        this.budgetOtherIncome = value(budgetOtherIncome);
     }
 
     public String getScopeCode() { return scopeCode; }
@@ -40,6 +74,15 @@ public class PnlFact {
     public BigDecimal getAssetImpairment() { return assetImpairment; }
     public BigDecimal getCreditImpairment() { return creditImpairment; }
     public BigDecimal getOtherIncome() { return otherIncome; }
+    public BigDecimal getBudgetVolume() { return budgetVolume; }
+    public BigDecimal getBudgetRevenue() { return budgetRevenue; }
+    public BigDecimal getBudgetSalesCost() { return budgetSalesCost; }
+    public BigDecimal getBudgetIdleExpense() { return budgetIdleExpense; }
+    public BigDecimal getBudgetBaseExpense() { return budgetBaseExpense; }
+    public BigDecimal getBudgetRdExpense() { return budgetRdExpense; }
+    public BigDecimal getBudgetAssetImpairment() { return budgetAssetImpairment; }
+    public BigDecimal getBudgetCreditImpairment() { return budgetCreditImpairment; }
+    public BigDecimal getBudgetOtherIncome() { return budgetOtherIncome; }
 
     private BigDecimal value(BigDecimal number) {
         return number == null ? BigDecimal.ZERO : number;
