@@ -141,6 +141,12 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 
 计算结果生命周期为：`CALCULATED`（已计算）→ `CONFIRMED`（财经确认）→ `PUBLISHED`（正式发布）。已确认或已发布批次不可直接重算；结果会携带版本号、确认人、发布人及时间。
 
+### PVM因素分析
+
+`GET /api/v1/pvm/{batchNo}`
+
+PVM读取当前用户可见的已计算结果，按视角返回独立逻辑标识，并输出电量量变、收入价变、成本差额、毛利差额及收入/毛利勾稽差异。勾稽差异不为零时，后续发布校验应阻断。
+
 ## 下一步实现顺序
 
 1. Excel 模板注册、月度批次导入与完整性校验；
