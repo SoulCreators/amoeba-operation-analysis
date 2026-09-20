@@ -7,6 +7,7 @@ import com.sunwoda.evb.finance.analysis.domain.repository.ConfigurationImportTas
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.application.port.ConfigurationTemplateValidator;
+import com.sunwoda.evb.finance.analysis.application.port.ConfigurationImportApplier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -14,6 +15,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
+import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationApplyResult;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.UUID;
 
@@ -25,6 +28,8 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
     private ConfigurationTemplateValidator validator;
     @Autowired(required = false)
     private ImportIssueRepository issueRepository;
+    @Autowired(required = false)
+    private ConfigurationImportApplier applier;
 
     public ConfigurationImportServiceImpl(ConfigurationImportTaskRepository repository,
                                          ImportFileRepository fileRepository) {
@@ -68,6 +73,15 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
         fileRepository.save(taskNo, task.getFileName(), content);
         ImportValidationResult result = validator.validate(taskNo, task.getType(),
                 new java.io.ByteArrayInputStream(content));
+        if (result.getStatus() == ImportStatus.VALID && applier != null) {
+            ConfigurationApplyResult applied = applier.apply(task, new java.io.ByteArrayInputStream(content));
+            if (!applied.getIssues().isEmpty()) {
+                java.util.List<ImportIssue> issues = new java.util.ArrayList<ImportIssue>(result.getIssues());
+                issues.addAll(applied.getIssues());
+                result = new ImportValidationResult(taskNo, ImportStatus.INVALID, result.getRowCount(),
+                        result.getHeaders(), issues);
+            }
+        }
         if (issueRepository != null) issueRepository.replace(taskNo, result.getIssues());
         task.moveTo(result.getStatus());
         repository.save(task);
