@@ -1,0 +1,4 @@
+analysis:
+  storage:
+    # 生产环境应配置到受控挂载目录或对象存储适配器，不要放在代码目录。
+    root: ./data/imports
