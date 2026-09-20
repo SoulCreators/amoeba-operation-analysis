@@ -40,26 +40,36 @@ public class CalculationServiceImpl implements CalculationService {
         if (batch.getStatus() == BatchStatus.CONFIRMED || batch.getStatus() == BatchStatus.PUBLISHED) {
             throw new IllegalStateException("已确认或已发布批次不可直接重算");
         }
+        if (batch.getStatus() != BatchStatus.READY_FOR_CALCULATION
+                && batch.getStatus() != BatchStatus.CALCULATED) {
+            throw new IllegalStateException("批次尚未完成校验，不能开始计算: " + batch.getStatus());
+        }
         batch.moveTo(BatchStatus.CALCULATING);
         batchRepository.save(batch);
-        Map<String, MutablePnl> grouped = new LinkedHashMap<String, MutablePnl>();
-        for (PnlFact fact : factProvider.load(batch)) {
-            MutablePnl pnl = grouped.get(fact.getScopeCode());
-            if (pnl == null) {
-                pnl = new MutablePnl();
-                grouped.put(fact.getScopeCode(), pnl);
+        try {
+            Map<String, MutablePnl> grouped = new LinkedHashMap<String, MutablePnl>();
+            for (PnlFact fact : factProvider.load(batch)) {
+                MutablePnl pnl = grouped.get(fact.getScopeCode());
+                if (pnl == null) {
+                    pnl = new MutablePnl();
+                    grouped.put(fact.getScopeCode(), pnl);
+                }
+                pnl.add(fact);
             }
-            pnl.add(fact);
+            List<PnlResult> pnlResults = new ArrayList<PnlResult>();
+            for (Map.Entry<String, MutablePnl> entry : grouped.entrySet()) {
+                pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines()));
+            }
+            CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults);
+            results.put(batchNo, result);
+            batch.moveTo(BatchStatus.CALCULATED);
+            batchRepository.save(batch);
+            return result;
+        } catch (RuntimeException ex) {
+            batch.moveTo(BatchStatus.FAILED);
+            batchRepository.save(batch);
+            throw ex;
         }
-        List<PnlResult> pnlResults = new ArrayList<PnlResult>();
-        for (Map.Entry<String, MutablePnl> entry : grouped.entrySet()) {
-            pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines()));
-        }
-        CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults);
-        results.put(batchNo, result);
-        batch.moveTo(BatchStatus.CALCULATED);
-        batchRepository.save(batch);
-        return result;
     }
 
     @Override

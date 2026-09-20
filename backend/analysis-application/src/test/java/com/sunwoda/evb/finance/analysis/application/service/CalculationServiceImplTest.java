@@ -108,6 +108,24 @@ class CalculationServiceImplTest {
         assertEquals("南昌", filtered.getResults().get(0).getScopeCode());
     }
 
+    @Test
+    void marksBatchFailedWhenFactLoadingFails() {
+        FakeBatchRepository repository = new FakeBatchRepository();
+        repository.save(new AnalysisBatch(1L, "B-007", "2026-09", AnalysisPerspective.BASE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
+        PnlFactProvider provider = batch -> { throw new IllegalStateException("事实读取失败"); };
+        CalculationServiceImpl service = new CalculationServiceImpl(repository, provider,
+                new FakeUserScopeRepository());
+
+        try {
+            service.calculate("B-007");
+        } catch (IllegalStateException expected) {
+            // expected
+        }
+
+        assertEquals(BatchStatus.FAILED, repository.findByBatchNo("B-007").get().getStatus());
+    }
+
     private static BigDecimal decimal(double value) { return BigDecimal.valueOf(value); }
 
     private static class FakeBatchRepository implements AnalysisBatchRepository {
