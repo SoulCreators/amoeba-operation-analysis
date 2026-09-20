@@ -10,11 +10,13 @@ import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.Collections;
 import java.util.List;
@@ -33,7 +35,7 @@ class ImportTaskServiceImplTest {
         FakeImportTaskRepository tasks = new FakeImportTaskRepository();
         DatasetCatalog catalog = new FakeDatasetCatalog();
         ImportTaskService service = new ImportTaskServiceImpl(batches, tasks, catalog,
-                new FakeTemplateValidator(), new FakeImportIssueRepository());
+                new FakeTemplateValidator(), new FakeImportIssueRepository(), new FakeImportFileRepository());
 
         ImportTask created = service.create("B-001", "BASE_ACT_INC_COST", "actual.xlsx", "sha256", "tester");
 
@@ -50,7 +52,7 @@ class ImportTaskServiceImplTest {
                 BatchStatus.DRAFT, "tester", LocalDateTime.now()));
         ImportTaskService service = new ImportTaskServiceImpl(batches,
                 new FakeImportTaskRepository(), new FakeDatasetCatalog(), new FakeTemplateValidator(),
-                new FakeImportIssueRepository());
+                new FakeImportIssueRepository(), new FakeImportFileRepository());
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.create("B-002", "PLBU_ACT_INC_COST", "actual.xlsx", null, "tester"));
@@ -93,6 +95,17 @@ class ImportTaskServiceImplTest {
         }
     }
 
+    private static class FakeImportFileRepository implements ImportFileRepository {
+        @Override
+        public void save(String taskNo, String fileName, byte[] content) {
+        }
+
+        @Override
+        public InputStream open(String taskNo) {
+            return new ByteArrayInputStream(new byte[0]);
+        }
+    }
+
     private static class FakeBatchRepository implements AnalysisBatchRepository {
         private final Map<String, AnalysisBatch> data = new HashMap<String, AnalysisBatch>();
 
@@ -128,6 +141,11 @@ class ImportTaskServiceImplTest {
                 if (batchNo.equals(task.getBatchNo()) && datasetCode.equals(task.getDatasetCode())) return true;
             }
             return false;
+        }
+
+        @Override
+        public List<ImportTask> findByBatchNo(String batchNo) {
+            return Collections.emptyList();
         }
     }
 }

@@ -131,7 +131,7 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 - `POST /api/v1/calculations`，请求体 `{ "batchNo": "202609-BASE-001" }`
 - `GET /api/v1/calculations/{batchNo}`
 
-计算服务按批次视角执行统一损益骨架：收入、销售成本、毛利、闲置费用、基地费用、研发费用、减值、其他收益、净利润和净利率。当前事实提供器为演示适配器，后续替换为导入数据事实层。
+计算服务按批次视角执行统一损益骨架：收入、销售成本、毛利、闲置费用、基地费用、研发费用、减值、其他收益、净利润和净利率。Excel校验通过后，当前由文件事实适配器读取已登记的导入文件；`raw.pnl_fact` 已预留为后续数据库事实层。
 
 ## 下一步实现顺序
 

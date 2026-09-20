@@ -9,11 +9,14 @@ import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.UUID;
 import java.util.List;
 
@@ -24,17 +27,20 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     private final DatasetCatalog datasetCatalog;
     private final TemplateValidator templateValidator;
     private final ImportIssueRepository issueRepository;
+    private final ImportFileRepository fileRepository;
 
     public ImportTaskServiceImpl(AnalysisBatchRepository batchRepository,
                                  ImportTaskRepository taskRepository,
                                  DatasetCatalog datasetCatalog,
                                  TemplateValidator templateValidator,
-                                 ImportIssueRepository issueRepository) {
+                                 ImportIssueRepository issueRepository,
+                                 ImportFileRepository fileRepository) {
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
         this.datasetCatalog = datasetCatalog;
         this.templateValidator = templateValidator;
         this.issueRepository = issueRepository;
+        this.fileRepository = fileRepository;
     }
 
     @Override
@@ -76,12 +82,30 @@ public class ImportTaskServiceImpl implements ImportTaskService {
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + task.getBatchNo()));
         task.moveTo(ImportStatus.VALIDATING, 0);
         taskRepository.save(task);
+        byte[] content = readBytes(inputStream);
+        fileRepository.save(taskNo, task.getFileName(), content);
         ImportValidationResult result = templateValidator.validate(taskNo,
-                datasetCatalog.require(task.getDatasetCode(), batch.getPerspective()), inputStream);
+                datasetCatalog.require(task.getDatasetCode(), batch.getPerspective()),
+                new java.io.ByteArrayInputStream(content));
         issueRepository.replace(taskNo, result.getIssues());
         task.moveTo(result.getStatus(), result.getIssues().size());
         taskRepository.save(task);
         return result;
+    }
+
+    private byte[] readBytes(InputStream inputStream) {
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = inputStream.read(buffer)) >= 0) {
+                if (read > 0) output.write(buffer, 0, read);
+            }
+            if (output.size() == 0) throw new IllegalArgumentException("导入文件不能为空");
+            return output.toByteArray();
+        } catch (IOException ex) {
+            throw new IllegalArgumentException("导入文件读取失败: " + ex.getMessage(), ex);
+        }
     }
 
     @Override

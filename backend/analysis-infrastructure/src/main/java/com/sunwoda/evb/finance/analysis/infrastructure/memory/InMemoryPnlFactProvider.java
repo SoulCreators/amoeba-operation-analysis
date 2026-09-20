@@ -4,13 +4,12 @@ import com.sunwoda.evb.finance.analysis.application.port.PnlFactProvider;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
-import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 
-@Repository
+/** 仅用于单元测试和本地演示，生产计算使用Excel事实适配器。 */
 public class InMemoryPnlFactProvider implements PnlFactProvider {
     @Override
     public List<PnlFact> load(AnalysisBatch batch) {

@@ -5,6 +5,9 @@ import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,5 +44,14 @@ public class InMemoryImportTaskRepository implements ImportTaskRepository {
             }
         }
         return false;
+    }
+
+    @Override
+    public List<ImportTask> findByBatchNo(String batchNo) {
+        List<ImportTask> result = new ArrayList<ImportTask>();
+        for (ImportTask task : store.values()) {
+            if (batchNo.equals(task.getBatchNo())) result.add(task);
+        }
+        return Collections.unmodifiableList(result);
     }
 }
