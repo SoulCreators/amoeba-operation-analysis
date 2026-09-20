@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 import java.security.Principal;
 
 @RestController
@@ -34,6 +36,19 @@ public class ConfigurationImportController {
     @GetMapping("/{taskNo}")
     public ApiResult<ConfigurationImportTask> get(@PathVariable String taskNo) {
         return ApiResult.ok(service.get(taskNo));
+    }
+
+    @PostMapping(value = "/{taskNo}/upload", consumes = "multipart/form-data")
+    public ApiResult<ConfigurationImportTask> upload(@PathVariable String taskNo,
+                                                     @RequestPart("file") MultipartFile file,
+                                                     Principal principal) {
+        requiredUser(principal);
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("配置文件不能为空");
+        try {
+            return ApiResult.ok(service.upload(taskNo, file.getInputStream()));
+        } catch (java.io.IOException ex) {
+            throw new IllegalArgumentException("配置文件无法读取: " + ex.getMessage(), ex);
+        }
     }
 
     @PostMapping("/{taskNo}/status")
