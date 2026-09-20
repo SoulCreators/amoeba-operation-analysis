@@ -18,6 +18,7 @@ export interface MetricResult { code: string; name: string; actual: number; budg
 export interface PnlResult { scopeCode: string; lines: Record<string, number> }
 export interface PvmResult { scopeCode: string; perspective: string; actualVolume: number; budgetVolume: number; volumeGap: number; actualRevenue: number; budgetRevenue: number; revenueGap: number; actualSalesCost: number; budgetSalesCost: number; costGap: number; actualGrossProfit: number; budgetGrossProfit: number; grossProfitGap: number; [key: string]: unknown }
 export interface AiDraft { batchNo: string; resultVersionNo?: string; status: string; sections: Record<string, string>; generatedBy?: string; generatedAt?: string }
+export interface BatchReadiness { batchNo: string; perspective: Perspective; readyForCalculation: boolean; datasets: Array<{ datasetCode: string; datasetName: string; required: boolean; present: boolean; status: string; issueCount: number; taskNo?: string }> }
 
 async function unwrap<T>(request: Promise<{ data: ApiEnvelope<T> }>): Promise<T> {
   const response = await request
@@ -33,5 +34,5 @@ export const api = {
   metricTree: (batchNo: string) => unwrap<MetricResult[]>(http.get(`/metric-tree/${batchNo}`)),
   ai: (batchNo: string) => unwrap<AiDraft>(http.get(`/ai/analysis/${batchNo}`)),
   generateAi: (batchNo: string) => unwrap<AiDraft>(http.post(`/ai/analysis/${batchNo}`)),
+  readiness: (batchNo: string) => unwrap<BatchReadiness>(http.get(`/batches/${batchNo}/readiness`)),
 }
-
