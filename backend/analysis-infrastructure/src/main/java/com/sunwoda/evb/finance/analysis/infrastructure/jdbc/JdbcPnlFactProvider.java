@@ -28,7 +28,12 @@ public class JdbcPnlFactProvider implements PnlFactProvider {
                 + "SUM(budget_volume) budget_volume, SUM(budget_revenue) budget_revenue, SUM(budget_sales_cost) budget_sales_cost, "
                 + "SUM(budget_idle_expense) budget_idle_expense, SUM(budget_base_expense) budget_base_expense, "
                 + "SUM(budget_rd_expense) budget_rd_expense, SUM(budget_asset_impairment) budget_asset_impairment, "
-                + "SUM(budget_credit_impairment) budget_credit_impairment, SUM(budget_other_income) budget_other_income "
+                + "SUM(budget_credit_impairment) budget_credit_impairment, SUM(budget_other_income) budget_other_income, "
+                + "SUM(material_cost) material_cost, SUM(labor_cost) labor_cost, SUM(outsourcing_cost) outsourcing_cost, "
+                + "SUM(variable_mfg_cost) variable_mfg_cost, SUM(fixed_mfg_cost) fixed_mfg_cost, "
+                + "SUM(budget_material_cost) budget_material_cost, SUM(budget_labor_cost) budget_labor_cost, "
+                + "SUM(budget_outsourcing_cost) budget_outsourcing_cost, SUM(budget_variable_mfg_cost) budget_variable_mfg_cost, "
+                + "SUM(budget_fixed_mfg_cost) budget_fixed_mfg_cost "
                 + "FROM raw.pnl_fact WHERE batch_id = (SELECT id FROM meta.analysis_batch WHERE batch_no = ?) "
                 + "AND perspective = ? GROUP BY scope_code ORDER BY scope_code";
         List<PnlFact> facts = jdbc.query(sql, (rs, row) -> new PnlFact(rs.getString("scope_code"),
@@ -38,7 +43,12 @@ public class JdbcPnlFactProvider implements PnlFactProvider {
                 rs.getBigDecimal("budget_volume"), rs.getBigDecimal("budget_revenue"), rs.getBigDecimal("budget_sales_cost"),
                 rs.getBigDecimal("budget_idle_expense"), rs.getBigDecimal("budget_base_expense"), rs.getBigDecimal("budget_rd_expense"),
                 rs.getBigDecimal("budget_asset_impairment"), rs.getBigDecimal("budget_credit_impairment"),
-                rs.getBigDecimal("budget_other_income")), batch.getBatchNo(), batch.getPerspective().getCode());
+                rs.getBigDecimal("budget_other_income"), rs.getBigDecimal("material_cost"),
+                rs.getBigDecimal("labor_cost"), rs.getBigDecimal("outsourcing_cost"),
+                rs.getBigDecimal("variable_mfg_cost"), rs.getBigDecimal("fixed_mfg_cost"),
+                rs.getBigDecimal("budget_material_cost"), rs.getBigDecimal("budget_labor_cost"),
+                rs.getBigDecimal("budget_outsourcing_cost"), rs.getBigDecimal("budget_variable_mfg_cost"),
+                rs.getBigDecimal("budget_fixed_mfg_cost")), batch.getBatchNo(), batch.getPerspective().getCode());
         if (facts.isEmpty()) throw new IllegalStateException("标准事实表没有可计算数据: " + batch.getBatchNo());
         return facts;
     }

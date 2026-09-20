@@ -169,6 +169,16 @@ public class CalculationServiceImpl implements CalculationService {
         private BigDecimal budgetAssetImpairment = BigDecimal.ZERO;
         private BigDecimal budgetCreditImpairment = BigDecimal.ZERO;
         private BigDecimal budgetOtherIncome = BigDecimal.ZERO;
+        private BigDecimal materialCost = BigDecimal.ZERO;
+        private BigDecimal laborCost = BigDecimal.ZERO;
+        private BigDecimal outsourcingCost = BigDecimal.ZERO;
+        private BigDecimal variableManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal fixedManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal budgetMaterialCost = BigDecimal.ZERO;
+        private BigDecimal budgetLaborCost = BigDecimal.ZERO;
+        private BigDecimal budgetOutsourcingCost = BigDecimal.ZERO;
+        private BigDecimal budgetVariableManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal budgetFixedManufacturingCost = BigDecimal.ZERO;
 
         void add(PnlFact fact) {
             volume = volume.add(fact.getVolume());
@@ -189,6 +199,16 @@ public class CalculationServiceImpl implements CalculationService {
             budgetAssetImpairment = budgetAssetImpairment.add(fact.getBudgetAssetImpairment());
             budgetCreditImpairment = budgetCreditImpairment.add(fact.getBudgetCreditImpairment());
             budgetOtherIncome = budgetOtherIncome.add(fact.getBudgetOtherIncome());
+            materialCost = materialCost.add(fact.getMaterialCost());
+            laborCost = laborCost.add(fact.getLaborCost());
+            outsourcingCost = outsourcingCost.add(fact.getOutsourcingCost());
+            variableManufacturingCost = variableManufacturingCost.add(fact.getVariableManufacturingCost());
+            fixedManufacturingCost = fixedManufacturingCost.add(fact.getFixedManufacturingCost());
+            budgetMaterialCost = budgetMaterialCost.add(fact.getBudgetMaterialCost());
+            budgetLaborCost = budgetLaborCost.add(fact.getBudgetLaborCost());
+            budgetOutsourcingCost = budgetOutsourcingCost.add(fact.getBudgetOutsourcingCost());
+            budgetVariableManufacturingCost = budgetVariableManufacturingCost.add(fact.getBudgetVariableManufacturingCost());
+            budgetFixedManufacturingCost = budgetFixedManufacturingCost.add(fact.getBudgetFixedManufacturingCost());
         }
 
         Map<String, BigDecimal> toLines() {
@@ -228,6 +248,16 @@ public class CalculationServiceImpl implements CalculationService {
             lines.put("BUDGET_ASSET_IMPAIRMENT", budgetAssetImpairment);
             lines.put("BUDGET_CREDIT_IMPAIRMENT", budgetCreditImpairment);
             lines.put("BUDGET_OTHER_INCOME", budgetOtherIncome);
+            lines.put("MATERIAL_COST", materialCost);
+            lines.put("LABOR_COST", laborCost);
+            lines.put("OUTSOURCING_COST", outsourcingCost);
+            lines.put("VARIABLE_MFG_COST", variableManufacturingCost);
+            lines.put("FIXED_MFG_COST", fixedManufacturingCost);
+            lines.put("BUDGET_MATERIAL_COST", budgetMaterialCost);
+            lines.put("BUDGET_LABOR_COST", budgetLaborCost);
+            lines.put("BUDGET_OUTSOURCING_COST", budgetOutsourcingCost);
+            lines.put("BUDGET_VARIABLE_MFG_COST", budgetVariableManufacturingCost);
+            lines.put("BUDGET_FIXED_MFG_COST", budgetFixedManufacturingCost);
             lines.put("BUDGET_NET_PROFIT", budgetNetProfit);
             lines.put("BUDGET_PROFIT_RATE", budgetProfitRate);
             lines.put("GAP_VOLUME", volume.subtract(budgetVolume));
@@ -236,6 +266,11 @@ public class CalculationServiceImpl implements CalculationService {
             lines.put("GAP_GROSS_PROFIT", grossProfit.subtract(budgetGrossProfit));
             lines.put("GAP_NET_PROFIT", netProfit.subtract(budgetNetProfit));
             lines.put("GAP_PROFIT_RATE", profitRate.subtract(budgetProfitRate));
+            lines.put("GAP_MATERIAL_COST", materialCost.subtract(budgetMaterialCost));
+            lines.put("GAP_LABOR_COST", laborCost.subtract(budgetLaborCost));
+            lines.put("GAP_OUTSOURCING_COST", outsourcingCost.subtract(budgetOutsourcingCost));
+            lines.put("GAP_VARIABLE_MFG_COST", variableManufacturingCost.subtract(budgetVariableManufacturingCost));
+            lines.put("GAP_FIXED_MFG_COST", fixedManufacturingCost.subtract(budgetFixedManufacturingCost));
             return lines;
         }
     }

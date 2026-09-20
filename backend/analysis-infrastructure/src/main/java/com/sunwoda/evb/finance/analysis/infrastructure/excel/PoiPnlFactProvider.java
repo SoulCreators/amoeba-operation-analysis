@@ -83,10 +83,20 @@ public class PoiPnlFactProvider implements PnlFactProvider {
                         accumulator.budgetVolume = add(accumulator.budgetVolume, number(row, columns, "销量", "电量", "数量"));
                         accumulator.budgetRevenue = add(accumulator.budgetRevenue, number(row, columns, "营业收入", "销售收入", "收入"));
                         accumulator.budgetSalesCost = add(accumulator.budgetSalesCost, number(row, columns, "销售成本", "成本"));
+                        accumulator.budgetMaterialCost = add(accumulator.budgetMaterialCost, number(row, columns, "材料成本"));
+                        accumulator.budgetLaborCost = add(accumulator.budgetLaborCost, number(row, columns, "直接人工", "人工成本"));
+                        accumulator.budgetOutsourcingCost = add(accumulator.budgetOutsourcingCost, number(row, columns, "外协加工成本", "外协成本"));
+                        accumulator.budgetVariableManufacturingCost = add(accumulator.budgetVariableManufacturingCost, number(row, columns, "制造成本-变动", "变动制费"));
+                        accumulator.budgetFixedManufacturingCost = add(accumulator.budgetFixedManufacturingCost, number(row, columns, "制造成本-固定", "固定制费"));
                     } else {
                         accumulator.volume = add(accumulator.volume, number(row, columns, "销量", "电量", "数量"));
                         accumulator.revenue = add(accumulator.revenue, number(row, columns, "营业收入", "销售收入", "收入"));
                         accumulator.salesCost = add(accumulator.salesCost, number(row, columns, "销售成本", "成本"));
+                        accumulator.materialCost = add(accumulator.materialCost, number(row, columns, "材料成本"));
+                        accumulator.laborCost = add(accumulator.laborCost, number(row, columns, "直接人工", "人工成本"));
+                        accumulator.outsourcingCost = add(accumulator.outsourcingCost, number(row, columns, "外协加工成本", "外协成本"));
+                        accumulator.variableManufacturingCost = add(accumulator.variableManufacturingCost, number(row, columns, "制造成本-变动", "变动制费"));
+                        accumulator.fixedManufacturingCost = add(accumulator.fixedManufacturingCost, number(row, columns, "制造成本-固定", "固定制费"));
                     }
                 } else if (code.contains("IDLE")) {
                     accumulator.idleExpense = add(accumulator.idleExpense, number(row, columns, "金额", "闲置费用"));
@@ -189,13 +199,26 @@ public class PoiPnlFactProvider implements PnlFactProvider {
         private BigDecimal budgetAssetImpairment = BigDecimal.ZERO;
         private BigDecimal budgetCreditImpairment = BigDecimal.ZERO;
         private BigDecimal budgetOtherIncome = BigDecimal.ZERO;
+        private BigDecimal materialCost = BigDecimal.ZERO;
+        private BigDecimal laborCost = BigDecimal.ZERO;
+        private BigDecimal outsourcingCost = BigDecimal.ZERO;
+        private BigDecimal variableManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal fixedManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal budgetMaterialCost = BigDecimal.ZERO;
+        private BigDecimal budgetLaborCost = BigDecimal.ZERO;
+        private BigDecimal budgetOutsourcingCost = BigDecimal.ZERO;
+        private BigDecimal budgetVariableManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal budgetFixedManufacturingCost = BigDecimal.ZERO;
 
         private PnlFact toFact(String scope) {
             return new PnlFact(scope, volume, revenue, salesCost, idleExpense, baseExpense,
                     rdExpense, assetImpairment, creditImpairment, otherIncome,
                     budgetVolume, budgetRevenue, budgetSalesCost, budgetIdleExpense,
                     budgetBaseExpense, budgetRdExpense, budgetAssetImpairment,
-                    budgetCreditImpairment, budgetOtherIncome);
+                    budgetCreditImpairment, budgetOtherIncome, materialCost, laborCost,
+                    outsourcingCost, variableManufacturingCost, fixedManufacturingCost,
+                    budgetMaterialCost, budgetLaborCost, budgetOutsourcingCost,
+                    budgetVariableManufacturingCost, budgetFixedManufacturingCost);
         }
     }
 }
