@@ -37,12 +37,19 @@ public class CalculationController {
     }
 
     @PostMapping("/confirm")
-    public ApiResult<CalculationResult> confirm(@RequestBody ResultLifecycleRequest request) {
-        return ApiResult.ok(service.confirm(request.getBatchNo(), request.getOperator()));
+    public ApiResult<CalculationResult> confirm(@RequestBody ResultLifecycleRequest request, Principal principal) {
+        return ApiResult.ok(service.confirm(request.getBatchNo(), requiredUser(principal)));
     }
 
     @PostMapping("/publish")
-    public ApiResult<CalculationResult> publish(@RequestBody ResultLifecycleRequest request) {
-        return ApiResult.ok(service.publish(request.getBatchNo(), request.getOperator()));
+    public ApiResult<CalculationResult> publish(@RequestBody ResultLifecycleRequest request, Principal principal) {
+        return ApiResult.ok(service.publish(request.getBatchNo(), requiredUser(principal)));
+    }
+
+    private String requiredUser(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户");
+        }
+        return principal.getName();
     }
 }

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/v1/config/imports")
@@ -24,9 +25,10 @@ public class ConfigurationImportController {
     }
 
     @PostMapping
-    public ApiResult<ConfigurationImportTask> create(@RequestBody CreateConfigurationImportRequest request) {
+    public ApiResult<ConfigurationImportTask> create(@RequestBody CreateConfigurationImportRequest request,
+                                                     Principal principal) {
         return ApiResult.ok(service.create(ConfigurationImportType.valueOf(request.getType()),
-                request.getFileName(), request.getChecksum(), request.getCreatedBy()));
+                request.getFileName(), request.getChecksum(), requiredUser(principal)));
     }
 
     @GetMapping("/{taskNo}")
@@ -38,5 +40,12 @@ public class ConfigurationImportController {
     public ApiResult<ConfigurationImportTask> move(@PathVariable String taskNo,
                                                   @RequestBody MoveConfigurationImportRequest request) {
         return ApiResult.ok(service.move(taskNo, ImportStatus.valueOf(request.getStatus())));
+    }
+
+    private String requiredUser(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户");
+        }
+        return principal.getName();
     }
 }

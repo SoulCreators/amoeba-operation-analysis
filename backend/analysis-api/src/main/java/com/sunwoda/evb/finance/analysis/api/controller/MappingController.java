@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/v1/mappings")
@@ -30,14 +31,21 @@ public class MappingController {
     }
 
     @PostMapping
-    public ApiResult<MappingEntry> upsert(@RequestBody UpsertMappingRequest request) {
+    public ApiResult<MappingEntry> upsert(@RequestBody UpsertMappingRequest request, Principal principal) {
         return ApiResult.ok(service.upsert(MappingType.valueOf(request.getType()), request.getMatchKey(),
-                request.getMappedValue(), request.isEnabled(), request.getUpdatedBy()));
+                request.getMappedValue(), request.isEnabled(), requiredUser(principal)));
     }
 
     @PostMapping("/disable")
-    public ApiResult<MappingEntry> disable(@RequestBody UpsertMappingRequest request) {
+    public ApiResult<MappingEntry> disable(@RequestBody UpsertMappingRequest request, Principal principal) {
         return ApiResult.ok(service.disable(MappingType.valueOf(request.getType()),
-                request.getMatchKey(), request.getUpdatedBy()));
+                request.getMatchKey(), requiredUser(principal)));
+    }
+
+    private String requiredUser(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户");
+        }
+        return principal.getName();
     }
 }

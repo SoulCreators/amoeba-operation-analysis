@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/v1/metrics")
@@ -30,10 +31,17 @@ public class MetricController {
     }
 
     @PostMapping
-    public ApiResult<MetricDefinition> upsert(@RequestBody UpsertMetricRequest request) {
+    public ApiResult<MetricDefinition> upsert(@RequestBody UpsertMetricRequest request, Principal principal) {
         return ApiResult.ok(service.upsert(request.getMetricCode(), request.getMetricName(),
                 request.getApplicablePerspective(), request.getUnit(), request.getFormulaExpression(),
                 request.getDisplayOrder(), request.isEnabled(), request.getAiSummaryTemplate(),
-                request.getUpdatedBy()));
+                requiredUser(principal)));
+    }
+
+    private String requiredUser(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户");
+        }
+        return principal.getName();
     }
 }
