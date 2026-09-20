@@ -1,15 +1,17 @@
 package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
+import com.sunwoda.evb.finance.analysis.application.port.TemplateValidator;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
-import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.io.InputStream;
 import java.util.UUID;
 
 @Service
@@ -17,13 +19,16 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     private final AnalysisBatchRepository batchRepository;
     private final ImportTaskRepository taskRepository;
     private final DatasetCatalog datasetCatalog;
+    private final TemplateValidator templateValidator;
 
     public ImportTaskServiceImpl(AnalysisBatchRepository batchRepository,
                                  ImportTaskRepository taskRepository,
-                                 DatasetCatalog datasetCatalog) {
+                                 DatasetCatalog datasetCatalog,
+                                 TemplateValidator templateValidator) {
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
         this.datasetCatalog = datasetCatalog;
+        this.templateValidator = templateValidator;
     }
 
     @Override
@@ -55,6 +60,21 @@ public class ImportTaskServiceImpl implements ImportTaskService {
         ImportTask task = get(taskNo);
         task.moveTo(status, issueCount);
         return taskRepository.save(task);
+    }
+
+    @Override
+    public ImportValidationResult validate(String taskNo, InputStream inputStream) {
+        if (inputStream == null) throw new IllegalArgumentException("导入文件不能为空");
+        ImportTask task = get(taskNo);
+        AnalysisBatch batch = batchRepository.findByBatchNo(task.getBatchNo())
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + task.getBatchNo()));
+        task.moveTo(ImportStatus.VALIDATING, 0);
+        taskRepository.save(task);
+        ImportValidationResult result = templateValidator.validate(taskNo,
+                datasetCatalog.require(task.getDatasetCode(), batch.getPerspective()), inputStream);
+        task.moveTo(result.getStatus(), result.getIssues().size());
+        taskRepository.save(task);
+        return result;
     }
 
     private void requireText(String value, String field) {

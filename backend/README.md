@@ -83,6 +83,7 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 
 - `GET /api/v1/imports/{taskNo}`
 - `POST /api/v1/imports/{taskNo}/status`
+- `POST /api/v1/imports/{taskNo}/validate`（multipart字段名：`file`）
 
 ```json
 {
@@ -91,7 +92,7 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 }
 ```
 
-一期先登记文件和任务状态，Excel 字段解析、错误明细落库和对象存储适配将在下一步接入；配置类导入不会复用月度业务数据入口。
+当前已支持首个工作表首行字段标题、必填字段缺失/空值、重复字段和空文件校验；错误明细当前随响应返回，持久化明细和对象存储适配将在下一步接入。配置类导入不会复用月度业务数据入口。
 
 ## 下一步实现顺序
 

@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.infrastructure.memory;
 import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.DatasetDefinition;
+import com.sunwoda.evb.finance.analysis.domain.model.DatasetFieldDefinition;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -56,6 +57,40 @@ public class InMemoryDatasetCatalog implements DatasetCatalog {
     private DatasetDefinition definition(String code, String name, boolean required,
                                          AnalysisPerspective... perspectives) {
         return new DatasetDefinition(code, name, "MONTHLY", required,
-                Arrays.asList(perspectives));
+                Arrays.asList(perspectives), fieldsFor(code));
+    }
+
+    private List<DatasetFieldDefinition> fieldsFor(String code) {
+        if (code.startsWith("BASE_")) {
+            if ("BASE_L3_EXP".equals(code) || "BASE_LAB_MFG_EXP".equals(code)) {
+                return Arrays.asList(field("期间", "期间", "MONTH", true),
+                        field("基地", "收入计算基地", "TEXT", true),
+                        field("费用分类", "费用分类", "TEXT", true),
+                        field("金额", "金额", "DECIMAL", true));
+            }
+            if ("BASE_IDLE".equals(code) || "BASE_LOGISTICS".equals(code)
+                    || "BASE_IMPAIRMENT".equals(code)) {
+                return Arrays.asList(field("期间", "期间", "MONTH", true),
+                        field("基地", "收入计算基地", "TEXT", true),
+                        field("金额", "金额", "DECIMAL", true));
+            }
+            return Arrays.asList(field("期间", "期间", "MONTH", true),
+                    field("基地", "收入计算基地", "TEXT", true),
+                    field("型号", "电芯型号", "TEXT", true),
+                    field("项目", "财经修正项目", "TEXT", true),
+                    field("客户", "客户简称", "TEXT", true),
+                    field("收入", "营业收入", "DECIMAL", true),
+                    field("成本", "销售成本", "DECIMAL", true));
+        }
+        return Arrays.asList(field("期间", "期间", "MONTH", true),
+                field("项目", "客户项目", "TEXT", true),
+                field("客户", "客户简称-改2", "TEXT", true),
+                field("型号", "电芯型号", "TEXT", true),
+                field("收入", "销售收入", "DECIMAL", true),
+                field("成本", "销售成本", "DECIMAL", true));
+    }
+
+    private DatasetFieldDefinition field(String code, String name, String type, boolean required) {
+        return new DatasetFieldDefinition(code, name, type, required);
     }
 }

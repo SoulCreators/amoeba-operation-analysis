@@ -1,6 +1,7 @@
 package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
+import com.sunwoda.evb.finance.analysis.application.port.TemplateValidator;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
@@ -12,6 +13,7 @@ import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Collections;
 import java.util.List;
@@ -29,7 +31,7 @@ class ImportTaskServiceImplTest {
                 BatchStatus.DRAFT, "tester", LocalDateTime.now()));
         FakeImportTaskRepository tasks = new FakeImportTaskRepository();
         DatasetCatalog catalog = new FakeDatasetCatalog();
-        ImportTaskService service = new ImportTaskServiceImpl(batches, tasks, catalog);
+        ImportTaskService service = new ImportTaskServiceImpl(batches, tasks, catalog, new FakeTemplateValidator());
 
         ImportTask created = service.create("B-001", "BASE_ACT_INC_COST", "actual.xlsx", "sha256", "tester");
 
@@ -45,7 +47,7 @@ class ImportTaskServiceImplTest {
         batches.save(new AnalysisBatch(1L, "B-002", "2026-09", AnalysisPerspective.BASE,
                 BatchStatus.DRAFT, "tester", LocalDateTime.now()));
         ImportTaskService service = new ImportTaskServiceImpl(batches,
-                new FakeImportTaskRepository(), new FakeDatasetCatalog());
+                new FakeImportTaskRepository(), new FakeDatasetCatalog(), new FakeTemplateValidator());
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.create("B-002", "PLBU_ACT_INC_COST", "actual.xlsx", null, "tester"));
@@ -64,6 +66,16 @@ class ImportTaskServiceImplTest {
                         Collections.singletonList(AnalysisPerspective.BASE));
             }
             throw new IllegalArgumentException("数据集不适用");
+        }
+    }
+
+    private static class FakeTemplateValidator implements TemplateValidator {
+        @Override
+        public com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult validate(
+                String taskNo, DatasetDefinition definition, InputStream inputStream) {
+            return new com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult(
+                    taskNo, ImportStatus.VALID, 0, Collections.<String>emptyList(),
+                    Collections.<com.sunwoda.evb.finance.analysis.domain.model.ImportIssue>emptyList());
         }
     }
 
