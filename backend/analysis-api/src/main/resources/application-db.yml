@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    # 由部署环境注入，禁止把真实账号密码提交到仓库。
+    url: ${AMOEBA_DB_URL:jdbc:postgresql://localhost:5432/amoeba_analysis}
+    username: ${AMOEBA_DB_USERNAME:}
+    password: ${AMOEBA_DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+  profiles:
+    include: db
