@@ -60,6 +60,39 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 
 当前返回可替换的演示结果，后续将由 Excel 导入、规则计算和数据库结果适配器替换，不改变前端接口契约。
 
+### 查询当前视角数据集目录
+
+`GET /api/v1/datasets?perspective=BASE`
+
+目录将基地数据集与产品线/事业部数据集分开返回，但使用同一批次和导入任务接口。
+
+### 登记月度数据导入任务
+
+`POST /api/v1/batches/{batchNo}/imports`
+
+```json
+{
+  "datasetCode": "BASE_ACT_INC_COST",
+  "fileName": "基地实际收入成本明细_2026-09.xlsx",
+  "checksum": "sha256:...",
+  "createdBy": "finance"
+}
+```
+
+查询和推进校验状态：
+
+- `GET /api/v1/imports/{taskNo}`
+- `POST /api/v1/imports/{taskNo}/status`
+
+```json
+{
+  "status": "VALID",
+  "issueCount": 0
+}
+```
+
+一期先登记文件和任务状态，Excel 字段解析、错误明细落库和对象存储适配将在下一步接入；配置类导入不会复用月度业务数据入口。
+
 ## 下一步实现顺序
 
 1. Excel 模板注册、月度批次导入与完整性校验；
