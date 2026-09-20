@@ -147,6 +147,14 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 
 PVM读取当前用户可见的已计算结果，按视角返回独立逻辑标识，并输出电量量变、收入价变、成本差额、毛利差额及收入/毛利勾稽差异。勾稽差异不为零时，后续发布校验应阻断。
 
+### AI经营分析
+
+- `POST /api/v1/ai/analysis/{batchNo}`：由认证用户生成AI草稿。
+- `GET /api/v1/ai/analysis/{batchNo}`：查看当前授权范围内的草稿或已发布结果。
+- `POST /api/v1/ai/analysis/{batchNo}/publish`：财经角色确认并发布。
+
+一期固定输出经营总述、未达标、亮点、原因线索、风险和行动建议。当前内置确定性规则Gateway用于联调，正式环境替换为公司本地AI实现；`calc.ai_analysis_draft` 已预留结果版本、提示词版本、模型编码及六段内容持久化字段。
+
 ## 下一步实现顺序
 
 1. Excel 模板注册、月度批次导入与完整性校验；
