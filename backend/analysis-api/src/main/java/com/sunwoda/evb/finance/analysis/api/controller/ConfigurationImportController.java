@@ -7,6 +7,7 @@ import com.sunwoda.evb.finance.analysis.common.ApiResult;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,6 +47,19 @@ public class ConfigurationImportController {
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("配置文件不能为空");
         try {
             return ApiResult.ok(service.upload(taskNo, file.getInputStream()));
+        } catch (java.io.IOException ex) {
+            throw new IllegalArgumentException("配置文件无法读取: " + ex.getMessage(), ex);
+        }
+    }
+
+    @PostMapping(value = "/{taskNo}/validate", consumes = "multipart/form-data")
+    public ApiResult<ImportValidationResult> validate(@PathVariable String taskNo,
+                                                      @RequestPart("file") MultipartFile file,
+                                                      Principal principal) {
+        requiredUser(principal);
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("配置文件不能为空");
+        try {
+            return ApiResult.ok(service.validate(taskNo, file.getInputStream()));
         } catch (java.io.IOException ex) {
             throw new IllegalArgumentException("配置文件无法读取: " + ex.getMessage(), ex);
         }

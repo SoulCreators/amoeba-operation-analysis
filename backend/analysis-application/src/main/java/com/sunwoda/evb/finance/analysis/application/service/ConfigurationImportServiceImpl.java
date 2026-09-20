@@ -5,18 +5,26 @@ import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.repository.ConfigurationImportTaskRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
+import com.sunwoda.evb.finance.analysis.application.port.ConfigurationTemplateValidator;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
+import org.springframework.beans.factory.annotation.Autowired;
 import java.util.UUID;
 
 @Service
 public class ConfigurationImportServiceImpl implements ConfigurationImportService {
     private final ConfigurationImportTaskRepository repository;
     private final ImportFileRepository fileRepository;
+    @Autowired(required = false)
+    private ConfigurationTemplateValidator validator;
+    @Autowired(required = false)
+    private ImportIssueRepository issueRepository;
 
     public ConfigurationImportServiceImpl(ConfigurationImportTaskRepository repository,
                                          ImportFileRepository fileRepository) {
@@ -49,6 +57,21 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
         fileRepository.save(taskNo, task.getFileName(), content);
         task.moveTo(ImportStatus.VALIDATING);
         return repository.save(task);
+    }
+
+    @Override
+    public ImportValidationResult validate(String taskNo, InputStream inputStream) {
+        if (inputStream == null) throw new IllegalArgumentException("配置文件不能为空");
+        if (validator == null) throw new IllegalStateException("当前环境未配置配置文件校验器");
+        ConfigurationImportTask task = get(taskNo);
+        byte[] content = readBytes(inputStream);
+        fileRepository.save(taskNo, task.getFileName(), content);
+        ImportValidationResult result = validator.validate(taskNo, task.getType(),
+                new java.io.ByteArrayInputStream(content));
+        if (issueRepository != null) issueRepository.replace(taskNo, result.getIssues());
+        task.moveTo(result.getStatus());
+        repository.save(task);
+        return result;
     }
 
     @Override
