@@ -14,4 +14,14 @@ source deploy/scripts/env-local.sh
 ```
 
 `.toolchain/` 仅用于本机，不提交到 Git；CI 使用工作流中声明的 JDK 8、Node.js 20。
+
+## 本地 API 联调
+
+```bash
+source deploy/scripts/env-local.sh
+mvn -pl backend/analysis-api -am spring-boot:run \
+  -Dspring-boot.run.profiles=local
+```
+
+本地 Profile 会使用脱敏/内存适配器，并将 `X-User-Id` 转成本地 `Principal`，便于前端联调。它不是生产认证方案；生产环境必须关闭 `local`，由统一认证网关注入用户主体。
 Maven 依赖缓存也固定在 `.toolchain/m2`，避免修改用户目录。
