@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
 import com.sunwoda.evb.finance.analysis.application.port.TemplateValidator;
+import com.sunwoda.evb.finance.analysis.application.port.PnlFactTaskReader;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
@@ -11,6 +12,8 @@ import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepositor
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.PnlFactWriter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -28,6 +31,10 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     private final TemplateValidator templateValidator;
     private final ImportIssueRepository issueRepository;
     private final ImportFileRepository fileRepository;
+    @Autowired(required = false)
+    private PnlFactTaskReader factReader;
+    @Autowired(required = false)
+    private PnlFactWriter factWriter;
 
     public ImportTaskServiceImpl(AnalysisBatchRepository batchRepository,
                                  ImportTaskRepository taskRepository,
@@ -90,6 +97,9 @@ public class ImportTaskServiceImpl implements ImportTaskService {
         issueRepository.replace(taskNo, result.getIssues());
         task.moveTo(result.getStatus(), result.getIssues().size());
         taskRepository.save(task);
+        if (result.getStatus() == ImportStatus.VALID && factReader != null && factWriter != null) {
+            factWriter.replace(batch, task, factReader.read(batch, task));
+        }
         return result;
     }
 

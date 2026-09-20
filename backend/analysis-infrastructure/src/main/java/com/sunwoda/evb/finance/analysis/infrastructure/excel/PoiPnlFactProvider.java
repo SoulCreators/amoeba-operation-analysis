@@ -1,6 +1,7 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.excel;
 
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactProvider;
+import com.sunwoda.evb.finance.analysis.application.port.PnlFactTaskReader;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
@@ -14,8 +15,6 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.springframework.context.annotation.Primary;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.io.InputStream;
@@ -26,10 +25,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /** 将已校验的收入成本、费用和减值工作表标准化为统一损益事实。 */
-@Primary
 @Repository
-@Profile("!db")
-public class PoiPnlFactProvider implements PnlFactProvider {
+public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
     private final ImportTaskRepository taskRepository;
     private final ImportFileRepository fileRepository;
     private final DataFormatter formatter = new DataFormatter(Locale.CHINA);
@@ -54,6 +51,17 @@ public class PoiPnlFactProvider implements PnlFactProvider {
         if (!hasRevenueCost) {
             throw new IllegalStateException("批次缺少已校验的实际收入成本数据集");
         }
+        java.util.List<PnlFact> facts = new java.util.ArrayList<PnlFact>();
+        for (Map.Entry<String, Accumulator> entry : accumulators.entrySet()) {
+            facts.add(entry.getValue().toFact(entry.getKey()));
+        }
+        return facts;
+    }
+
+    @Override
+    public List<PnlFact> read(AnalysisBatch batch, ImportTask task) {
+        Map<String, Accumulator> accumulators = new LinkedHashMap<String, Accumulator>();
+        readTask(task, batch.getPerspective(), accumulators);
         java.util.List<PnlFact> facts = new java.util.ArrayList<PnlFact>();
         for (Map.Entry<String, Accumulator> entry : accumulators.entrySet()) {
             facts.add(entry.getValue().toFact(entry.getKey()));
