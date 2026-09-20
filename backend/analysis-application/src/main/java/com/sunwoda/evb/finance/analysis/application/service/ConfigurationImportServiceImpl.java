@@ -19,6 +19,8 @@ import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationApplyResult;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.UUID;
+import java.util.Collections;
+import java.util.List;
 
 @Service
 public class ConfigurationImportServiceImpl implements ConfigurationImportService {
@@ -52,6 +54,13 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
     public ConfigurationImportTask get(String taskNo) {
         return repository.findByTaskNo(taskNo)
                 .orElseThrow(() -> new IllegalArgumentException("配置导入任务不存在: " + taskNo));
+    }
+
+    @Override
+    public List<ImportIssue> issues(String taskNo) {
+        get(taskNo);
+        return issueRepository == null ? Collections.<ImportIssue>emptyList()
+                : issueRepository.findByTaskNo(taskNo);
     }
 
     @Override

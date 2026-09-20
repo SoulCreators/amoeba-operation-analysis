@@ -24,6 +24,7 @@ export interface MetricDefinition { id?: number; metricCode: string; metricName:
 export interface MappingEntry { id?: number; type: string; matchKey: string; mappedValue: string; enabled: boolean; updatedBy?: string; updatedAt?: string }
 export interface DataQualityReport { batchNo: string; perspective: Perspective; status: string; totalDatasetCount: number; requiredDatasetCount: number; presentRequiredDatasetCount: number; validRequiredDatasetCount: number; issueCount: number; missingDatasetCodes: string[]; invalidDatasetCodes: string[]; datasets: BatchReadiness['datasets'] }
 export interface ConfigurationImportTask { taskNo: string; type: string; fileName: string; status: string; createdBy?: string; createdAt?: string; updatedAt?: string }
+export interface ConfigurationImportIssue { rowNo?: number; fieldName?: string; issueCode: string; issueMessage: string; rawValue?: string }
 
 async function unwrap<T>(request: Promise<{ data: ApiEnvelope<T> }>): Promise<T> {
   const response = await request
@@ -49,7 +50,8 @@ export const api = {
   disableMapping: (payload: Pick<MappingEntry, 'type' | 'matchKey'>) => unwrap<MappingEntry>(http.post('/mappings/disable', payload)),
   createConfigImport: (payload: { type: string; fileName: string; checksum?: string }) => unwrap<ConfigurationImportTask>(http.post('/config/imports', payload)),
   uploadConfigImport: (taskNo: string, file: File) => { const form = new FormData(); form.append('file', file); return unwrap<ConfigurationImportTask>(http.post(`/config/imports/${taskNo}/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } })) },
-  validateConfigImport: (taskNo: string, file: File) => { const form = new FormData(); form.append('file', file); return unwrap<{ taskNo: string; status: string; rowCount: number; headers: string[]; issues: Array<{ rowNo?: number; fieldName?: string; issueCode: string; issueMessage: string }> }>(http.post(`/config/imports/${taskNo}/validate`, form, { headers: { 'Content-Type': 'multipart/form-data' } })) },
+  validateConfigImport: (taskNo: string, file: File) => { const form = new FormData(); form.append('file', file); return unwrap<{ taskNo: string; status: string; rowCount: number; headers: string[]; issues: ConfigurationImportIssue[] }>(http.post(`/config/imports/${taskNo}/validate`, form, { headers: { 'Content-Type': 'multipart/form-data' } })) },
+  configImportIssues: (taskNo: string) => unwrap<ConfigurationImportIssue[]>(http.get(`/config/imports/${taskNo}/issues`)),
   createBatch: (payload: { batchNo: string; period: string; perspective: Perspective }) => unwrap(http.post('/batches', payload)),
   createImport: (batchNo: string, payload: { datasetCode: string; fileName: string; checksum?: string }) => unwrap<{ taskNo: string }>(http.post(`/batches/${batchNo}/imports`, payload)),
   validateImport: (taskNo: string, file: File) => { const form = new FormData(); form.append('file', file); return unwrap(http.post(`/imports/${taskNo}/validate`, form, { headers: { 'Content-Type': 'multipart/form-data' } })) },

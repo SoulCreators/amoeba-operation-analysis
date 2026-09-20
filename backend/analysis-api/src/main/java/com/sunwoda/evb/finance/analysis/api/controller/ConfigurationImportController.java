@@ -8,6 +8,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
 import java.security.Principal;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/config/imports")
@@ -37,6 +39,11 @@ public class ConfigurationImportController {
     @GetMapping("/{taskNo}")
     public ApiResult<ConfigurationImportTask> get(@PathVariable String taskNo) {
         return ApiResult.ok(service.get(taskNo));
+    }
+
+    @GetMapping("/{taskNo}/issues")
+    public ApiResult<List<ImportIssue>> issues(@PathVariable String taskNo) {
+        return ApiResult.ok(service.issues(taskNo));
     }
 
     @PostMapping(value = "/{taskNo}/upload", consumes = "multipart/form-data")
