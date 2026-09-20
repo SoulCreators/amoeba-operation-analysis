@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/v1/calculations")
@@ -27,8 +28,12 @@ public class CalculationController {
     }
 
     @GetMapping("/{batchNo}")
-    public ApiResult<CalculationResult> get(@PathVariable String batchNo) {
-        return ApiResult.ok(service.get(batchNo));
+    public ApiResult<CalculationResult> get(@PathVariable String batchNo,
+                                            Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户，拒绝返回经营结果");
+        }
+        return ApiResult.ok(service.getForUser(batchNo, principal.getName()));
     }
 
     @PostMapping("/confirm")

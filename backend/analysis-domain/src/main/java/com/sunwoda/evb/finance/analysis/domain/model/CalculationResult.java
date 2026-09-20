@@ -3,6 +3,8 @@ package com.sunwoda.evb.finance.analysis.domain.model;
 import java.util.Collections;
 import java.util.List;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Set;
 
 public class CalculationResult {
     private final String batchNo;
@@ -65,5 +67,18 @@ public class CalculationResult {
         return new CalculationResult(batchNo, perspective, results, versionNo,
                 CalculationResultStatus.PUBLISHED, confirmedBy, operator,
                 calculatedAt, confirmedAt, LocalDateTime.now());
+    }
+
+    public CalculationResult filterScopes(Set<String> allowedScopes) {
+        if (allowedScopes == null || allowedScopes.isEmpty()) {
+            throw new IllegalArgumentException("没有可查看的授权范围");
+        }
+        if (allowedScopes.contains("ALL")) return this;
+        List<PnlResult> filtered = new ArrayList<PnlResult>();
+        for (PnlResult result : results) {
+            if (allowedScopes.contains(result.getScopeCode())) filtered.add(result);
+        }
+        return new CalculationResult(batchNo, perspective, filtered, versionNo, status,
+                confirmedBy, publishedBy, calculatedAt, confirmedAt, publishedAt);
     }
 }

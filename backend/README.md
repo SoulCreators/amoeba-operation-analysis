@@ -126,10 +126,14 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 
 指标公式以确定性表达式保存，经营总览可按 `ALL` 或指定视角配置。
 
+### 用户范围权限
+
+结果查询依赖容器认证后的 `Principal`，不接受前端传入的用户工号：`GET /api/v1/calculations/{batchNo}`。匿名请求直接拒绝；服务端按认证主体加载 `iam.user_scope` 对应的视角和范围。结果未发布时，仅角色编码包含 `FINANCE` 或 `ADMIN` 的用户可以查看草稿；已发布结果按 `scopeCode=ALL` 或具体授权范围过滤。用户权限的写入入口待接入公司统一认证和管理员角色后开放，避免普通调用方伪造或修改权限。
+
 ### 三视角损益计算
 
 - `POST /api/v1/calculations`，请求体 `{ "batchNo": "202609-BASE-001" }`
-- `GET /api/v1/calculations/{batchNo}`
+- `GET /api/v1/calculations/{batchNo}?userId=U001`（必须携带用户工号，按授权范围返回）
 - `POST /api/v1/calculations/confirm`，请求体 `{ "batchNo": "202609-BASE-001", "operator": "finance-001" }`
 - `POST /api/v1/calculations/publish`，请求体 `{ "batchNo": "202609-BASE-001", "operator": "finance-001" }`
 

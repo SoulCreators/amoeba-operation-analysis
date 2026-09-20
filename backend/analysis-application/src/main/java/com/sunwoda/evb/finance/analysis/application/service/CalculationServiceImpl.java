@@ -4,9 +4,11 @@ import com.sunwoda.evb.finance.analysis.application.port.PnlFactProvider;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -15,16 +17,20 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 
 @Service
 public class CalculationServiceImpl implements CalculationService {
     private final AnalysisBatchRepository batchRepository;
     private final PnlFactProvider factProvider;
+    private final UserScopeRepository userScopeRepository;
     private final Map<String, CalculationResult> results = new LinkedHashMap<String, CalculationResult>();
 
-    public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider) {
+    public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
+                                  UserScopeRepository userScopeRepository) {
         this.batchRepository = batchRepository;
         this.factProvider = factProvider;
+        this.userScopeRepository = userScopeRepository;
     }
 
     @Override
@@ -61,6 +67,25 @@ public class CalculationServiceImpl implements CalculationService {
         CalculationResult result = results.get(batchNo);
         if (result == null) throw new IllegalArgumentException("批次尚未完成计算: " + batchNo);
         return result;
+    }
+
+    @Override
+    public synchronized CalculationResult getForUser(String batchNo, String userId) {
+        if (userId == null || userId.trim().isEmpty()) throw new IllegalArgumentException("用户工号不能为空");
+        CalculationResult result = get(batchNo);
+        java.util.List<com.sunwoda.evb.finance.analysis.domain.model.UserScope> scopes =
+                userScopeRepository.findByUserAndPerspective(userId.trim(), result.getPerspective());
+        java.util.Set<String> allowed = new HashSet<String>();
+        boolean canReviewDraft = false;
+        for (com.sunwoda.evb.finance.analysis.domain.model.UserScope scope : scopes) {
+            allowed.add(scope.getScopeCode());
+            String role = scope.getRoleCode().toUpperCase(java.util.Locale.ROOT);
+            canReviewDraft = canReviewDraft || role.contains("FINANCE") || role.contains("ADMIN");
+        }
+        if (result.getStatus() != CalculationResultStatus.PUBLISHED && !canReviewDraft) {
+            throw new IllegalStateException("当前结果尚未发布，仅财经角色可查看草稿");
+        }
+        return result.filterScopes(allowed);
     }
 
     @Override
