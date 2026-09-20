@@ -8,7 +8,9 @@ import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.CalculationResultRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -25,12 +27,25 @@ public class CalculationServiceImpl implements CalculationService {
     private final PnlFactProvider factProvider;
     private final UserScopeRepository userScopeRepository;
     private final Map<String, CalculationResult> results = new LinkedHashMap<String, CalculationResult>();
+    private final CalculationResultRepository resultRepository;
 
+    @Autowired
+    public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
+                                  UserScopeRepository userScopeRepository,
+                                  CalculationResultRepository resultRepository) {
+        this.batchRepository = batchRepository;
+        this.factProvider = factProvider;
+        this.userScopeRepository = userScopeRepository;
+        this.resultRepository = resultRepository;
+    }
+
+    /** 保留给领域单元测试和无Spring场景的轻量构造器。 */
     public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
                                   UserScopeRepository userScopeRepository) {
         this.batchRepository = batchRepository;
         this.factProvider = factProvider;
         this.userScopeRepository = userScopeRepository;
+        this.resultRepository = null;
     }
 
     @Override
@@ -61,7 +76,7 @@ public class CalculationServiceImpl implements CalculationService {
                 pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines()));
             }
             CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults);
-            results.put(batchNo, result);
+            saveResult(result);
             batch.moveTo(BatchStatus.CALCULATED);
             batchRepository.save(batch);
             return result;
@@ -74,7 +89,9 @@ public class CalculationServiceImpl implements CalculationService {
 
     @Override
     public synchronized CalculationResult get(String batchNo) {
-        CalculationResult result = results.get(batchNo);
+        CalculationResult result = resultRepository == null
+                ? results.get(batchNo)
+                : resultRepository.findByBatchNo(batchNo).orElse(null);
         if (result == null) throw new IllegalArgumentException("批次尚未完成计算: " + batchNo);
         return result;
     }
@@ -109,7 +126,7 @@ public class CalculationServiceImpl implements CalculationService {
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
         batch.moveTo(BatchStatus.CONFIRMED);
         batchRepository.save(batch);
-        results.put(batchNo, confirmed);
+        saveResult(confirmed);
         return confirmed;
     }
 
@@ -124,8 +141,13 @@ public class CalculationServiceImpl implements CalculationService {
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
         batch.moveTo(BatchStatus.PUBLISHED);
         batchRepository.save(batch);
-        results.put(batchNo, published);
+        saveResult(published);
         return published;
+    }
+
+    private void saveResult(CalculationResult result) {
+        if (resultRepository == null) results.put(result.getBatchNo(), result);
+        else resultRepository.save(result);
     }
 
     private static class MutablePnl {
