@@ -4,15 +4,18 @@ import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
 import com.sunwoda.evb.finance.analysis.application.port.TemplateValidator;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.io.InputStream;
 import java.util.UUID;
+import java.util.List;
 
 @Service
 public class ImportTaskServiceImpl implements ImportTaskService {
@@ -20,15 +23,18 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     private final ImportTaskRepository taskRepository;
     private final DatasetCatalog datasetCatalog;
     private final TemplateValidator templateValidator;
+    private final ImportIssueRepository issueRepository;
 
     public ImportTaskServiceImpl(AnalysisBatchRepository batchRepository,
                                  ImportTaskRepository taskRepository,
                                  DatasetCatalog datasetCatalog,
-                                 TemplateValidator templateValidator) {
+                                 TemplateValidator templateValidator,
+                                 ImportIssueRepository issueRepository) {
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
         this.datasetCatalog = datasetCatalog;
         this.templateValidator = templateValidator;
+        this.issueRepository = issueRepository;
     }
 
     @Override
@@ -72,9 +78,16 @@ public class ImportTaskServiceImpl implements ImportTaskService {
         taskRepository.save(task);
         ImportValidationResult result = templateValidator.validate(taskNo,
                 datasetCatalog.require(task.getDatasetCode(), batch.getPerspective()), inputStream);
+        issueRepository.replace(taskNo, result.getIssues());
         task.moveTo(result.getStatus(), result.getIssues().size());
         taskRepository.save(task);
         return result;
+    }
+
+    @Override
+    public List<ImportIssue> issues(String taskNo) {
+        get(taskNo);
+        return issueRepository.findByTaskNo(taskNo);
     }
 
     private void requireText(String value, String field) {

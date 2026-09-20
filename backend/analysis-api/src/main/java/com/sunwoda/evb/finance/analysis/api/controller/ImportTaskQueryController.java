@@ -5,6 +5,7 @@ import com.sunwoda.evb.finance.analysis.application.service.ImportTaskService;
 import com.sunwoda.evb.finance.analysis.common.ApiResult;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -14,6 +15,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/imports")
@@ -27,6 +30,11 @@ public class ImportTaskQueryController {
     @GetMapping("/{taskNo}")
     public ApiResult<ImportTask> get(@PathVariable String taskNo) {
         return ApiResult.ok(importTaskService.get(taskNo));
+    }
+
+    @GetMapping("/{taskNo}/issues")
+    public ApiResult<List<ImportIssue>> issues(@PathVariable String taskNo) {
+        return ApiResult.ok(importTaskService.issues(taskNo));
     }
 
     @PostMapping("/{taskNo}/status")

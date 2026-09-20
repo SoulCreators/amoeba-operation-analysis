@@ -9,6 +9,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.DatasetDefinition;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +32,8 @@ class ImportTaskServiceImplTest {
                 BatchStatus.DRAFT, "tester", LocalDateTime.now()));
         FakeImportTaskRepository tasks = new FakeImportTaskRepository();
         DatasetCatalog catalog = new FakeDatasetCatalog();
-        ImportTaskService service = new ImportTaskServiceImpl(batches, tasks, catalog, new FakeTemplateValidator());
+        ImportTaskService service = new ImportTaskServiceImpl(batches, tasks, catalog,
+                new FakeTemplateValidator(), new FakeImportIssueRepository());
 
         ImportTask created = service.create("B-001", "BASE_ACT_INC_COST", "actual.xlsx", "sha256", "tester");
 
@@ -47,7 +49,8 @@ class ImportTaskServiceImplTest {
         batches.save(new AnalysisBatch(1L, "B-002", "2026-09", AnalysisPerspective.BASE,
                 BatchStatus.DRAFT, "tester", LocalDateTime.now()));
         ImportTaskService service = new ImportTaskServiceImpl(batches,
-                new FakeImportTaskRepository(), new FakeDatasetCatalog(), new FakeTemplateValidator());
+                new FakeImportTaskRepository(), new FakeDatasetCatalog(), new FakeTemplateValidator(),
+                new FakeImportIssueRepository());
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.create("B-002", "PLBU_ACT_INC_COST", "actual.xlsx", null, "tester"));
@@ -76,6 +79,17 @@ class ImportTaskServiceImplTest {
             return new com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult(
                     taskNo, ImportStatus.VALID, 0, Collections.<String>emptyList(),
                     Collections.<com.sunwoda.evb.finance.analysis.domain.model.ImportIssue>emptyList());
+        }
+    }
+
+    private static class FakeImportIssueRepository implements ImportIssueRepository {
+        @Override
+        public void replace(String taskNo, List<com.sunwoda.evb.finance.analysis.domain.model.ImportIssue> issues) {
+        }
+
+        @Override
+        public List<com.sunwoda.evb.finance.analysis.domain.model.ImportIssue> findByTaskNo(String taskNo) {
+            return Collections.emptyList();
         }
     }
 

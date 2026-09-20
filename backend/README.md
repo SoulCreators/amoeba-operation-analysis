@@ -92,7 +92,46 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 }
 ```
 
-当前已支持首个工作表首行字段标题、必填字段缺失/空值、重复字段和空文件校验；错误明细当前随响应返回，持久化明细和对象存储适配将在下一步接入。配置类导入不会复用月度业务数据入口。
+当前已支持首个工作表首行字段标题、必填字段缺失/空值、重复字段和空文件校验；错误明细已通过仓储接口落入任务链路，当前使用内存实现，数据库持久化和对象存储适配将在下一步接入。配置类导入不会复用月度业务数据入口。
+
+### 基础配置导入
+
+基础配置使用独立入口，不进入月度业务批次：
+
+`POST /api/v1/config/imports`
+
+```json
+{
+  "type": "SALES_PROJECT_MAPPING",
+  "fileName": "销售项目清单.xlsx",
+  "checksum": "sha256:...",
+  "createdBy": "finance"
+}
+```
+
+支持的配置类型包括销售项目映射、库存映射、费用分类、费用分摊、汇率、基地粒度、用户权限和指标定义。
+
+### 映射关系维护
+
+- `GET /api/v1/mappings?type=SALES_PROJECT&includeDisabled=false`
+- `POST /api/v1/mappings`
+- `POST /api/v1/mappings/disable`
+
+映射使用组合键和映射值，支持更新与失效，不使用生效期间和版本字段。
+
+### 指标库维护
+
+- `GET /api/v1/metrics?perspective=BASE`
+- `POST /api/v1/metrics`
+
+指标公式以确定性表达式保存，经营总览可按 `ALL` 或指定视角配置。
+
+### 三视角损益计算
+
+- `POST /api/v1/calculations`，请求体 `{ "batchNo": "202609-BASE-001" }`
+- `GET /api/v1/calculations/{batchNo}`
+
+计算服务按批次视角执行统一损益骨架：收入、销售成本、毛利、闲置费用、基地费用、研发费用、减值、其他收益、净利润和净利率。当前事实提供器为演示适配器，后续替换为导入数据事实层。
 
 ## 下一步实现顺序
 
