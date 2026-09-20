@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.infrastructure.memory;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import org.springframework.stereotype.Repository;
+import org.springframework.context.annotation.Profile;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 @Repository
+@Profile("!filesystem")
 public class InMemoryImportIssueRepository implements ImportIssueRepository {
     private final ConcurrentMap<String, List<ImportIssue>> store =
             new ConcurrentHashMap<String, List<ImportIssue>>();

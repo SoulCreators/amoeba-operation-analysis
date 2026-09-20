@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.infrastructure.memory;
 
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import org.springframework.stereotype.Repository;
+import org.springframework.context.annotation.Profile;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 @Repository
+@Profile("!filesystem")
 public class InMemoryImportFileRepository implements ImportFileRepository {
     private final ConcurrentMap<String, byte[]> files = new ConcurrentHashMap<String, byte[]>();
 
