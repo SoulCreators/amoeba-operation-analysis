@@ -39,11 +39,11 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         jdbc.update("DELETE FROM calc.pnl_result WHERE batch_id = ?", batchId);
         for (PnlResult pnl : result.getResults()) {
             final String sql = "INSERT INTO calc.pnl_result "
-                    + "(batch_id, perspective, scope_code, result_status, version_no, confirmed_by, confirmed_at, "
-                    + "published_by, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
+                    + "(batch_id, perspective, scope_code, result_status, version_no, calculated_at, confirmed_by, confirmed_at, "
+                    + "published_by, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
             Long resultId = jdbc.queryForObject(sql, Long.class, batchId,
                     result.getPerspective().getCode(), pnl.getScopeCode(), result.getStatus().name(),
-                    result.getVersionNo(), result.getConfirmedBy(), timestamp(result.getConfirmedAt()),
+                    result.getVersionNo(), timestamp(result.getCalculatedAt()), result.getConfirmedBy(), timestamp(result.getConfirmedAt()),
                     result.getPublishedBy(), timestamp(result.getPublishedAt()));
             for (Map.Entry<String, BigDecimal> line : pnl.getLines().entrySet()) {
                 jdbc.update("INSERT INTO calc.pnl_result_line(result_id, line_code, line_value) VALUES (?, ?, ?)",
@@ -56,12 +56,12 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
     @Override
     public Optional<CalculationResult> findByBatchNo(String batchNo) {
         List<Header> headers = jdbc.query("SELECT p.perspective, p.result_status, p.version_no, p.confirmed_by, "
-                        + "p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
+                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
                         + "FROM calc.pnl_result p JOIN meta.analysis_batch b ON b.id = p.batch_id "
                         + "WHERE b.batch_no = ? ORDER BY p.id", (rs, row) -> new Header(
                         AnalysisPerspective.fromCode(rs.getString("perspective")),
                         CalculationResultStatus.valueOf(rs.getString("result_status")),
-                        rs.getString("version_no"), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
+                        rs.getString("version_no"), localDateTime(rs.getTimestamp("calculated_at")), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
                         rs.getString("published_by"), localDateTime(rs.getTimestamp("published_at")),
                         rs.getString("scope_code"), rs.getLong("id")), batchNo);
         if (headers.isEmpty()) return Optional.empty();
@@ -75,7 +75,7 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         }
         Header first = headers.get(0);
         return Optional.of(new CalculationResult(batchNo, first.perspective, results, first.versionNo,
-                first.status, first.confirmedBy, first.publishedBy, null, first.confirmedAt, first.publishedAt));
+                first.status, first.confirmedBy, first.publishedBy, first.calculatedAt, first.confirmedAt, first.publishedAt));
     }
 
     private static Timestamp timestamp(LocalDateTime value) {
@@ -90,6 +90,7 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         final AnalysisPerspective perspective;
         final CalculationResultStatus status;
         final String versionNo;
+        final LocalDateTime calculatedAt;
         final String confirmedBy;
         final LocalDateTime confirmedAt;
         final String publishedBy;
@@ -98,11 +99,12 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         final Long resultId;
 
         Header(AnalysisPerspective perspective, CalculationResultStatus status, String versionNo,
-               String confirmedBy, LocalDateTime confirmedAt, String publishedBy,
+               LocalDateTime calculatedAt, String confirmedBy, LocalDateTime confirmedAt, String publishedBy,
                LocalDateTime publishedAt, String scopeCode, Long resultId) {
             this.perspective = perspective;
             this.status = status;
             this.versionNo = versionNo;
+            this.calculatedAt = calculatedAt;
             this.confirmedBy = confirmedBy;
             this.confirmedAt = confirmedAt;
             this.publishedBy = publishedBy;
