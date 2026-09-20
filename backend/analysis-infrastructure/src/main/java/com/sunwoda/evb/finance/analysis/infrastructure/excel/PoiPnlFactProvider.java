@@ -15,6 +15,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.io.InputStream;
@@ -27,6 +28,7 @@ import java.util.Map;
 /** 将已校验的收入成本、费用和减值工作表标准化为统一损益事实。 */
 @Primary
 @Repository
+@Profile("!db")
 public class PoiPnlFactProvider implements PnlFactProvider {
     private final ImportTaskRepository taskRepository;
     private final ImportFileRepository fileRepository;
