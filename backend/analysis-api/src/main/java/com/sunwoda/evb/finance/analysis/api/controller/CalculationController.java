@@ -1,6 +1,7 @@
 package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.dto.CalculateRequest;
+import com.sunwoda.evb.finance.analysis.api.dto.ResultLifecycleRequest;
 import com.sunwoda.evb.finance.analysis.application.service.CalculationService;
 import com.sunwoda.evb.finance.analysis.common.ApiResult;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
@@ -28,5 +29,15 @@ public class CalculationController {
     @GetMapping("/{batchNo}")
     public ApiResult<CalculationResult> get(@PathVariable String batchNo) {
         return ApiResult.ok(service.get(batchNo));
+    }
+
+    @PostMapping("/confirm")
+    public ApiResult<CalculationResult> confirm(@RequestBody ResultLifecycleRequest request) {
+        return ApiResult.ok(service.confirm(request.getBatchNo(), request.getOperator()));
+    }
+
+    @PostMapping("/publish")
+    public ApiResult<CalculationResult> publish(@RequestBody ResultLifecycleRequest request) {
+        return ApiResult.ok(service.publish(request.getBatchNo(), request.getOperator()));
     }
 }

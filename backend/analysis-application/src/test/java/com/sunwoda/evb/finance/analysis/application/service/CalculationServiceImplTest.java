@@ -5,6 +5,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,29 @@ class CalculationServiceImplTest {
         assertEquals(decimal(300), lines.get("BUDGET_GROSS_PROFIT"));
         assertEquals(decimal(100), lines.get("GAP_REVENUE"));
         assertEquals(decimal(40), lines.get("GAP_GROSS_PROFIT"));
+    }
+
+    @Test
+    void confirmsThenPublishesResultAndFreezesBatch() {
+        FakeBatchRepository repository = new FakeBatchRepository();
+        repository.save(new AnalysisBatch(1L, "B-005", "2026-09", AnalysisPerspective.BASE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
+        PnlFactProvider provider = batch -> Arrays.asList(
+                new PnlFact("南昌", decimal(1), decimal(10), decimal(7),
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO));
+        CalculationServiceImpl service = new CalculationServiceImpl(repository, provider);
+
+        service.calculate("B-005");
+        CalculationResult confirmed = service.confirm("B-005", "finance-001");
+        assertEquals(CalculationResultStatus.CONFIRMED, confirmed.getStatus());
+        assertEquals("finance-001", confirmed.getConfirmedBy());
+        assertEquals(BatchStatus.CONFIRMED, repository.findByBatchNo("B-005").get().getStatus());
+
+        CalculationResult published = service.publish("B-005", "finance-002");
+        assertEquals(CalculationResultStatus.PUBLISHED, published.getStatus());
+        assertEquals("finance-002", published.getPublishedBy());
+        assertEquals(BatchStatus.PUBLISHED, repository.findByBatchNo("B-005").get().getStatus());
     }
 
     private static BigDecimal decimal(double value) { return BigDecimal.valueOf(value); }

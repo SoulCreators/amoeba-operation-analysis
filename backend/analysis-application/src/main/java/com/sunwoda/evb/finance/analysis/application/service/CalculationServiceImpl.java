@@ -31,8 +31,8 @@ public class CalculationServiceImpl implements CalculationService {
     public synchronized CalculationResult calculate(String batchNo) {
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
-        if (batch.getStatus() == BatchStatus.PUBLISHED) {
-            throw new IllegalStateException("已发布批次不可直接重算");
+        if (batch.getStatus() == BatchStatus.CONFIRMED || batch.getStatus() == BatchStatus.PUBLISHED) {
+            throw new IllegalStateException("已确认或已发布批次不可直接重算");
         }
         batch.moveTo(BatchStatus.CALCULATING);
         batchRepository.save(batch);
@@ -61,6 +61,36 @@ public class CalculationServiceImpl implements CalculationService {
         CalculationResult result = results.get(batchNo);
         if (result == null) throw new IllegalArgumentException("批次尚未完成计算: " + batchNo);
         return result;
+    }
+
+    @Override
+    public synchronized CalculationResult confirm(String batchNo, String operator) {
+        if (operator == null || operator.trim().isEmpty()) {
+            throw new IllegalArgumentException("确认人不能为空");
+        }
+        CalculationResult current = get(batchNo);
+        CalculationResult confirmed = current.confirm(operator.trim());
+        AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
+        batch.moveTo(BatchStatus.CONFIRMED);
+        batchRepository.save(batch);
+        results.put(batchNo, confirmed);
+        return confirmed;
+    }
+
+    @Override
+    public synchronized CalculationResult publish(String batchNo, String operator) {
+        if (operator == null || operator.trim().isEmpty()) {
+            throw new IllegalArgumentException("发布人不能为空");
+        }
+        CalculationResult current = get(batchNo);
+        CalculationResult published = current.publish(operator.trim());
+        AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
+        batch.moveTo(BatchStatus.PUBLISHED);
+        batchRepository.save(batch);
+        results.put(batchNo, published);
+        return published;
     }
 
     private static class MutablePnl {
