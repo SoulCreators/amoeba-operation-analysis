@@ -133,7 +133,7 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 ### 三视角损益计算
 
 - `POST /api/v1/calculations`，请求体 `{ "batchNo": "202609-BASE-001" }`
-- `GET /api/v1/calculations/{batchNo}?userId=U001`（必须携带用户工号，按授权范围返回）
+- `GET /api/v1/calculations/{batchNo}`（由容器认证主体提供用户身份，按授权范围返回）
 - `POST /api/v1/calculations/confirm`，请求体 `{ "batchNo": "202609-BASE-001", "operator": "finance-001" }`
 - `POST /api/v1/calculations/publish`，请求体 `{ "batchNo": "202609-BASE-001", "operator": "finance-001" }`
 
@@ -154,6 +154,20 @@ PVM读取当前用户可见的已计算结果，按视角返回独立逻辑标�
 - `POST /api/v1/ai/analysis/{batchNo}/publish`：财经角色确认并发布。
 
 一期固定输出经营总述、未达标、亮点、原因线索、风险和行动建议。当前内置确定性规则Gateway用于联调，正式环境替换为公司本地AI实现；`calc.ai_analysis_draft` 已预留结果版本、提示词版本、模型编码及六段内容持久化字段。
+
+### V1.3 经营分析能力
+
+V1.3 查询统一使用认证主体进行权限过滤，接口前缀为 `/api/v1/v13`：
+
+- `GET /overview/{batchNo}?scenario=ACT_BGT`：返回真实计算结果的 KPI、绝对 GAP、GAP 率和有利/不利 TOP；支持 `ACT_BGT`，`ACT_FC`、`FC_BGT` 在 FC 数据未接入时返回阻断状态。
+- `GET /matrix/{batchNo}?metric=GROSS_PROFIT`：返回当前视角聚合结果和基地×产品矩阵的数据模型阻断项。当前 `PnlFact` 只有 `scopeCode`，因此不会把 scope 聚合冒充产品明细。
+- `GET /unit-efficiency/{batchNo}`：线体元/Wh查询门禁。费用范围、Wh分母或产出字段未确认时返回 `PENDING_DEFINITION`，不发布正式数值。
+- `GET /forecast/{batchNo}?scenario=ACT_FC&fcVersion=...`：返回 ACT/BGT 基础结果并保留 FC 版本参数；FC 快照存储完成前返回 `PENDING_FC_VERSION`。
+- `GET /risk/{batchNo}`：基于真实收入、毛利和净利润 GAP 输出观察项；风险红黄阈值未配置前不会伪造正式等级。
+- `GET /waterfall/{batchNo}`：复用正式 PVM 结果返回量、价、材料、人工、外协和制造费用因子；单位毛利分母未确认时保持待定义状态。
+- `GET /topics/{batchNo}/{topicCode}`：为库龄、运营费用、产品下钻、研发提单和科目矩阵保留统一专题接口，源数据未接入时返回阻断项。
+
+这些接口的返回体都包含 `status`、`blockers` 和 `notes`，便于前端区分“可计算结果”和“待口径/数据模型补齐”。
 
 ## 下一步实现顺序
 
