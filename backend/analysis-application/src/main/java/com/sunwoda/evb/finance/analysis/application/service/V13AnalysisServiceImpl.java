@@ -5,6 +5,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.model.PvmResult;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactDetailProvider;
+import com.sunwoda.evb.finance.analysis.application.port.FcVersionProvider;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -45,17 +46,19 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
     private final CalculationService calculationService;
     private final PvmService pvmService;
     private final PnlFactDetailProvider detailProvider;
+    private final FcVersionProvider fcVersionProvider;
 
     public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService) {
-        this(calculationService, pvmService, null);
+        this(calculationService, pvmService, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService,
-                                  PnlFactDetailProvider detailProvider) {
+                                  PnlFactDetailProvider detailProvider, FcVersionProvider fcVersionProvider) {
         this.calculationService = calculationService;
         this.pvmService = pvmService;
         this.detailProvider = detailProvider;
+        this.fcVersionProvider = fcVersionProvider;
     }
 
     @Override
@@ -202,6 +205,20 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         String normalizedScenario = normalizeScenario(scenario);
         CalculationResult calculation = calculationService.getForUser(batchNo, userId);
         Map<String, Object> response = baseResponse(batchNo, calculation, normalizedScenario);
+        if (fcVersionProvider != null && normalizedScenario.contains("FC")) {
+            java.util.Optional<com.sunwoda.evb.finance.analysis.domain.model.FcVersion> version =
+                    fcVersionProvider.findForBatch(batchNo, calculation.getPerspective(), fcVersion);
+            if (version.isPresent()) {
+                response.put("fcVersion", version.get().getVersionCode());
+                response.put("fcVersionStatus", version.get().getStatus());
+                response.put("status", STATUS_PENDING_SOURCE_DATA);
+                response.put("metrics", Collections.emptyList());
+                response.put("top", Collections.emptyMap());
+                response.put("blockers", Collections.singletonList("FC版本元数据已找到，但预测快照尚未接入"));
+                response.put("notes", Collections.singletonList("正式FC版本不会用BGT或历史FC静默替代"));
+                return response;
+            }
+        }
         response.put("fcVersion", fcVersion);
         if (fcVersion == null || fcVersion.trim().isEmpty()) {
             response.put("status", STATUS_PENDING_FC_VERSION);
