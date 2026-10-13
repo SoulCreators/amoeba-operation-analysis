@@ -69,6 +69,31 @@ class V13AnalysisServiceImplTest {
         assertEquals(0, ((BigDecimal) row.get("gap")).compareTo(decimal(-1.25)));
     }
 
+    @Test
+    void waterfallNormalizesPvmFactorsAndProvidesReconciliationCheck() {
+        Map<String, BigDecimal> values = new LinkedHashMap<String, BigDecimal>();
+        values.put("PROFIT_VOLUME_IMPACT", decimal(20));
+        values.put("PROFIT_PRICE_IMPACT", decimal(40));
+        values.put("PROFIT_COST_IMPACT", decimal(0));
+        values.put("PROFIT_MATERIAL_IMPACT", decimal(0));
+        values.put("PROFIT_LABOR_IMPACT", decimal(0));
+        values.put("PROFIT_OUTSOURCING_IMPACT", decimal(0));
+        values.put("PROFIT_VARIABLE_MFG_IMPACT", decimal(0));
+        values.put("PROFIT_FIXED_MFG_IMPACT", decimal(0));
+        PvmResult pvm = new PvmResult("NANCHANG", "BASE_VOLUME_PRICE_COST", values);
+        V13AnalysisService service = new V13AnalysisServiceImpl(
+                new StubCalculationService(calculation()), new StubPvmService(Collections.singletonList(pvm)));
+
+        Map<String, Object> response = service.waterfall("B-013", "U001");
+
+        assertEquals("CALCULATED_TECHNICAL", response.get("status"));
+        Map<?, ?> unitGrossProfit = (Map<?, ?>) response.get("unitGrossProfit");
+        assertEquals("VOLUME", unitGrossProfit.get("unitBasis"));
+        assertEquals(0, ((BigDecimal) unitGrossProfit.get("check")).compareTo(BigDecimal.ZERO));
+        Map<?, ?> unitFactors = (Map<?, ?>) unitGrossProfit.get("factors");
+        assertEquals(8, unitFactors.size());
+    }
+
     private static CalculationResult calculation() {
         Map<String, BigDecimal> first = lines(110, 1000, 700);
         Map<String, BigDecimal> second = lines(80, 760, 600);
@@ -118,6 +143,9 @@ class V13AnalysisServiceImplTest {
     }
 
     private static class StubPvmService implements PvmService {
-        @Override public List<PvmResult> analyze(String batchNo, String userId) { return Collections.emptyList(); }
+        private final List<PvmResult> results;
+        StubPvmService() { this(Collections.<PvmResult>emptyList()); }
+        StubPvmService(List<PvmResult> results) { this.results = results; }
+        @Override public List<PvmResult> analyze(String batchNo, String userId) { return results; }
     }
 }

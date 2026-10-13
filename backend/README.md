@@ -167,7 +167,7 @@ V1.3 查询统一使用认证主体进行权限过滤，接口前缀为 `/api/v1
 - `POST /api/v1/fc-versions/{versionCode}/snapshots?perspective=...&basePeriod=...`：上传 FC 快照 Excel。模板首表首行必须包含“期间、范围编码、指标编码、预测值”（支持“范围/指标/值”别名），指标限定为 `VOLUME`、`REVENUE`、`GROSS_PROFIT`、`BASE_EXPENSE`、`NET_PROFIT`、`PROFIT_RATE`；校验不通过时禁止部分写入，同一版本草稿可按唯一键覆盖导入。
 - `POST /api/v1/fc-versions/{versionCode}/publish?perspective=...&basePeriod=...`：发布正式版本。同一视角和基准期间已有正式版本时拒绝发布，避免未确认的静默替换；正式版本不可再次覆盖。
 - `GET /risk/{batchNo}`：基于真实收入、毛利和净利润 GAP 输出观察项；风险红黄阈值未配置前不会伪造正式等级。
-- `GET /waterfall/{batchNo}`：复用正式 PVM 结果返回量、价、材料、人工、外协和制造费用因子；单位毛利分母未确认时保持待定义状态。
+- `GET /waterfall/{batchNo}`：在原有总毛利 PVM 因子基础上，按销量归一化返回单位毛利预算、实际、GAP、量/价/材料/人工/外协/制造费用因素及其他成本残差，并提供勾稽检查；返回 `CALCULATED_TECHNICAL`，单位分母仍需财经确认后才能作为正式口径。
 - `GET /topics/{batchNo}/{topicCode}`：为库龄、运营费用、产品下钻、研发提单和科目矩阵保留统一专题接口，源数据未接入时返回阻断项。
 
 这些接口的返回体都包含 `status`、`blockers` 和 `notes`，便于前端区分“可计算结果”和“待口径/数据模型补齐”。

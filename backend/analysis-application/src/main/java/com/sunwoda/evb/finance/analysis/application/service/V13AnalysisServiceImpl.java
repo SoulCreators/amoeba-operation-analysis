@@ -427,11 +427,64 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
             factor.put("value", entry.getValue());
             factors.add(factor);
         }
-        response.put("status", STATUS_PENDING_DEFINITION);
+        BigDecimal actualVolume = sumLine(calculation.getResults(), "VOLUME");
+        BigDecimal budgetVolume = sumLine(calculation.getResults(), "BUDGET_VOLUME");
+        BigDecimal actualGrossProfit = sumLine(calculation.getResults(), "GROSS_PROFIT");
+        BigDecimal budgetGrossProfit = sumLine(calculation.getResults(), "BUDGET_GROSS_PROFIT");
+        if (actualVolume.compareTo(BigDecimal.ZERO) <= 0 || budgetVolume.compareTo(BigDecimal.ZERO) <= 0) {
+            response.put("status", STATUS_PENDING_DEFINITION);
+            response.put("factors", factors);
+            response.put("blockers", Arrays.asList(
+                    "实际或预算销量为0，无法计算单位毛利",
+                    "单位毛利分母仍需财经确认；当前技术候选分母为 VOLUME"));
+            response.put("notes", Collections.singletonList("PVM 因子来自正式计算结果；补齐有效销量后再计算单位毛利瀑布"));
+            return response;
+        }
+        BigDecimal budgetUnitGrossProfit = ratio(budgetGrossProfit, budgetVolume);
+        BigDecimal actualUnitGrossProfit = ratio(actualGrossProfit, actualVolume);
+        BigDecimal volumeNormalization = ratio(budgetGrossProfit, actualVolume)
+                .subtract(ratio(budgetGrossProfit, budgetVolume))
+                .add(ratio(totals.get("PROFIT_VOLUME_IMPACT"), actualVolume));
+        BigDecimal pricePerUnit = ratio(totals.get("PROFIT_PRICE_IMPACT"), actualVolume);
+        BigDecimal materialPerUnit = ratio(totals.get("PROFIT_MATERIAL_IMPACT"), actualVolume);
+        BigDecimal laborPerUnit = ratio(totals.get("PROFIT_LABOR_IMPACT"), actualVolume);
+        BigDecimal outsourcingPerUnit = ratio(totals.get("PROFIT_OUTSOURCING_IMPACT"), actualVolume);
+        BigDecimal variableMfgPerUnit = ratio(totals.get("PROFIT_VARIABLE_MFG_IMPACT"), actualVolume);
+        BigDecimal fixedMfgPerUnit = ratio(totals.get("PROFIT_FIXED_MFG_IMPACT"), actualVolume);
+        BigDecimal componentSum = volumeNormalization.add(pricePerUnit).add(materialPerUnit)
+                .add(laborPerUnit).add(outsourcingPerUnit).add(variableMfgPerUnit).add(fixedMfgPerUnit);
+        BigDecimal residualPerUnit = actualUnitGrossProfit.subtract(budgetUnitGrossProfit).subtract(componentSum);
+        Map<String, Object> unitGrossProfit = new LinkedHashMap<String, Object>();
+        unitGrossProfit.put("unitBasis", "VOLUME");
+        unitGrossProfit.put("budget", budgetUnitGrossProfit);
+        unitGrossProfit.put("actual", actualUnitGrossProfit);
+        unitGrossProfit.put("gap", actualUnitGrossProfit.subtract(budgetUnitGrossProfit));
+        unitGrossProfit.put("volume", actualVolume);
+        unitGrossProfit.put("budgetVolume", budgetVolume);
+        Map<String, Object> unitFactors = new LinkedHashMap<String, Object>();
+        unitFactors.put("VOLUME_NORMALIZATION_IMPACT", volumeNormalization);
+        unitFactors.put("PRICE_IMPACT_PER_UNIT", pricePerUnit);
+        unitFactors.put("MATERIAL_IMPACT_PER_UNIT", materialPerUnit);
+        unitFactors.put("LABOR_IMPACT_PER_UNIT", laborPerUnit);
+        unitFactors.put("OUTSOURCING_IMPACT_PER_UNIT", outsourcingPerUnit);
+        unitFactors.put("VARIABLE_MFG_IMPACT_PER_UNIT", variableMfgPerUnit);
+        unitFactors.put("FIXED_MFG_IMPACT_PER_UNIT", fixedMfgPerUnit);
+        unitFactors.put("OTHER_COST_RESIDUAL_PER_UNIT", residualPerUnit);
+        unitGrossProfit.put("factors", unitFactors);
+        unitGrossProfit.put("check", componentSum.add(residualPerUnit)
+                .subtract(actualUnitGrossProfit.subtract(budgetUnitGrossProfit)));
+        response.put("status", STATUS_CALCULATED_TECHNICAL);
         response.put("factors", factors);
-        response.put("blockers", Collections.singletonList("单位毛利 GAP 的单位分母尚未确认，当前返回总毛利 PVM 因子"));
-        response.put("notes", Collections.singletonList("PVM 因子来自正式计算结果，不使用前端演示常量"));
+        response.put("unitGrossProfit", unitGrossProfit);
+        response.put("blockers", Collections.singletonList("业务仍需确认单位毛利分母；当前技术候选分母为 VOLUME"));
+        response.put("notes", Collections.singletonList("单位毛利瀑布由真实 PVM 因子归一化到销量，含其他成本残差并提供勾稽检查；尚未作为正式经营口径发布"));
         return response;
+    }
+
+    private BigDecimal sumLine(List<PnlResult> results, String key) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (PnlResult result : results) total = total.add(value(result.getLines(), key));
+        return total;
     }
 
     @Override
