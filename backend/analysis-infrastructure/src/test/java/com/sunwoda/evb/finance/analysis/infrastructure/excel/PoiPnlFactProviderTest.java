@@ -26,7 +26,7 @@ class PoiPnlFactProviderTest {
     void loadsBaseRevenueAndCostFromValidatedImport() throws Exception {
         XSSFWorkbook workbook = new XSSFWorkbook();
         org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("实际");
-        String[] headers = {"收入计算基地", "电芯型号", "财经修正项目", "销量", "营业收入", "销售成本"};
+        String[] headers = {"收入计算基地", "电芯型号", "财经修正项目", "销量", "营业收入", "销售成本", "产出Wh"};
         org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
         for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
         org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
@@ -36,6 +36,7 @@ class PoiPnlFactProviderTest {
         row.createCell(3).setCellValue(100);
         row.createCell(4).setCellValue(1000);
         row.createCell(5).setCellValue(700);
+        row.createCell(6).setCellValue(100);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         workbook.write(output);
         workbook.close();
@@ -58,6 +59,8 @@ class PoiPnlFactProviderTest {
         assertEquals(700, facts.get(0).getBudgetSalesCost().intValue());
         assertEquals("南昌", facts.get(0).getBaseCode());
         assertEquals("106Ah", facts.get(0).getProductCode());
+        assertEquals(100, facts.get(0).getOutputWh().intValue());
+        assertEquals(100, facts.get(0).getBudgetOutputWh().intValue());
     }
 
     private static class PnlFactProviderHolder extends PoiPnlFactProvider {

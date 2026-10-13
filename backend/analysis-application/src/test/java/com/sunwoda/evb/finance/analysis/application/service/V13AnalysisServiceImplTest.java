@@ -2,6 +2,8 @@ package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.model.PvmResult;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,6 +51,24 @@ class V13AnalysisServiceImplTest {
         assertEquals("PENDING_FC_VERSION", forecast.get("status"));
     }
 
+    @Test
+    void unitEfficiencyCalculatesTechnicalRowsWhenWhAndLineAreAvailable() {
+        CalculationResult result = new CalculationResult("B-013", AnalysisPerspective.BASE,
+                Collections.singletonList(new PnlResult("NANCHANG", lines(110, 1000, 700))),
+                "B-013-R1", CalculationResultStatus.CALCULATED, null, null, LocalDateTime.now(), null, null,
+                Collections.singletonList(factWithWh("NANCHANG", "L01", 100, 80, 1000, 900)));
+        V13AnalysisService service = new V13AnalysisServiceImpl(
+                new StubCalculationService(result), new StubPvmService());
+
+        Map<String, Object> response = service.unitEfficiency("B-013", "U001");
+
+        assertEquals("CALCULATED_TECHNICAL", response.get("status"));
+        Map<?, ?> row = (Map<?, ?>) ((List<?>) response.get("rows")).get(0);
+        assertEquals(0, ((BigDecimal) row.get("actualPerWh")).compareTo(decimal(10)));
+        assertEquals(0, ((BigDecimal) row.get("budgetPerWh")).compareTo(decimal(11.25)));
+        assertEquals(0, ((BigDecimal) row.get("gap")).compareTo(decimal(-1.25)));
+    }
+
     private static CalculationResult calculation() {
         Map<String, BigDecimal> first = lines(110, 1000, 700);
         Map<String, BigDecimal> second = lines(80, 760, 600);
@@ -72,6 +93,16 @@ class V13AnalysisServiceImplTest {
         lines.put("BASE_EXPENSE", decimal(50));
         lines.put("BUDGET_BASE_EXPENSE", decimal(45));
         return lines;
+    }
+
+    private static PnlFact factWithWh(String scope, String line, double actualWh, double budgetWh,
+                                      double actualFixedMfg, double budgetFixedMfg) {
+        BigDecimal zero = decimal(0);
+        return new PnlFact(scope, "BASE-1", "PRODUCT-1", line,
+                decimal(100), decimal(1000), decimal(700), zero, zero, zero, zero, zero, zero,
+                decimal(90), decimal(950), decimal(680), zero, zero, zero, zero, zero, zero,
+                zero, zero, zero, zero, decimal(actualFixedMfg), zero, zero, zero, zero,
+                decimal(budgetFixedMfg), decimal(actualWh), decimal(budgetWh));
     }
 
     private static BigDecimal decimal(double value) { return BigDecimal.valueOf(value); }

@@ -27,6 +27,7 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
     private static final String STATUS_CALCULATED = "CALCULATED";
     private static final String STATUS_PENDING_DATA_MODEL = "PENDING_DATA_MODEL";
     private static final String STATUS_PENDING_DEFINITION = "PENDING_DEFINITION";
+    private static final String STATUS_CALCULATED_TECHNICAL = "CALCULATED_TECHNICAL";
     private static final String STATUS_PENDING_FC_VERSION = "PENDING_FC_VERSION";
     private static final String STATUS_PENDING_SOURCE_DATA = "PENDING_SOURCE_DATA";
 
@@ -196,13 +197,95 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
     public Map<String, Object> unitEfficiency(String batchNo, String userId) {
         CalculationResult calculation = calculationService.getForUser(batchNo, userId);
         Map<String, Object> response = baseResponse(batchNo, calculation, "ACT_BGT");
-        response.put("status", STATUS_PENDING_DEFINITION);
-        response.put("rows", Collections.emptyList());
-        response.put("blockers", Arrays.asList(
-                "尚未确认线体单位制造费用的核算范围",
-                "当前事实模型没有产出 Wh 字段，无法计算元/Wh"));
-        response.put("notes", Collections.singletonList("待确认分母、费用范围和产出数据源后再发布正式数值"));
+        List<PnlFact> facts = calculation.getFacts();
+        if ((facts == null || facts.isEmpty()) && detailProvider != null) {
+            facts = detailProvider.findForUser(batchNo, calculation.getPerspective(), userId);
+        }
+        if (facts == null || facts.isEmpty()) {
+            response.put("status", STATUS_PENDING_DEFINITION);
+            response.put("rows", Collections.emptyList());
+            response.put("blockers", Arrays.asList(
+                    "当前批次没有可用事实明细",
+                    "当前事实模型没有产出 Wh 字段，无法计算元/Wh"));
+            response.put("notes", Collections.singletonList("导入包含线体和 Wh 字段的明细后再计算"));
+            return response;
+        }
+        Map<String, UnitValues> grouped = new LinkedHashMap<String, UnitValues>();
+        List<String> blockers = new ArrayList<String>();
+        for (PnlFact fact : facts) {
+            if (fact.getLineCode() == null) {
+                blockers.add("存在事实缺少线体编码");
+                continue;
+            }
+            if (fact.getOutputWh() == null || fact.getOutputWh().compareTo(BigDecimal.ZERO) <= 0) {
+                blockers.add("线体 " + fact.getLineCode() + " 缺少有效实际产出 Wh");
+                continue;
+            }
+            if (fact.getBudgetOutputWh() == null || fact.getBudgetOutputWh().compareTo(BigDecimal.ZERO) <= 0) {
+                blockers.add("线体 " + fact.getLineCode() + " 缺少有效预算产出 Wh");
+                continue;
+            }
+            String key = String.valueOf(fact.getScopeCode()) + "\u001f" + fact.getLineCode();
+            UnitValues values = grouped.get(key);
+            if (values == null) {
+                values = new UnitValues(fact.getScopeCode(), fact.getLineCode());
+                grouped.put(key, values);
+            }
+            values.actualCost = values.actualCost.add(fact.getVariableManufacturingCost())
+                    .add(fact.getFixedManufacturingCost());
+            values.budgetCost = values.budgetCost.add(fact.getBudgetVariableManufacturingCost())
+                    .add(fact.getBudgetFixedManufacturingCost());
+            values.actualWh = values.actualWh.add(fact.getOutputWh());
+            values.budgetWh = values.budgetWh.add(fact.getBudgetOutputWh());
+        }
+        List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
+        for (UnitValues values : grouped.values()) {
+            BigDecimal actualPerWh = ratio(values.actualCost, values.actualWh);
+            BigDecimal budgetPerWh = ratio(values.budgetCost, values.budgetWh);
+            BigDecimal gap = actualPerWh.subtract(budgetPerWh);
+            Map<String, Object> row = new LinkedHashMap<String, Object>();
+            row.put("scopeCode", values.scopeCode);
+            row.put("lineCode", values.lineCode);
+            row.put("actualManufacturingCost", values.actualCost);
+            row.put("budgetManufacturingCost", values.budgetCost);
+            row.put("actualOutputWh", values.actualWh);
+            row.put("budgetOutputWh", values.budgetWh);
+            row.put("actualPerWh", actualPerWh);
+            row.put("budgetPerWh", budgetPerWh);
+            row.put("gap", gap);
+            row.put("gapRate", gapRate(gap, budgetPerWh));
+            rows.add(row);
+        }
+        response.put("rows", rows);
+        response.put("costScope", Arrays.asList("VARIABLE_MFG_COST", "FIXED_MFG_COST"));
+        if (blockers.isEmpty() && !rows.isEmpty()) {
+            response.put("status", STATUS_CALCULATED_TECHNICAL);
+            response.put("blockers", Collections.singletonList("业务仍需确认制造费用范围；当前技术口径为变动制费+固定制费"));
+            response.put("notes", Collections.singletonList("元/Wh按线体汇总后重算：变动制费+固定制费 ÷ 产出 Wh；尚未作为正式经营口径发布"));
+        } else {
+            response.put("status", STATUS_PENDING_DEFINITION);
+            response.put("blockers", unique(blockers));
+            response.put("notes", Collections.singletonList("补齐线体、实际/预算 Wh 后再进入技术计算；业务口径确认后才能发布正式数值"));
+        }
         return response;
+    }
+
+    private List<String> unique(List<String> values) {
+        return new ArrayList<String>(new java.util.LinkedHashSet<String>(values));
+    }
+
+    private static class UnitValues {
+        private final String scopeCode;
+        private final String lineCode;
+        private BigDecimal actualCost = BigDecimal.ZERO;
+        private BigDecimal budgetCost = BigDecimal.ZERO;
+        private BigDecimal actualWh = BigDecimal.ZERO;
+        private BigDecimal budgetWh = BigDecimal.ZERO;
+
+        private UnitValues(String scopeCode, String lineCode) {
+            this.scopeCode = scopeCode;
+            this.lineCode = lineCode;
+        }
     }
 
     @Override

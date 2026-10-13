@@ -95,6 +95,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                 if (isRevenueCost(code, perspective)) {
                     if (isBudget(code)) {
                         accumulator.budgetVolume = add(accumulator.budgetVolume, number(row, columns, "销量", "电量", "数量"));
+                        accumulator.budgetOutputWh = addNullable(accumulator.budgetOutputWh,
+                                numberOrNull(row, columns, "Wh", "产出Wh", "产出电量Wh"));
                         accumulator.budgetRevenue = add(accumulator.budgetRevenue, number(row, columns, "营业收入", "销售收入", "收入"));
                         accumulator.budgetSalesCost = add(accumulator.budgetSalesCost, number(row, columns, "销售成本", "成本"));
                         accumulator.budgetMaterialCost = add(accumulator.budgetMaterialCost, number(row, columns, "材料成本"));
@@ -104,6 +106,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                         accumulator.budgetFixedManufacturingCost = add(accumulator.budgetFixedManufacturingCost, number(row, columns, "制造成本-固定", "固定制费"));
                     } else {
                         accumulator.volume = add(accumulator.volume, number(row, columns, "销量", "电量", "数量"));
+                        accumulator.outputWh = addNullable(accumulator.outputWh,
+                                numberOrNull(row, columns, "Wh", "产出Wh", "产出电量Wh"));
                         accumulator.revenue = add(accumulator.revenue, number(row, columns, "营业收入", "销售收入", "收入"));
                         accumulator.salesCost = add(accumulator.salesCost, number(row, columns, "销售成本", "成本"));
                         accumulator.materialCost = add(accumulator.materialCost, number(row, columns, "材料成本"));
@@ -187,7 +191,23 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
         }
     }
 
+    private BigDecimal numberOrNull(Row row, Map<String, Integer> columns, String... names) {
+        String value = firstText(row, columns, names);
+        if (value.isEmpty()) return null;
+        try {
+            return new BigDecimal(value.replace(",", "").replace("(", "-").replace(")", ""));
+        } catch (NumberFormatException ex) {
+            throw new IllegalStateException("数值字段无法转换: " + value, ex);
+        }
+    }
+
     private BigDecimal add(BigDecimal left, BigDecimal right) {
+        return left.add(right);
+    }
+
+    private BigDecimal addNullable(BigDecimal left, BigDecimal right) {
+        if (left == null) return right;
+        if (right == null) return left;
         return left.add(right);
     }
 
@@ -232,6 +252,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
         private BigDecimal budgetOutsourcingCost = BigDecimal.ZERO;
         private BigDecimal budgetVariableManufacturingCost = BigDecimal.ZERO;
         private BigDecimal budgetFixedManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal outputWh;
+        private BigDecimal budgetOutputWh;
 
         private Accumulator(String scopeCode, String baseCode, String productCode, String lineCode) {
             this.scopeCode = scopeCode;
@@ -248,7 +270,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                     budgetCreditImpairment, budgetOtherIncome, materialCost, laborCost,
                     outsourcingCost, variableManufacturingCost, fixedManufacturingCost,
                     budgetMaterialCost, budgetLaborCost, budgetOutsourcingCost,
-                    budgetVariableManufacturingCost, budgetFixedManufacturingCost);
+                    budgetVariableManufacturingCost, budgetFixedManufacturingCost,
+                    outputWh, budgetOutputWh);
         }
     }
 }
