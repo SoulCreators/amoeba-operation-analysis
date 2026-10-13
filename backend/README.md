@@ -162,7 +162,7 @@ V1.3 查询统一使用认证主体进行权限过滤，接口前缀为 `/api/v1
 - `GET /overview/{batchNo}?scenario=ACT_BGT`：返回真实计算结果的 KPI、绝对 GAP、GAP 率和有利/不利 TOP；支持 `ACT_BGT`，`ACT_FC`、`FC_BGT` 在 FC 数据未接入时返回阻断状态。
 - `GET /matrix/{batchNo}?metric=GROSS_PROFIT`：事业部批次在标准事实明细具备基地/产品维度时返回正式矩阵；旧模板或数据库结果回读缺少明细时返回阻断状态，不把 scope 聚合冒充产品明细。
 - `GET /unit-efficiency/{batchNo}`：线体元/Wh查询门禁。费用范围、Wh分母或产出字段未确认时返回 `PENDING_DEFINITION`，不发布正式数值。
-- `GET /forecast/{batchNo}?scenario=ACT_FC&fcVersion=...`：查询 FC 版本元数据并保留版本参数；版本存在但快照未接入时返回 `PENDING_SOURCE_DATA`，无正式/指定版本时返回 `PENDING_FC_VERSION`，不以 BGT 或历史 FC 替代。
+- `GET /forecast/{batchNo}?scenario=ACT_FC&fcVersion=...`：查询 FC 版本及预测快照；快照覆盖当前指标时返回 ACT-FC/FC-BGT，版本存在但快照不完整时返回 `PENDING_SOURCE_DATA`，无正式/指定版本时返回 `PENDING_FC_VERSION`，不以 BGT 或历史 FC 替代。
 - `GET /risk/{batchNo}`：基于真实收入、毛利和净利润 GAP 输出观察项；风险红黄阈值未配置前不会伪造正式等级。
 - `GET /waterfall/{batchNo}`：复用正式 PVM 结果返回量、价、材料、人工、外协和制造费用因子；单位毛利分母未确认时保持待定义状态。
 - `GET /topics/{batchNo}/{topicCode}`：为库龄、运营费用、产品下钻、研发提单和科目矩阵保留统一专题接口，源数据未接入时返回阻断项。

@@ -6,6 +6,8 @@ import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.model.PvmResult;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactDetailProvider;
 import com.sunwoda.evb.finance.analysis.application.port.FcVersionProvider;
+import com.sunwoda.evb.finance.analysis.application.port.FcSnapshotProvider;
+import com.sunwoda.evb.finance.analysis.domain.model.FcSnapshot;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -47,18 +49,21 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
     private final PvmService pvmService;
     private final PnlFactDetailProvider detailProvider;
     private final FcVersionProvider fcVersionProvider;
+    private final FcSnapshotProvider fcSnapshotProvider;
 
     public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService) {
-        this(calculationService, pvmService, null, null);
+        this(calculationService, pvmService, null, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService,
-                                  PnlFactDetailProvider detailProvider, FcVersionProvider fcVersionProvider) {
+                                  PnlFactDetailProvider detailProvider, FcVersionProvider fcVersionProvider,
+                                  FcSnapshotProvider fcSnapshotProvider) {
         this.calculationService = calculationService;
         this.pvmService = pvmService;
         this.detailProvider = detailProvider;
         this.fcVersionProvider = fcVersionProvider;
+        this.fcSnapshotProvider = fcSnapshotProvider;
     }
 
     @Override
@@ -211,10 +216,26 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
             if (version.isPresent()) {
                 response.put("fcVersion", version.get().getVersionCode());
                 response.put("fcVersionStatus", version.get().getStatus());
+                if (fcSnapshotProvider != null) {
+                    List<FcSnapshot> snapshots = fcSnapshotProvider.findForBatch(
+                            batchNo, calculation.getPerspective(), version.get().getVersionCode(), userId);
+                    Map<String, BigDecimal> fcValues = aggregateFc(snapshots);
+                    if (fcValues.keySet().containsAll(METRICS)) {
+                        response.put("status", STATUS_CALCULATED);
+                        List<Map<String, Object>> calculatedRows = forecastRows(
+                                calculation.getResults(), fcValues, normalizedScenario);
+                        response.put("metrics", calculatedRows);
+                        response.put("rows", calculatedRows);
+                        response.put("top", Collections.emptyMap());
+                        response.put("blockers", Collections.emptyList());
+                        response.put("notes", Collections.singletonList("FC值来自指定版本预测快照，按当前用户范围汇总"));
+                        return response;
+                    }
+                }
                 response.put("status", STATUS_PENDING_SOURCE_DATA);
                 response.put("metrics", Collections.emptyList());
                 response.put("top", Collections.emptyMap());
-                response.put("blockers", Collections.singletonList("FC版本元数据已找到，但预测快照尚未接入"));
+                response.put("blockers", Collections.singletonList("FC版本元数据已找到，但预测快照尚未完整接入"));
                 response.put("notes", Collections.singletonList("正式FC版本不会用BGT或历史FC静默替代"));
                 return response;
             }
@@ -237,6 +258,41 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         response.put("rows", rows);
         response.put("notes", Collections.singletonList("ACT/BGT 已由计算结果提供；FC 接入后复用同一口径返回三口径并列数据"));
         return response;
+    }
+
+    private Map<String, BigDecimal> aggregateFc(List<FcSnapshot> snapshots) {
+        Map<String, BigDecimal> values = new LinkedHashMap<String, BigDecimal>();
+        for (FcSnapshot snapshot : snapshots) {
+            if (!METRICS.contains(snapshot.getMetricCode())) continue;
+            BigDecimal current = values.get(snapshot.getMetricCode());
+            values.put(snapshot.getMetricCode(), (current == null ? BigDecimal.ZERO : current).add(snapshot.getValue()));
+        }
+        return values;
+    }
+
+    private List<Map<String, Object>> forecastRows(List<PnlResult> results,
+                                                    Map<String, BigDecimal> fcValues,
+                                                    String scenario) {
+        List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
+        for (String metric : METRICS) {
+            Map<String, Object> row = metricGap(results, metric);
+            BigDecimal actual = (BigDecimal) row.get("actual");
+            BigDecimal budget = (BigDecimal) row.get("budget");
+            BigDecimal fc = fcValues.get(metric);
+            row.put("fc", fc);
+            if ("FC_BGT".equals(scenario)) {
+                row.put("gap", fc.subtract(budget));
+                row.put("gapRate", gapRate(fc.subtract(budget), budget));
+                row.put("comparison", "FC_BGT");
+            } else {
+                row.put("gap", actual.subtract(fc));
+                row.put("gapRate", gapRate(actual.subtract(fc), fc));
+                row.put("comparison", "ACT_FC");
+            }
+            row.put("fcGap", actual.subtract(fc));
+            rows.add(row);
+        }
+        return rows;
     }
 
     @Override
