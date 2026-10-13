@@ -4,6 +4,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.model.PvmResult;
+import com.sunwoda.evb.finance.analysis.application.port.PnlFactDetailProvider;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -43,10 +44,18 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
 
     private final CalculationService calculationService;
     private final PvmService pvmService;
+    private final PnlFactDetailProvider detailProvider;
 
     public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService) {
+        this(calculationService, pvmService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService,
+                                  PnlFactDetailProvider detailProvider) {
         this.calculationService = calculationService;
         this.pvmService = pvmService;
+        this.detailProvider = detailProvider;
     }
 
     @Override
@@ -73,11 +82,15 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         CalculationResult calculation = calculationService.getForUser(batchNo, userId);
         String metric = normalizeMetric(metricCode);
         Map<String, Object> response = baseResponse(batchNo, calculation, "ACT_BGT");
+        List<PnlFact> detailFacts = calculation.getFacts();
+        if ((detailFacts == null || detailFacts.isEmpty()) && detailProvider != null) {
+            detailFacts = detailProvider.findForUser(batchNo, calculation.getPerspective(), userId);
+        }
         if (calculation.getPerspective() == com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective.BUSINESS_UNIT
-                && hasMatrixDimensions(calculation.getFacts())) {
+                && hasMatrixDimensions(detailFacts)) {
             response.put("status", STATUS_CALCULATED);
             response.put("metricCode", metric);
-            response.put("rows", matrixRows(calculation.getFacts(), metric));
+            response.put("rows", matrixRows(detailFacts, metric));
             response.put("blockers", Collections.emptyList());
             response.put("notes", Collections.singletonList("基地×产品矩阵基于标准事实层维度和统一损益公式实时汇总"));
             return response;
