@@ -1,6 +1,7 @@
 package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
+import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.model.PvmResult;
 import org.springframework.stereotype.Service;
@@ -72,6 +73,15 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         CalculationResult calculation = calculationService.getForUser(batchNo, userId);
         String metric = normalizeMetric(metricCode);
         Map<String, Object> response = baseResponse(batchNo, calculation, "ACT_BGT");
+        if (calculation.getPerspective() == com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective.BUSINESS_UNIT
+                && hasMatrixDimensions(calculation.getFacts())) {
+            response.put("status", STATUS_CALCULATED);
+            response.put("metricCode", metric);
+            response.put("rows", matrixRows(calculation.getFacts(), metric));
+            response.put("blockers", Collections.emptyList());
+            response.put("notes", Collections.singletonList("基地×产品矩阵基于标准事实层维度和统一损益公式实时汇总"));
+            return response;
+        }
         List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
         for (PnlResult result : calculation.getResults()) {
             Map<String, Object> row = new LinkedHashMap<String, Object>();
@@ -91,6 +101,74 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         response.put("blockers", Collections.singletonList("当前 PnlFact 只有 scopeCode，尚未落地基地×产品的明细维度"));
         response.put("notes", Collections.singletonList("已返回当前视角聚合结果；补充 baseCode/productCode 后即可切换为正式交叉矩阵"));
         return response;
+    }
+
+    private boolean hasMatrixDimensions(List<PnlFact> facts) {
+        if (facts == null || facts.isEmpty()) return false;
+        boolean found = false;
+        for (PnlFact fact : facts) {
+            if (fact.getBaseCode() != null && fact.getProductCode() != null) found = true;
+        }
+        return found;
+    }
+
+    private List<Map<String, Object>> matrixRows(List<PnlFact> facts, String metric) {
+        Map<String, MatrixValues> grouped = new LinkedHashMap<String, MatrixValues>();
+        for (PnlFact fact : facts) {
+            // 研发、运营、减值等无产品归属费用不进入基地×产品经营利润矩阵。
+            if (fact.getBaseCode() == null || fact.getProductCode() == null) continue;
+            String key = fact.getBaseCode() + "\u001f" + fact.getProductCode();
+            MatrixValues values = grouped.get(key);
+            if (values == null) {
+                values = new MatrixValues();
+                grouped.put(key, values);
+            }
+            values.actual = values.actual.add(metricValue(fact, metric, false));
+            values.budget = values.budget.add(metricValue(fact, metric, true));
+        }
+        List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
+        for (Map.Entry<String, MatrixValues> entry : grouped.entrySet()) {
+            int delimiter = entry.getKey().indexOf('\u001f');
+            String baseCode = delimiter < 0 ? entry.getKey() : entry.getKey().substring(0, delimiter);
+            String productCode = delimiter < 0 ? "" : entry.getKey().substring(delimiter + 1);
+            MatrixValues values = entry.getValue();
+            BigDecimal gap = values.actual.subtract(values.budget);
+            Map<String, Object> row = new LinkedHashMap<String, Object>();
+            row.put("baseCode", baseCode);
+            row.put("productCode", productCode);
+            row.put("actual", values.actual);
+            row.put("budget", values.budget);
+            row.put("gap", gap);
+            row.put("gapRate", gapRate(gap, values.budget));
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    private BigDecimal metricValue(PnlFact fact, String metric, boolean budget) {
+        if ("VOLUME".equals(metric)) return budget ? fact.getBudgetVolume() : fact.getVolume();
+        if ("REVENUE".equals(metric)) return budget ? fact.getBudgetRevenue() : fact.getRevenue();
+        if ("BASE_EXPENSE".equals(metric)) return budget ? fact.getBudgetBaseExpense() : fact.getBaseExpense();
+        BigDecimal revenue = budget ? fact.getBudgetRevenue() : fact.getRevenue();
+        BigDecimal salesCost = budget ? fact.getBudgetSalesCost() : fact.getSalesCost();
+        BigDecimal grossProfit = revenue.subtract(salesCost);
+        if ("GROSS_PROFIT".equals(metric)) return grossProfit;
+        BigDecimal idle = budget ? fact.getBudgetIdleExpense() : fact.getIdleExpense();
+        BigDecimal base = budget ? fact.getBudgetBaseExpense() : fact.getBaseExpense();
+        BigDecimal rd = budget ? fact.getBudgetRdExpense() : fact.getRdExpense();
+        BigDecimal impairment = (budget ? fact.getBudgetAssetImpairment() : fact.getAssetImpairment())
+                .add(budget ? fact.getBudgetCreditImpairment() : fact.getCreditImpairment());
+        BigDecimal otherIncome = budget ? fact.getBudgetOtherIncome() : fact.getOtherIncome();
+        BigDecimal netProfit = grossProfit.subtract(idle).subtract(base).subtract(rd)
+                .subtract(impairment).add(otherIncome);
+        if ("NET_PROFIT".equals(metric)) return netProfit;
+        if ("PROFIT_RATE".equals(metric)) return ratio(netProfit, revenue);
+        return BigDecimal.ZERO;
+    }
+
+    private static class MatrixValues {
+        private BigDecimal actual = BigDecimal.ZERO;
+        private BigDecimal budget = BigDecimal.ZERO;
     }
 
     @Override

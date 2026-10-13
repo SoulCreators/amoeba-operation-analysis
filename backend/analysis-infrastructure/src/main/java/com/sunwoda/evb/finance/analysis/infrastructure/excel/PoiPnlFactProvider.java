@@ -82,10 +82,14 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                 if (row == null) continue;
                 String scope = scope(row, columns, perspective);
                 if (scope.isEmpty()) continue;
-                Accumulator accumulator = accumulators.get(scope);
+                String baseCode = firstText(row, columns, "收入计算基地", "基地", "出货基地");
+                String productCode = firstText(row, columns, "产品线", "电芯型号", "产品类别", "客户项目改", "客户项目");
+                String lineCode = firstText(row, columns, "拉线", "线体", "产线");
+                String key = factKey(scope, baseCode, productCode, lineCode);
+                Accumulator accumulator = accumulators.get(key);
                 if (accumulator == null) {
-                    accumulator = new Accumulator();
-                    accumulators.put(scope, accumulator);
+                    accumulator = new Accumulator(scope, baseCode, productCode, lineCode);
+                    accumulators.put(key, accumulator);
                 }
                 String code = task.getDatasetCode();
                 if (isRevenueCost(code, perspective)) {
@@ -125,6 +129,11 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
         } catch (Exception ex) {
             throw new IllegalStateException("解析导入事实失败: " + task.getTaskNo() + ", " + ex.getMessage(), ex);
         }
+    }
+
+    private String factKey(String scope, String baseCode, String productCode, String lineCode) {
+        return String.valueOf(scope) + "\u001f" + String.valueOf(baseCode)
+                + "\u001f" + String.valueOf(productCode) + "\u001f" + String.valueOf(lineCode);
     }
 
     private boolean isRevenueCost(String code, AnalysisPerspective perspective) {
@@ -191,6 +200,10 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
     }
 
     private static class Accumulator {
+        private final String scopeCode;
+        private final String baseCode;
+        private final String productCode;
+        private final String lineCode;
         private BigDecimal volume = BigDecimal.ZERO;
         private BigDecimal revenue = BigDecimal.ZERO;
         private BigDecimal salesCost = BigDecimal.ZERO;
@@ -220,8 +233,15 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
         private BigDecimal budgetVariableManufacturingCost = BigDecimal.ZERO;
         private BigDecimal budgetFixedManufacturingCost = BigDecimal.ZERO;
 
-        private PnlFact toFact(String scope) {
-            return new PnlFact(scope, volume, revenue, salesCost, idleExpense, baseExpense,
+        private Accumulator(String scopeCode, String baseCode, String productCode, String lineCode) {
+            this.scopeCode = scopeCode;
+            this.baseCode = baseCode;
+            this.productCode = productCode;
+            this.lineCode = lineCode;
+        }
+
+        private PnlFact toFact(String ignoredScope) {
+            return new PnlFact(scopeCode, baseCode, productCode, lineCode, volume, revenue, salesCost, idleExpense, baseExpense,
                     rdExpense, assetImpairment, creditImpairment, otherIncome,
                     budgetVolume, budgetRevenue, budgetSalesCost, budgetIdleExpense,
                     budgetBaseExpense, budgetRdExpense, budgetAssetImpairment,

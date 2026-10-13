@@ -63,7 +63,8 @@ public class CalculationServiceImpl implements CalculationService {
         batchRepository.save(batch);
         try {
             Map<String, MutablePnl> grouped = new LinkedHashMap<String, MutablePnl>();
-            for (PnlFact fact : factProvider.load(batch)) {
+            List<PnlFact> facts = factProvider.load(batch);
+            for (PnlFact fact : facts) {
                 MutablePnl pnl = grouped.get(fact.getScopeCode());
                 if (pnl == null) {
                     pnl = new MutablePnl();
@@ -75,7 +76,9 @@ public class CalculationServiceImpl implements CalculationService {
             for (Map.Entry<String, MutablePnl> entry : grouped.entrySet()) {
                 pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines()));
             }
-            CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults);
+            CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults,
+                    batchNo + "-R1", CalculationResultStatus.CALCULATED, null, null,
+                    java.time.LocalDateTime.now(), null, null, facts);
             saveResult(result);
             batch.moveTo(BatchStatus.CALCULATED);
             batchRepository.save(batch);

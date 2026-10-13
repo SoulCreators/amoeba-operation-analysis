@@ -27,16 +27,18 @@ public class JdbcPnlFactWriter implements PnlFactWriter {
         jdbc.update("DELETE FROM raw.pnl_fact WHERE batch_id = ? AND perspective = ? AND source_task_no = ?",
                 batchId, batch.getPerspective().getCode(), task.getTaskNo());
         String sql = "INSERT INTO raw.pnl_fact(batch_id, perspective, source_task_no, period, scope_code, "
+                + "base_code, product_code, line_code, "
                 + "volume, revenue, sales_cost, idle_expense, base_expense, rd_expense, asset_impairment, "
                 + "credit_impairment, other_income, budget_volume, budget_revenue, budget_sales_cost, "
                 + "budget_idle_expense, budget_base_expense, budget_rd_expense, budget_asset_impairment, "
                 + "budget_credit_impairment, budget_other_income, material_cost, labor_cost, outsourcing_cost, "
                 + "variable_mfg_cost, fixed_mfg_cost, budget_material_cost, budget_labor_cost, "
                 + "budget_outsourcing_cost, budget_variable_mfg_cost, budget_fixed_mfg_cost) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )";
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )";
         for (PnlFact fact : facts) {
             jdbc.update(sql, batchId, batch.getPerspective().getCode(), task.getTaskNo(),
-                    batch.getPeriod(), fact.getScopeCode(), fact.getVolume(), fact.getRevenue(),
+                    batch.getPeriod(), fact.getScopeCode(), fact.getBaseCode(), fact.getProductCode(),
+                    fact.getLineCode(), fact.getVolume(), fact.getRevenue(),
                     fact.getSalesCost(), fact.getIdleExpense(), fact.getBaseExpense(), fact.getRdExpense(),
                     fact.getAssetImpairment(), fact.getCreditImpairment(), fact.getOtherIncome(),
                     fact.getBudgetVolume(), fact.getBudgetRevenue(), fact.getBudgetSalesCost(),

@@ -160,7 +160,7 @@ PVM读取当前用户可见的已计算结果，按视角返回独立逻辑标�
 V1.3 查询统一使用认证主体进行权限过滤，接口前缀为 `/api/v1/v13`：
 
 - `GET /overview/{batchNo}?scenario=ACT_BGT`：返回真实计算结果的 KPI、绝对 GAP、GAP 率和有利/不利 TOP；支持 `ACT_BGT`，`ACT_FC`、`FC_BGT` 在 FC 数据未接入时返回阻断状态。
-- `GET /matrix/{batchNo}?metric=GROSS_PROFIT`：返回当前视角聚合结果和基地×产品矩阵的数据模型阻断项。当前 `PnlFact` 只有 `scopeCode`，因此不会把 scope 聚合冒充产品明细。
+- `GET /matrix/{batchNo}?metric=GROSS_PROFIT`：事业部批次在标准事实明细具备基地/产品维度时返回正式矩阵；旧模板或数据库结果回读缺少明细时返回阻断状态，不把 scope 聚合冒充产品明细。
 - `GET /unit-efficiency/{batchNo}`：线体元/Wh查询门禁。费用范围、Wh分母或产出字段未确认时返回 `PENDING_DEFINITION`，不发布正式数值。
 - `GET /forecast/{batchNo}?scenario=ACT_FC&fcVersion=...`：返回 ACT/BGT 基础结果并保留 FC 版本参数；FC 快照存储完成前返回 `PENDING_FC_VERSION`。
 - `GET /risk/{batchNo}`：基于真实收入、毛利和净利润 GAP 输出观察项；风险红黄阈值未配置前不会伪造正式等级。

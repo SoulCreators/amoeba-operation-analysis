@@ -56,6 +56,8 @@ class PoiPnlFactProviderTest {
         assertEquals(700, facts.get(0).getSalesCost().intValue());
         assertEquals(1000, facts.get(0).getBudgetRevenue().intValue());
         assertEquals(700, facts.get(0).getBudgetSalesCost().intValue());
+        assertEquals("南昌", facts.get(0).getBaseCode());
+        assertEquals("106Ah", facts.get(0).getProductCode());
     }
 
     private static class PnlFactProviderHolder extends PoiPnlFactProvider {

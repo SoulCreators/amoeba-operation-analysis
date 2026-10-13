@@ -4,6 +4,10 @@ import java.math.BigDecimal;
 
 public class PnlFact {
     private final String scopeCode;
+    /** 原始维度保留在事实层，供矩阵/线体专题使用；旧模板缺失时允许为空。 */
+    private final String baseCode;
+    private final String productCode;
+    private final String lineCode;
     private final BigDecimal volume;
     private final BigDecimal revenue;
     private final BigDecimal salesCost;
@@ -37,11 +41,12 @@ public class PnlFact {
                    BigDecimal salesCost, BigDecimal idleExpense, BigDecimal baseExpense,
                    BigDecimal rdExpense, BigDecimal assetImpairment,
                    BigDecimal creditImpairment, BigDecimal otherIncome) {
-        this(scopeCode, volume, revenue, salesCost, idleExpense, baseExpense,
+        this(scopeCode, null, null, null, volume, revenue, salesCost, idleExpense, baseExpense,
                 rdExpense, assetImpairment, creditImpairment, otherIncome,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO);
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     public PnlFact(String scopeCode, BigDecimal volume, BigDecimal revenue,
@@ -53,7 +58,7 @@ public class PnlFact {
                    BigDecimal budgetBaseExpense, BigDecimal budgetRdExpense,
                    BigDecimal budgetAssetImpairment, BigDecimal budgetCreditImpairment,
                    BigDecimal budgetOtherIncome) {
-        this(scopeCode, volume, revenue, salesCost, idleExpense, baseExpense, rdExpense,
+        this(scopeCode, null, null, null, volume, revenue, salesCost, idleExpense, baseExpense, rdExpense,
                 assetImpairment, creditImpairment, otherIncome, budgetVolume, budgetRevenue,
                 budgetSalesCost, budgetIdleExpense, budgetBaseExpense, budgetRdExpense,
                 budgetAssetImpairment, budgetCreditImpairment, budgetOtherIncome,
@@ -75,7 +80,38 @@ public class PnlFact {
                    BigDecimal budgetMaterialCost, BigDecimal budgetLaborCost,
                    BigDecimal budgetOutsourcingCost, BigDecimal budgetVariableManufacturingCost,
                    BigDecimal budgetFixedManufacturingCost) {
+        this(scopeCode, null, null, null, volume, revenue, salesCost, idleExpense, baseExpense,
+                rdExpense, assetImpairment, creditImpairment, otherIncome, budgetVolume, budgetRevenue,
+                budgetSalesCost, budgetIdleExpense, budgetBaseExpense, budgetRdExpense,
+                budgetAssetImpairment, budgetCreditImpairment, budgetOtherIncome, materialCost,
+                laborCost, outsourcingCost, variableManufacturingCost, fixedManufacturingCost,
+                budgetMaterialCost, budgetLaborCost, budgetOutsourcingCost,
+                budgetVariableManufacturingCost, budgetFixedManufacturingCost);
+    }
+
+    /**
+     * 带原始维度的事实构造器。金额字段仍沿用原有口径，维度仅作为追溯和新增分析的输入，
+     * 不改变现有三视角损益汇总逻辑。
+     */
+    public PnlFact(String scopeCode, String baseCode, String productCode, String lineCode,
+                   BigDecimal volume, BigDecimal revenue,
+                   BigDecimal salesCost, BigDecimal idleExpense, BigDecimal baseExpense,
+                   BigDecimal rdExpense, BigDecimal assetImpairment,
+                   BigDecimal creditImpairment, BigDecimal otherIncome,
+                   BigDecimal budgetVolume, BigDecimal budgetRevenue,
+                   BigDecimal budgetSalesCost, BigDecimal budgetIdleExpense,
+                   BigDecimal budgetBaseExpense, BigDecimal budgetRdExpense,
+                   BigDecimal budgetAssetImpairment, BigDecimal budgetCreditImpairment,
+                   BigDecimal budgetOtherIncome, BigDecimal materialCost,
+                   BigDecimal laborCost, BigDecimal outsourcingCost,
+                   BigDecimal variableManufacturingCost, BigDecimal fixedManufacturingCost,
+                   BigDecimal budgetMaterialCost, BigDecimal budgetLaborCost,
+                   BigDecimal budgetOutsourcingCost, BigDecimal budgetVariableManufacturingCost,
+                   BigDecimal budgetFixedManufacturingCost) {
         this.scopeCode = scopeCode;
+        this.baseCode = emptyToNull(baseCode);
+        this.productCode = emptyToNull(productCode);
+        this.lineCode = emptyToNull(lineCode);
         this.volume = value(volume);
         this.revenue = value(revenue);
         this.salesCost = value(salesCost);
@@ -107,6 +143,9 @@ public class PnlFact {
     }
 
     public String getScopeCode() { return scopeCode; }
+    public String getBaseCode() { return baseCode; }
+    public String getProductCode() { return productCode; }
+    public String getLineCode() { return lineCode; }
     public BigDecimal getVolume() { return volume; }
     public BigDecimal getRevenue() { return revenue; }
     public BigDecimal getSalesCost() { return salesCost; }
@@ -138,5 +177,9 @@ public class PnlFact {
 
     private BigDecimal value(BigDecimal number) {
         return number == null ? BigDecimal.ZERO : number;
+    }
+
+    private String emptyToNull(String value) {
+        return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 }
