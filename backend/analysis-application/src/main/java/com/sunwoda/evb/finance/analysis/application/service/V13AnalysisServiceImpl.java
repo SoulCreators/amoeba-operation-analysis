@@ -213,8 +213,9 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         Map<String, UnitValues> grouped = new LinkedHashMap<String, UnitValues>();
         List<String> blockers = new ArrayList<String>();
         for (PnlFact fact : facts) {
+            // 期间费用、闲置费用和减值汇总行没有线体维度，不能参与元/Wh；
+            // 它们不应阻断收入成本明细中已有线体数据的单位效率计算。
             if (fact.getLineCode() == null) {
-                blockers.add("存在事实缺少线体编码");
                 continue;
             }
             if (fact.getOutputWh() == null || fact.getOutputWh().compareTo(BigDecimal.ZERO) <= 0) {
@@ -237,6 +238,9 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
                     .add(fact.getBudgetFixedManufacturingCost());
             values.actualWh = values.actualWh.add(fact.getOutputWh());
             values.budgetWh = values.budgetWh.add(fact.getBudgetOutputWh());
+        }
+        if (grouped.isEmpty() && blockers.isEmpty()) {
+            blockers.add("当前批次没有带线体编码的收入成本事实");
         }
         List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
         for (UnitValues values : grouped.values()) {

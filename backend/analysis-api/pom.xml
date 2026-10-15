@@ -34,6 +34,10 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- Use the current API application; the legacy amoeba scaffold also has a main class. -->
+                    <mainClass>com.sunwoda.evb.finance.analysis.api.AnalysisApiApplication</mainClass>
+                </configuration>
             </plugin>
         </plugins>
     </build>

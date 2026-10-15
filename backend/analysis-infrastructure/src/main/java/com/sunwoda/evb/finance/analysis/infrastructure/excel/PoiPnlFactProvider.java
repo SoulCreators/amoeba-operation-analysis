@@ -94,7 +94,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                 String code = task.getDatasetCode();
                 if (isRevenueCost(code, perspective)) {
                     if (isBudget(code)) {
-                        accumulator.budgetVolume = add(accumulator.budgetVolume, number(row, columns, "销量", "电量", "数量"));
+                        accumulator.budgetVolume = add(accumulator.budgetVolume,
+                                number(row, columns, "预算销量", "预算电量", "预算数量", "销量", "电量", "数量"));
                         accumulator.budgetOutputWh = addNullable(accumulator.budgetOutputWh,
                                 numberOrNull(row, columns, "Wh", "产出Wh", "产出电量Wh"));
                         accumulator.budgetRevenue = add(accumulator.budgetRevenue, number(row, columns, "营业收入", "销售收入", "收入"));

@@ -1,0 +1,8 @@
+# 本地联调默认使用内存仓储；不要在 profile-specific 文件中声明
+# spring.profiles.include，Spring Boot 2.4+ 会直接拒绝该配置。
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
