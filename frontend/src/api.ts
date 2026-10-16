@@ -49,7 +49,18 @@ async function unwrap<T>(request: Promise<{ data: ApiEnvelope<T> }>): Promise<T>
 
 export const api = {
   health: () => unwrap(http.get('/health')),
-  overview: (period: string, perspective: Perspective, scope = 'ALL') => unwrap<MetricResult[]>(http.get('/overview', { params: { period, perspective, scope } })),
+  batch: (batchNo: string) => unwrap<{ batchNo: string; period: string; perspective: Perspective; status: string }>(http.get(`/batches/${batchNo}`)),
+  overview: async (period: string, perspective: Perspective, scope = 'ALL') => {
+    const rows = await unwrap<Array<{ metricCode?: string; metricName?: string; code?: string; name?: string; actual: number; budget: number; gap: number; aiSummary?: string }>>(http.get('/overview', { params: { period, perspective, scope } }))
+    return rows.map((row): MetricResult => ({
+      code: row.metricCode || row.code || '',
+      name: row.metricName || row.name || row.metricCode || row.code || '',
+      actual: Number(row.actual || 0),
+      budget: Number(row.budget || 0),
+      gap: Number(row.gap || 0),
+      aiSummary: row.aiSummary,
+    }))
+  },
   result: (batchNo: string) => unwrap<{ batchNo: string; perspective: Perspective; status: string; versionNo?: string; pnls: PnlResult[] }>(http.get(`/calculations/${batchNo}`)),
   pvm: (batchNo: string) => unwrap<PvmResult[]>(http.get(`/pvm/${batchNo}`)),
   metricTree: (batchNo: string) => unwrap<MetricResult[]>(http.get(`/metric-tree/${batchNo}`)),
