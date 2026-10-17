@@ -66,7 +66,7 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
         List<MetricRow> rows = new ArrayList<MetricRow>();
         Set<String> codes = new HashSet<String>();
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
-            Sheet sheet = workbook.getSheetAt(0);
+            Sheet sheet = sheetFor(workbook, ConfigurationImportType.METRIC_DEFINITION);
             Map<String, Integer> headers = headers(sheet.getRow(0));
             for (int rowNo = 1; rowNo <= sheet.getLastRowNum(); rowNo++) {
                 Row row = sheet.getRow(rowNo);
@@ -113,9 +113,9 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                                                    InputStream inputStream) {
         List<ImportIssue> issues = new ArrayList<ImportIssue>();
         List<MappingRow> rows = new ArrayList<MappingRow>();
-        Set<String> keys = new HashSet<String>();
+        Map<String, String> seenRows = new HashMap<String, String>();
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
-            Sheet sheet = workbook.getSheetAt(0);
+            Sheet sheet = sheetFor(workbook, task.getType());
             Map<String, Integer> headers = headers(sheet.getRow(0));
             boolean genericMapping = has(headers, "matchkey", "匹配键", "组合键", "来源值")
                     && has(headers, "mappedvalue", "映射值", "目标值");
@@ -128,7 +128,7 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                     key = first(row, headers, "matchkey", "匹配键", "组合键", "来源值");
                     value = first(row, headers, "mappedvalue", "映射值", "目标值");
                 } else {
-                    MappingFields fields = mappingFields(task.getType());
+                    MappingFields fields = mappingFields(task.getType(), headers);
                     validateRequiredValues(row, headers, fields.requiredHeaders, rowNo, issues);
                     key = fields.key(row, headers);
                     value = fields.value(row, headers);
@@ -139,12 +139,16 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                                     : "映射配置的业务键和输出字段不能为空", null));
                     continue;
                 }
-                if (!keys.add(key)) {
+                boolean enabled = booleanValue(first(row, headers, "enabled", "是否启用", "是否有效"), true);
+                String rowSignature = key + "\u0000" + value + "\u0000" + enabled;
+                String previousSignature = seenRows.get(key);
+                if (previousSignature != null) {
+                    if (previousSignature.equals(rowSignature)) continue;
                     issues.add(new ImportIssue(rowNo + 1, "匹配键", "DUPLICATE_KEY",
-                            "同一文件内匹配键重复: " + key, key));
+                            "同一文件内匹配键对应多个不同映射结果: " + key, key));
                     continue;
                 }
-                boolean enabled = booleanValue(first(row, headers, "enabled", "是否启用", "是否有效"), true);
+                seenRows.put(key, rowSignature);
                 rows.add(new MappingRow(key, value, enabled));
             }
         } catch (Exception ex) {
@@ -172,19 +176,37 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
      * mapping API. The individual fields remain recoverable by their stable
      * order and are not replaced by a front-end-only synthetic field.
      */
-    private MappingFields mappingFields(ConfigurationImportType type) {
+    private MappingFields mappingFields(ConfigurationImportType type, Map<String, Integer> headers) {
         switch (type) {
             case SALES_PROJECT_MAPPING:
+                if (has(headers, "产品线巴长", "事业部巴长")) {
+                    return new MappingFields(
+                            new String[]{"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "B品标识"},
+                            new String[]{"产品线巴长", "产品线巴长工号", "事业部巴长", "事业部巴长工号", "备注"},
+                            new String[]{"客户简称", "客户项目", "产品线", "事业部", "是否有效"});
+                }
                 return new MappingFields(
                         new String[]{"客户简称", "客户项目", "电芯型号"},
                         new String[]{"产品线", "事业部", "B品标识", "备注", "巴长", "巴长工号"},
                         new String[]{"客户简称", "产品线", "事业部", "是否有效"});
             case INVENTORY_MAPPING:
+                if (has(headers, "物料描述")) {
+                    return new MappingFields(
+                            new String[]{"物料编码", "物料描述", "电芯型号", "产品类型", "产品线", "事业部"},
+                            new String[]{"分摊比例", "备注"},
+                            new String[]{"物料编码", "物料描述", "产品类型", "产品线", "事业部", "是否有效"});
+                }
                 return new MappingFields(
                         new String[]{"物料编码"},
                         new String[]{"电芯型号", "产品类型", "产品线", "事业部", "分摊比例", "备注"},
                         new String[]{"物料编码", "电芯型号", "产品线", "事业部", "是否有效"});
             case EXPENSE_CATEGORY:
+                if (has(headers, "公司段", "BU段", "部门段")) {
+                    return new MappingFields(
+                            new String[]{"公司段", "BU段", "部门段", "部门名称"},
+                            new String[]{"基地", "基地重分类", "部门性质", "备注"},
+                            new String[]{"公司段", "BU段", "部门段", "部门名称", "基地", "基地重分类", "部门性质", "是否有效"});
+                }
                 return new MappingFields(
                         new String[]{"三级费用编码", "三级费用名称"},
                         new String[]{"费用分类", "基地", "产品线", "事业部", "备注"},
@@ -218,10 +240,10 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
     private ConfigurationApplyResult validatePermissionRows(InputStream inputStream) {
         List<ImportIssue> issues = new ArrayList<ImportIssue>();
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
-            Sheet sheet = workbook.getSheetAt(0);
+            Sheet sheet = sheetFor(workbook, ConfigurationImportType.USER_PERMISSION);
             Map<String, Integer> headers = headers(sheet.getRow(0));
             String[] required = new String[]{"姓名", "工号", "用户角色", "数据视角", "可查看范围",
-                    "明细查看权限", "数据导出权限", "是否有效"};
+                    "明细查看权限", "数据导出权限", "配置维护范围", "是否有效"};
             for (int rowNo = 1; rowNo <= sheet.getLastRowNum(); rowNo++) {
                 Row row = sheet.getRow(rowNo);
                 if (blank(row)) continue;
@@ -239,6 +261,10 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                                         List<ImportIssue> issues) {
         for (String header : requiredHeaders) {
             String value = first(row, headers, header);
+            // Finance's department master contains legacy rows with a blank
+            // effective flag. The adapter treats those rows as enabled, which
+            // is also the existing default used by booleanValue(...).
+            if (value.isEmpty() && "是否有效".equals(header)) continue;
             if (value.isEmpty()) {
                 issues.add(new ImportIssue(rowNo + 1, header, "FIELD_MISSING",
                         "必填字段不能为空: " + header, null));
@@ -358,4 +384,25 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
     private String defaultIfEmpty(String value, String defaultValue) { return value.isEmpty() ? defaultValue : value; }
     private int integer(String value, int defaultValue) { try { return value.isEmpty() ? defaultValue : Integer.parseInt(value); } catch (NumberFormatException ex) { return defaultValue; } }
     private boolean booleanValue(String value, boolean defaultValue) { if (value.isEmpty()) return defaultValue; return "true".equalsIgnoreCase(value) || "是".equals(value) || "启用".equals(value) || "1".equals(value); }
+
+    private Sheet sheetFor(Workbook workbook, ConfigurationImportType type) {
+        String expected = expectedSheetName(type);
+        if (expected != null) {
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                if (expected.equals(sheet.getSheetName())) return sheet;
+            }
+        }
+        return workbook.getSheetAt(0);
+    }
+
+    private String expectedSheetName(ConfigurationImportType type) {
+        switch (type) {
+            case SALES_PROJECT_MAPPING: return "21_销售项目映射";
+            case INVENTORY_MAPPING: return "22_库存档案映射";
+            case EXPENSE_CATEGORY: return "23_费用分类映射";
+            case USER_PERMISSION: return "28_用户权限";
+            default: return null;
+        }
+    }
 }

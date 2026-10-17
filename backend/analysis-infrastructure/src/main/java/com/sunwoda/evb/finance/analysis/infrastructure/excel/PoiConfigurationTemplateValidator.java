@@ -42,7 +42,7 @@ public class PoiConfigurationTemplateValidator implements ConfigurationTemplateV
             if (workbook.getNumberOfSheets() == 0) {
                 issues.add(new ImportIssue(1, null, "SHEET_MISSING", "配置文件至少需要一个工作表", null));
             } else {
-                Sheet sheet = workbook.getSheetAt(0);
+                Sheet sheet = sheetFor(workbook, type);
                 Row header = sheet.getRow(0);
                 if (header == null) {
                     issues.add(new ImportIssue(1, null, "HEADER_MISSING", "Excel第一行必须为配置字段标题", null));
@@ -93,7 +93,8 @@ public class PoiConfigurationTemplateValidator implements ConfigurationTemplateV
                 aliases("基地"), aliases("电芯型号"), aliases("分析粒度"), aliases("是否有效")));
         result.put(ConfigurationImportType.USER_PERMISSION, Arrays.asList(
                 aliases("姓名"), aliases("工号"), aliases("用户角色"), aliases("数据视角"),
-                aliases("可查看范围"), aliases("明细查看权限"), aliases("数据导出权限"), aliases("是否有效")));
+                aliases("可查看范围"), aliases("明细查看权限"), aliases("数据导出权限"),
+                aliases("配置维护范围"), aliases("是否有效")));
         return result;
     }
 
@@ -111,6 +112,12 @@ public class PoiConfigurationTemplateValidator implements ConfigurationTemplateV
                 && hasAny(normalizedHeaders, "mappedvalue", "映射值", "目标值");
         if (genericMapping && type != ConfigurationImportType.METRIC_DEFINITION
                 && type != ConfigurationImportType.USER_PERMISSION) return;
+        if (type == ConfigurationImportType.EXPENSE_CATEGORY
+                && hasAny(normalizedHeaders, "公司段", "bu段", "部门段")) {
+            groups = Arrays.asList(
+                    aliases("公司段"), aliases("BU段"), aliases("部门段"), aliases("部门名称"),
+                    aliases("基地"), aliases("基地重分类"), aliases("部门性质"), aliases("是否有效"));
+        }
         for (List<String> group : groups) {
             boolean present = false;
             for (String alias : group) {
@@ -155,6 +162,27 @@ public class PoiConfigurationTemplateValidator implements ConfigurationTemplateV
     }
 
     private String value(Cell cell) { return cell == null ? "" : formatter.formatCellValue(cell).trim(); }
+
+    private Sheet sheetFor(Workbook workbook, ConfigurationImportType type) {
+        String expected = expectedSheetName(type);
+        if (expected != null) {
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                if (expected.equals(sheet.getSheetName())) return sheet;
+            }
+        }
+        return workbook.getSheetAt(0);
+    }
+
+    private String expectedSheetName(ConfigurationImportType type) {
+        switch (type) {
+            case SALES_PROJECT_MAPPING: return "21_销售项目映射";
+            case INVENTORY_MAPPING: return "22_库存档案映射";
+            case EXPENSE_CATEGORY: return "23_费用分类映射";
+            case USER_PERMISSION: return "28_用户权限";
+            default: return null;
+        }
+    }
 
     private String normalize(String value) {
         return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);

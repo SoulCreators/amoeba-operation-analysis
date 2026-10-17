@@ -10,6 +10,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PoiConfigurationTemplateValidatorTest {
     @Test
@@ -77,5 +78,48 @@ class PoiConfigurationTemplateValidatorTest {
 
         assertEquals(ImportStatus.VALID, result.getStatus());
         assertEquals(8, result.getHeaders().size());
+    }
+
+    @Test
+    void recognizesFinanceDepartmentMasterTemplate() throws Exception {
+        XSSFWorkbook workbook = new XSSFWorkbook();
+        workbook.createSheet("说明");
+        org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("23_费用分类映射");
+        org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+        String[] headers = {"公司段", "BU段", "部门段", "部门名称", "基地", "基地重分类", "部门性质", "备注", "是否有效"};
+        for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+        for (int i = 0; i < headers.length; i++) row.createCell(i).setCellValue(i == 0 ? "131" : "义乌");
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        workbook.write(output);
+        workbook.close();
+
+        ImportValidationResult result = new PoiConfigurationTemplateValidator().validate(
+                "CFG-FINANCE-EXPENSE", ConfigurationImportType.EXPENSE_CATEGORY,
+                new ByteArrayInputStream(output.toByteArray()));
+
+        assertEquals(ImportStatus.VALID, result.getStatus());
+        assertEquals(1, result.getRowCount());
+    }
+
+    @Test
+    void requiresConfigurationMaintenanceScopeForPermissionTemplate() throws Exception {
+        XSSFWorkbook workbook = new XSSFWorkbook();
+        org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("28_用户权限");
+        org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+        String[] headers = {"姓名", "工号", "用户角色", "数据视角", "可查看范围",
+                "明细查看权限", "数据导出权限", "是否有效"};
+        for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
+        sheet.createRow(1).createCell(0).setCellValue("张三");
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        workbook.write(output);
+        workbook.close();
+
+        ImportValidationResult result = new PoiConfigurationTemplateValidator().validate(
+                "CFG-PERMISSION", ConfigurationImportType.USER_PERMISSION,
+                new ByteArrayInputStream(output.toByteArray()));
+
+        assertEquals(ImportStatus.INVALID, result.getStatus());
+        assertTrue(result.getIssues().stream().anyMatch(issue -> "配置维护范围".equals(issue.getFieldName())));
     }
 }

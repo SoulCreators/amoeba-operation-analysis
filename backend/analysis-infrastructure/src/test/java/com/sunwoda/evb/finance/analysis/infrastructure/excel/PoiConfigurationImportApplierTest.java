@@ -129,6 +129,48 @@ class PoiConfigurationImportApplierTest {
         assertTrue(mappings.list(MappingType.SALES_PROJECT, true).isEmpty());
     }
 
+    @Test
+    void appliesFinanceDepartmentMasterWithFullBusinessKey() throws Exception {
+        MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), mappings);
+
+        ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.EXPENSE_CATEGORY),
+                realWorkbook("23_费用分类映射",
+                        new String[]{"公司段", "BU段", "部门段", "部门名称", "基地", "基地重分类", "部门性质", "备注", "是否有效"},
+                        new String[]{"131", "586", "5860104", "义乌设备部", "义乌", "义乌", "基地公摊", "", "是"}));
+
+        assertEquals(1, result.getAppliedCount());
+        assertTrue(result.getIssues().isEmpty());
+        assertEquals("义乌|义乌|基地公摊|",
+                mappings.find(MappingType.EXPENSE_RULE, "131|586|5860104|义乌设备部").get().getMappedValue());
+    }
+
+    @Test
+    void deduplicatesIdenticalFinanceRowsButRejectsConflictingResults() throws Exception {
+        MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), mappings);
+        String[] headers = {"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "B品标识",
+                "备注", "产品线巴长", "产品线巴长工号", "事业部巴长", "事业部巴长工号", "是否有效"};
+
+        ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.SALES_PROJECT_MAPPING),
+                multiRowWorkbook("21_销售项目映射", headers,
+                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"},
+                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"}));
+
+        assertEquals(1, result.getAppliedCount());
+        assertTrue(result.getIssues().isEmpty());
+
+        ConfigurationApplyResult conflict = applier.apply(task(ConfigurationImportType.SALES_PROJECT_MAPPING),
+                multiRowWorkbook("21_销售项目映射", headers,
+                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"},
+                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "王五", "1003", "李四", "1002", "是"}));
+
+        assertEquals(0, conflict.getAppliedCount());
+        assertTrue(conflict.getIssues().stream().anyMatch(issue -> "DUPLICATE_KEY".equals(issue.getIssueCode())));
+    }
+
     private void assertRealMapping(PoiConfigurationImportApplier applier,
                                    MappingEntryRepository mappings,
                                    ConfigurationImportType importType,
@@ -185,6 +227,24 @@ class PoiConfigurationImportApplierTest {
         org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
         for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
         for (int i = 0; i < values.length; i++) row.createCell(i).setCellValue(values[i]);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        workbook.write(output);
+        workbook.close();
+        return new ByteArrayInputStream(output.toByteArray());
+    }
+
+    private ByteArrayInputStream multiRowWorkbook(String sheetName, String[] headers,
+                                                   String[] firstValues, String[] secondValues) throws Exception {
+        XSSFWorkbook workbook = new XSSFWorkbook();
+        org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet(sheetName);
+        org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+        org.apache.poi.ss.usermodel.Row first = sheet.createRow(1);
+        org.apache.poi.ss.usermodel.Row second = sheet.createRow(2);
+        for (int i = 0; i < headers.length; i++) {
+            header.createCell(i).setCellValue(headers[i]);
+            first.createCell(i).setCellValue(firstValues[i]);
+            second.createCell(i).setCellValue(secondValues[i]);
+        }
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         workbook.write(output);
         workbook.close();
