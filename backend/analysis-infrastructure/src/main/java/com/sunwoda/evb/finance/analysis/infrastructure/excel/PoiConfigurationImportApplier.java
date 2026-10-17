@@ -29,9 +29,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Applies the two low-risk configuration families used in phase one:
- * metric definitions and key/value mappings. Permission files are deliberately
- * not applied by this adapter until the administrator workflow is connected.
+ * Applies metric definitions and the business-field configuration templates.
+ * Permission files are deliberately retained after structural validation and
+ * are not written by this adapter until the administrator workflow is connected.
  */
 @Repository
 public class PoiConfigurationImportApplier implements ConfigurationImportApplier {
@@ -49,6 +49,9 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
     public ConfigurationApplyResult apply(ConfigurationImportTask task, InputStream inputStream) {
         if (task.getType() == ConfigurationImportType.METRIC_DEFINITION) {
             return applyMetrics(task, inputStream);
+        }
+        if (task.getType() == ConfigurationImportType.USER_PERMISSION) {
+            return validatePermissionRows(inputStream);
         }
         MappingType mappingType = mappingType(task.getType());
         if (mappingType != null) return applyMappings(task, mappingType, inputStream);
@@ -70,7 +73,7 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                 if (blank(row)) continue;
                 String code = first(row, headers, "metriccode", "指标编码", "编码");
                 String name = first(row, headers, "metricname", "指标名称", "名称");
-                String formula = first(row, headers, "formulaexpression", "公式", "指标公式");
+                String formula = first(row, headers, "formulaexpression", "计算公式", "公式", "指标公式");
                 if (code.isEmpty() || name.isEmpty() || formula.isEmpty()) {
                     issues.add(new ImportIssue(rowNo + 1, null, "FIELD_MISSING",
                             "指标配置必须包含指标编码、指标名称和公式", null));
@@ -83,8 +86,8 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                 }
                 String perspective = defaultIfEmpty(first(row, headers, "applicableperspective", "适用视角"), "ALL");
                 String unit = defaultIfEmpty(first(row, headers, "unit", "单位"), "CNY");
-                int order = integer(first(row, headers, "displayorder", "排序"), rowNo * 10);
-                boolean enabled = booleanValue(first(row, headers, "enabled", "是否启用"), true);
+                int order = integer(first(row, headers, "displayorder", "展示顺序", "排序"), rowNo * 10);
+                boolean enabled = booleanValue(first(row, headers, "enabled", "是否启用", "是否有效"), true);
                 String aiTemplate = first(row, headers, "aisummarytemplate", "AI摘要模板", "AI简析模板");
                 rows.add(new MetricRow(code, name, perspective, unit, formula, order, enabled, aiTemplate));
             }
@@ -114,14 +117,26 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = workbook.getSheetAt(0);
             Map<String, Integer> headers = headers(sheet.getRow(0));
+            boolean genericMapping = has(headers, "matchkey", "匹配键", "组合键", "来源值")
+                    && has(headers, "mappedvalue", "映射值", "目标值");
             for (int rowNo = 1; rowNo <= sheet.getLastRowNum(); rowNo++) {
                 Row row = sheet.getRow(rowNo);
                 if (blank(row)) continue;
-                String key = first(row, headers, "matchkey", "匹配键", "组合键", "来源值");
-                String value = first(row, headers, "mappedvalue", "映射值", "目标值");
+                String key;
+                String value;
+                if (genericMapping) {
+                    key = first(row, headers, "matchkey", "匹配键", "组合键", "来源值");
+                    value = first(row, headers, "mappedvalue", "映射值", "目标值");
+                } else {
+                    MappingFields fields = mappingFields(task.getType());
+                    validateRequiredValues(row, headers, fields.requiredHeaders, rowNo, issues);
+                    key = fields.key(row, headers);
+                    value = fields.value(row, headers);
+                }
                 if (key.isEmpty() || value.isEmpty()) {
                     issues.add(new ImportIssue(rowNo + 1, null, "FIELD_MISSING",
-                            "映射配置必须包含匹配键和映射值", null));
+                            genericMapping ? "映射配置必须包含匹配键和映射值"
+                                    : "映射配置的业务键和输出字段不能为空", null));
                     continue;
                 }
                 if (!keys.add(key)) {
@@ -129,7 +144,7 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                             "同一文件内匹配键重复: " + key, key));
                     continue;
                 }
-                boolean enabled = booleanValue(first(row, headers, "enabled", "是否启用"), true);
+                boolean enabled = booleanValue(first(row, headers, "enabled", "是否启用", "是否有效"), true);
                 rows.add(new MappingRow(key, value, enabled));
             }
         } catch (Exception ex) {
@@ -147,6 +162,124 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
             mappingRepository.save(entry);
         }
         return new ConfigurationApplyResult(rows.size(), issues);
+    }
+
+    /**
+     * The real 21-26 templates have no generic matchKey/mappedValue columns.
+     * This adapter keeps the existing MappingEntryRepository contract by
+     * composing each template's documented business key and output columns in
+     * their template order, separated by the same pipe convention used by the
+     * mapping API. The individual fields remain recoverable by their stable
+     * order and are not replaced by a front-end-only synthetic field.
+     */
+    private MappingFields mappingFields(ConfigurationImportType type) {
+        switch (type) {
+            case SALES_PROJECT_MAPPING:
+                return new MappingFields(
+                        new String[]{"客户简称", "客户项目", "电芯型号"},
+                        new String[]{"产品线", "事业部", "B品标识", "备注", "巴长", "巴长工号"},
+                        new String[]{"客户简称", "产品线", "事业部", "是否有效"});
+            case INVENTORY_MAPPING:
+                return new MappingFields(
+                        new String[]{"物料编码"},
+                        new String[]{"电芯型号", "产品类型", "产品线", "事业部", "分摊比例", "备注"},
+                        new String[]{"物料编码", "电芯型号", "产品线", "事业部", "是否有效"});
+            case EXPENSE_CATEGORY:
+                return new MappingFields(
+                        new String[]{"三级费用编码", "三级费用名称"},
+                        new String[]{"费用分类", "基地", "产品线", "事业部", "备注"},
+                        new String[]{"三级费用名称", "费用分类", "是否有效"}) {
+                    @Override
+                    String key(Row row, Map<String, Integer> headers) {
+                        String code = first(row, headers, "三级费用编码");
+                        return code.isEmpty() ? first(row, headers, "三级费用名称") : code;
+                    }
+                };
+            case EXPENSE_ALLOCATION:
+                return new MappingFields(
+                        new String[]{"期间", "费用项目", "来源基地", "目标基地"},
+                        new String[]{"分摊比例", "备注"},
+                        new String[]{"期间", "费用项目", "来源基地", "目标基地", "分摊比例", "是否有效"});
+            case FX_RATE:
+                return new MappingFields(
+                        new String[]{"期间", "基地", "币种"},
+                        new String[]{"汇率", "换算方向", "备注"},
+                        new String[]{"期间", "基地", "币种", "汇率", "换算方向", "是否有效"});
+            case BASE_GRAIN:
+                return new MappingFields(
+                        new String[]{"基地", "电芯型号"},
+                        new String[]{"分析粒度", "备注"},
+                        new String[]{"基地", "电芯型号", "分析粒度", "是否有效"});
+            default:
+                throw new IllegalArgumentException("不支持按业务字段应用的配置类型: " + type);
+        }
+    }
+
+    private ConfigurationApplyResult validatePermissionRows(InputStream inputStream) {
+        List<ImportIssue> issues = new ArrayList<ImportIssue>();
+        try (Workbook workbook = WorkbookFactory.create(inputStream)) {
+            Sheet sheet = workbook.getSheetAt(0);
+            Map<String, Integer> headers = headers(sheet.getRow(0));
+            String[] required = new String[]{"姓名", "工号", "用户角色", "数据视角", "可查看范围",
+                    "明细查看权限", "数据导出权限", "是否有效"};
+            for (int rowNo = 1; rowNo <= sheet.getLastRowNum(); rowNo++) {
+                Row row = sheet.getRow(rowNo);
+                if (blank(row)) continue;
+                validateRequiredValues(row, headers, required, rowNo, issues);
+            }
+        } catch (Exception ex) {
+            issues.add(new ImportIssue(null, null, "APPLY_FAILED",
+                    "用户权限配置结构检查失败: " + ex.getMessage(), null));
+        }
+        return new ConfigurationApplyResult(0, issues);
+    }
+
+    private void validateRequiredValues(Row row, Map<String, Integer> headers,
+                                        String[] requiredHeaders, int rowNo,
+                                        List<ImportIssue> issues) {
+        for (String header : requiredHeaders) {
+            String value = first(row, headers, header);
+            if (value.isEmpty()) {
+                issues.add(new ImportIssue(rowNo + 1, header, "FIELD_MISSING",
+                        "必填字段不能为空: " + header, null));
+            }
+        }
+    }
+
+    private boolean has(Map<String, Integer> headers, String... aliases) {
+        for (String alias : aliases) {
+            if (headers.containsKey(normalize(alias))) return true;
+        }
+        return false;
+    }
+
+    private class MappingFields {
+        private final String[] keyHeaders;
+        private final String[] valueHeaders;
+        private final String[] requiredHeaders;
+
+        private MappingFields(String[] keyHeaders, String[] valueHeaders, String[] requiredHeaders) {
+            this.keyHeaders = keyHeaders;
+            this.valueHeaders = valueHeaders;
+            this.requiredHeaders = requiredHeaders;
+        }
+
+        String key(Row row, Map<String, Integer> headers) {
+            return join(row, headers, keyHeaders);
+        }
+
+        String value(Row row, Map<String, Integer> headers) {
+            return join(row, headers, valueHeaders);
+        }
+
+        private String join(Row row, Map<String, Integer> headers, String[] fields) {
+            StringBuilder result = new StringBuilder();
+            for (String field : fields) {
+                if (result.length() > 0) result.append('|');
+                result.append(first(row, headers, field));
+            }
+            return result.toString();
+        }
     }
 
     private static final class MetricRow {

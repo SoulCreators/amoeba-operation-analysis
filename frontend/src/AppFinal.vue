@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, type AiDraft, type BatchReadiness, type ConfigurationImportIssue, type DataQualityReport, type DatasetDefinition, type MappingEntry, type MetricDefinition, type MetricResult, type Perspective, type PnlResult, type PvmResult, type V13AnalysisPayload } from './api'
+import { api, type AiDraft, type BatchReadiness, type ConfigurationImportIssue, type ConfigurationImportTask, type ConfigurationImportValidationResult, type DataQualityReport, type DatasetDefinition, type MappingEntry, type MetricDefinition, type MetricResult, type Perspective, type PnlResult, type PvmResult, type V13AnalysisPayload } from './api'
 
 type View = 'overview' | 'result' | 'tree' | 'import' | 'pvm' | 'permission' | 'ai' | 'configImport' | 'mapping' | 'metrics' | 'users' | 'menus' | 'audit' | 'gross' | 'matrix' | 'unit' | 'forecast' | 'risk' | 'topics'
 type Scenario = 'ACT_BGT' | 'ACT_FC' | 'FC_BGT'
 const view = ref<View>('overview'); const period = ref('2026-08'); const periodMode = ref('ytd'); const perspective = ref<Perspective>('BASE'); const scope = ref('ALL'); const batchNo = ref(new URLSearchParams(window.location.search).get('batch') || 'BATCH-202608-BASE-001'); const currentUser = ref(localStorage.getItem('amoeba.user') || 'demo-finance'); const currentRole = ref('总部财经'); const currentScope = ref('全部基地'); const source = ref<'api' | 'demo'>('demo'); const loading = ref(false); const error = ref(''); const toastMessage = ref(''); const scenario = ref<Scenario>('ACT_BGT'); const fcVersion = ref('FC-202608-V3 · 正式采用'); const matrixMetric = ref('REVENUE'); const grossPeriod = ref('累计'); const activeTopic = ref('inventory'); const selectedMetric = ref('营业利润')
-const metrics = ref<MetricResult[]>([]); const results = ref<PnlResult[]>([]); const pvmRows = ref<PvmResult[]>([]); const treeRows = ref<MetricResult[]>([]); const aiDraft = ref<AiDraft | null>(null); const readiness = ref<BatchReadiness | null>(null); const quality = ref<DataQualityReport | null>(null); const datasets = ref<DatasetDefinition[]>([]); const selectedDataset = ref(''); const selectedFile = ref<File | null>(null); const importMessage = ref(''); const configMetrics = ref<MetricDefinition[]>([]); const mappingRows = ref<MappingEntry[]>([]); const mappingType = ref('SALES_PROJECT'); const mappingForm = ref({ type: 'SALES_PROJECT', matchKey: '', mappedValue: '', enabled: true }); const metricForm = ref({ metricCode: '', metricName: '', applicablePerspective: 'ALL', unit: 'CNY', formulaExpression: '', displayOrder: 100, enabled: true, aiSummaryTemplate: '' }); const configMessage = ref(''); const configImportType = ref('SALES_PROJECT_MAPPING'); const configImportFile = ref<File | null>(null); const configImportMessage = ref(''); const roleScope = ref('全部基地')
+const metrics = ref<MetricResult[]>([]); const results = ref<PnlResult[]>([]); const pvmRows = ref<PvmResult[]>([]); const treeRows = ref<MetricResult[]>([]); const aiDraft = ref<AiDraft | null>(null); const readiness = ref<BatchReadiness | null>(null); const quality = ref<DataQualityReport | null>(null); const datasets = ref<DatasetDefinition[]>([]); const selectedDataset = ref(''); const selectedFile = ref<File | null>(null); const importMessage = ref(''); const calculationStatus = ref(''); const calculationBusy = ref(false); const configMetrics = ref<MetricDefinition[]>([]); const mappingRows = ref<MappingEntry[]>([]); const mappingType = ref('SALES_PROJECT'); const mappingForm = ref({ type: 'SALES_PROJECT', matchKey: '', mappedValue: '', enabled: true }); const metricForm = ref({ metricCode: '', metricName: '', applicablePerspective: 'ALL', unit: 'CNY', formulaExpression: '', displayOrder: 100, enabled: true, aiSummaryTemplate: '' }); const configMessage = ref(''); const configImportType = ref('SALES_PROJECT_MAPPING'); const configImportFile = ref<File | null>(null); const configImportMessage = ref(''); const roleScope = ref('全部基地')
+const configImportTask = ref<ConfigurationImportTask | null>(null); const configTaskQueryNo = ref(''); const configIssueRows = ref<ConfigurationImportIssue[]>([]); const configImportResult = ref<ConfigurationImportValidationResult | null>(null); const configImportBusy = ref(false)
 const v13Overview = ref<V13AnalysisPayload | null>(null); const v13Matrix = ref<V13AnalysisPayload | null>(null); const v13Unit = ref<V13AnalysisPayload | null>(null); const v13Forecast = ref<V13AnalysisPayload | null>(null); const v13Risk = ref<V13AnalysisPayload | null>(null); const v13Waterfall = ref<V13AnalysisPayload | null>(null); const v13TopicPayloads = ref<Record<string, V13AnalysisPayload>>({})
 const forecastRows = ref<Record<string, unknown>[]>([]); const waterfallFactors = ref<Record<string, unknown>[]>([])
 const navGroups = [{ title: '平台功能', items: [['overview', '经营总览', '◈'], ['result', '损益结果', '▤'], ['tree', '指标树', '⌘'], ['import', '月度数据导入', '⇧'], ['pvm', 'PVM因素分析', '◫'], ['permission', '权限验证', '⊙'], ['ai', 'AI经营分析', '✦']] as [View, string, string][] }, { title: 'V1.3分析', items: [['gross', '毛利分析', '▥'], ['matrix', '基地×产品矩阵', '▦'], ['unit', '单位效率分析', '◌'], ['forecast', 'FC预测与瀑布', '↗'], ['risk', '一页风险提示', '⚠'], ['topics', 'P1专题分析', '◇']] as [View, string, string][] }, { title: '配置与追溯', items: [['configImport', '基础配置导入', '⇧'], ['mapping', '映射配置', '⌘'], ['metrics', '指标库', '◉'], ['users', '用户管理', '♙'], ['menus', '菜单管理', '☷'], ['audit', '操作记录', '≡']] as [View, string, string][] }]
@@ -33,7 +34,172 @@ async function ensureBatch() {
   }
 }
 
-async function load() { loading.value = true; error.value = ''; try { await ensureBatch(); if (view.value !== 'import') metrics.value = await api.overview(period.value, perspective.value, scope.value); readiness.value = await api.readiness(batchNo.value); quality.value = await api.quality(batchNo.value); datasets.value = await api.datasets(perspective.value); source.value = 'api'; if (view.value === 'result') results.value = (await api.result(batchNo.value)).pnls; if (view.value === 'pvm') pvmRows.value = await api.pvm(batchNo.value); if (view.value === 'tree') treeRows.value = (await api.metricTree(batchNo.value)); if (view.value === 'ai') aiDraft.value = await api.ai(batchNo.value); if (view.value === 'metrics') configMetrics.value = await api.metrics(perspective.value, true); if (view.value === 'mapping') mappingRows.value = await api.mappings(mappingType.value, true) } catch (e) { const message = e instanceof Error ? e.message : '请求失败'; if (message.includes('批次尚未完成计算')) { source.value = 'api'; error.value = '当前批次尚未完成计算：请先上传并校验必需数据集，再开始计算。'; results.value = []; pvmRows.value = []; treeRows.value = []; aiDraft.value = null } else { loadDemo(); error.value = `接口调用失败，已切换脱敏演示数据：${message}` } } finally { loading.value = false } }; async function generateAi() { try { aiDraft.value = await api.generateAi(batchNo.value); source.value = 'api'; showToast('AI分析草稿已生成') } catch (e) { const message = e instanceof Error ? e.message : '请求失败'; if (message.includes('批次尚未完成计算')) { source.value = 'api'; error.value = '当前批次尚未完成计算：请先上传并校验必需数据集，再开始计算。'; aiDraft.value = null } else { loadDemo(); showToast('当前展示规则引擎演示草稿') } } }; async function submitImport() { if (!selectedDataset.value || !selectedFile.value) { importMessage.value = '请选择数据集并上传 Excel 文件。'; return } try { await ensureBatch(); const task = await api.createImport(batchNo.value, { datasetCode: selectedDataset.value, fileName: selectedFile.value.name }); await api.validateImport(task.taskNo, selectedFile.value); importMessage.value = `校验完成：${selectedFile.value.name}，请刷新批次完整性。`; await load() } catch (e) { importMessage.value = e instanceof Error ? e.message : '导入失败，已保留当前演示数据。' } }; async function saveMetric() { if (!metricForm.value.metricCode || !metricForm.value.metricName || !metricForm.value.formulaExpression) { configMessage.value = '指标编码、名称和公式不能为空。'; return } try { const saved = await api.upsertMetric(metricForm.value); configMetrics.value = [...configMetrics.value.filter(r => r.metricCode !== saved.metricCode), saved]; configMessage.value = `指标 ${saved.metricName} 已保存。` } catch { configMessage.value = '演示状态：指标已在当前页面保存。'; configMetrics.value = [...configMetrics.value.filter(r => r.metricCode !== metricForm.value.metricCode), { ...metricForm.value }] } }; async function saveMapping() { if (!mappingForm.value.matchKey || !mappingForm.value.mappedValue) { configMessage.value = '匹配键和值不能为空。'; return } try { const saved = await api.upsertMapping(mappingForm.value); mappingRows.value = [...mappingRows.value.filter(r => !(r.type === saved.type && r.matchKey === saved.matchKey)), saved] } catch { mappingRows.value = [...mappingRows.value, { ...mappingForm.value }]; configMessage.value = '演示状态：映射已保存。' } }; async function disableMapping(row: MappingEntry) { try { await api.disableMapping({ type: row.type, matchKey: row.matchKey }) } catch { /* demo */ } row.enabled = false; showToast(`映射 ${row.matchKey} 已停用`) }; async function uploadConfig() { if (!configImportFile.value) { configImportMessage.value = '请选择基础配置文件。'; return }; configImportMessage.value = `演示状态：${configImportFile.value.name} 已进入校验队列。`; showToast('配置导入任务已创建') }; function changeRole() { currentScope.value = currentRole.value === '总部财经' ? '全部基地' : currentRole.value === '基地运营' ? '泰国基地' : '南昌基地'; roleScope.value = currentScope.value; showToast(`已切换为${currentRole.value}`) }; function printRisk() { document.body.classList.add('risk-print'); window.print(); window.setTimeout(() => document.body.classList.remove('risk-print'), 500) }; function exportView(name: string) { showToast(`${name}导出任务已创建（Demo）`) }; function showMetric(name: string) { selectedMetric.value = name }; function pickFile(e: Event) { selectedFile.value = (e.target as HTMLInputElement).files?.[0] || null }; function pickConfigFile(e: Event) { configImportFile.value = (e.target as HTMLInputElement).files?.[0] || null }; onMounted(loadDemo)
+async function load() { loading.value = true; error.value = ''; try { await ensureBatch(); if (view.value !== 'import') metrics.value = await api.overview(period.value, perspective.value, scope.value); readiness.value = await api.readiness(batchNo.value); quality.value = await api.quality(batchNo.value); datasets.value = await api.datasets(perspective.value); source.value = 'api'; if (view.value === 'result') { const result = await api.result(batchNo.value); results.value = result.pnls; calculationStatus.value = result.status } if (view.value === 'pvm') pvmRows.value = await api.pvm(batchNo.value); if (view.value === 'tree') treeRows.value = (await api.metricTree(batchNo.value)); if (view.value === 'ai') aiDraft.value = await api.ai(batchNo.value); if (view.value === 'metrics') configMetrics.value = await api.metrics(perspective.value, true); if (view.value === 'mapping') mappingRows.value = await api.mappings(mappingType.value, true) } catch (e) { const message = e instanceof Error ? e.message : '请求失败'; if (message.includes('批次尚未完成计算')) { source.value = 'api'; error.value = '当前批次尚未完成计算：请先上传并校验必需数据集，再开始计算。'; results.value = []; pvmRows.value = []; treeRows.value = []; aiDraft.value = null; calculationStatus.value = '' } else { loadDemo(); error.value = `接口调用失败，已切换脱敏演示数据：${message}` } } finally { loading.value = false } }
+
+async function calculateBatch() {
+  calculationBusy.value = true
+  importMessage.value = ''
+  try {
+    await ensureBatch()
+    const calculated = await api.calculate(batchNo.value)
+    results.value = calculated.results || calculated.pnls || []
+    calculationStatus.value = calculated.status
+    source.value = 'api'
+    view.value = 'result'
+    try {
+      readiness.value = await api.readiness(batchNo.value)
+      quality.value = await api.quality(batchNo.value)
+    } catch {
+      // 计算结果已经由服务端返回；完整性摘要失败不应覆盖真实结果或回退演示数据。
+    }
+    showToast(`批次 ${batchNo.value} 已完成计算`)
+  } catch (e) {
+    importMessage.value = `开始计算失败：${e instanceof Error ? e.message : '请求失败'}`
+  } finally {
+    calculationBusy.value = false
+  }
+}
+
+async function confirmCalculation() {
+  calculationBusy.value = true
+  try {
+    const confirmed = await api.confirmCalculation(batchNo.value)
+    results.value = confirmed.results || confirmed.pnls || results.value
+    calculationStatus.value = confirmed.status
+    source.value = 'api'
+    showToast('计算结果已确认')
+  } catch (e) {
+    error.value = `结果确认失败：${e instanceof Error ? e.message : '请求失败'}`
+  } finally {
+    calculationBusy.value = false
+  }
+}
+
+async function publishCalculation() {
+  calculationBusy.value = true
+  try {
+    const published = await api.publishCalculation(batchNo.value)
+    results.value = published.results || published.pnls || results.value
+    calculationStatus.value = published.status
+    source.value = 'api'
+    showToast('计算结果已发布')
+  } catch (e) {
+    error.value = `结果发布失败：${e instanceof Error ? e.message : '请求失败'}`
+  } finally {
+    calculationBusy.value = false
+  }
+}
+
+async function generateAi() { try { aiDraft.value = await api.generateAi(batchNo.value); source.value = 'api'; showToast('AI分析草稿已生成') } catch (e) { const message = e instanceof Error ? e.message : '请求失败'; if (message.includes('批次尚未完成计算')) { source.value = 'api'; error.value = '当前批次尚未完成计算：请先上传并校验必需数据集，再开始计算。'; aiDraft.value = null } else { loadDemo(); showToast('当前展示规则引擎演示草稿') } } }
+
+async function publishAiDraft() {
+  try {
+    aiDraft.value = await api.publishAi(batchNo.value)
+    source.value = 'api'
+    showToast('AI分析已确认并发布')
+  } catch (e) {
+    error.value = `AI分析发布失败：${e instanceof Error ? e.message : '请求失败'}`
+  }
+}
+
+async function submitImport() { if (!selectedDataset.value || !selectedFile.value) { await calculateBatch(); return } try { await ensureBatch(); const task = await api.createImport(batchNo.value, { datasetCode: selectedDataset.value, fileName: selectedFile.value.name }); await api.validateImport(task.taskNo, selectedFile.value); importMessage.value = `校验完成：${selectedFile.value.name}，请刷新批次完整性。`; await load(); if (readiness.value?.readyForCalculation) await calculateBatch() } catch (e) { importMessage.value = e instanceof Error ? e.message : '导入失败，已保留当前演示数据。' } }
+
+async function saveMetric() { if (!metricForm.value.metricCode || !metricForm.value.metricName || !metricForm.value.formulaExpression) { configMessage.value = '指标编码、名称和公式不能为空。'; return } try { const saved = await api.upsertMetric(metricForm.value); configMetrics.value = [...configMetrics.value.filter(r => r.metricCode !== saved.metricCode), saved]; configMessage.value = `指标 ${saved.metricName} 已保存。` } catch { configMessage.value = '演示状态：指标已在当前页面保存。'; configMetrics.value = [...configMetrics.value.filter(r => r.metricCode !== metricForm.value.metricCode), { ...metricForm.value }] } }
+
+async function saveMapping() { if (!mappingForm.value.matchKey || !mappingForm.value.mappedValue) { configMessage.value = '匹配键和值不能为空。'; return } try { const saved = await api.upsertMapping(mappingForm.value); mappingRows.value = [...mappingRows.value.filter(r => !(r.type === saved.type && r.matchKey === saved.matchKey)), saved] } catch { mappingRows.value = [...mappingRows.value, { ...mappingForm.value }]; configMessage.value = '演示状态：映射已保存。' } }
+
+async function disableMapping(row: MappingEntry) { try { await api.disableMapping({ type: row.type, matchKey: row.matchKey }) } catch { /* demo */ } row.enabled = false; showToast(`映射 ${row.matchKey} 已停用`) }
+
+async function uploadConfig() { if (!configImportFile.value) { configImportMessage.value = '请选择基础配置文件。'; return }; configImportMessage.value = `演示状态：${configImportFile.value.name} 已进入校验队列。`; showToast('配置导入任务已创建') }
+
+function changeRole() { currentScope.value = currentRole.value === '总部财经' ? '全部基地' : currentRole.value === '基地运营' ? '泰国基地' : '南昌基地'; roleScope.value = currentScope.value; showToast(`已切换为${currentRole.value}`) }; function printRisk() { document.body.classList.add('risk-print'); window.print(); window.setTimeout(() => document.body.classList.remove('risk-print'), 500) }; function exportView(name: string) { showToast(`${name}导出任务已创建（Demo）`) }; function showMetric(name: string) { selectedMetric.value = name }; function pickFile(e: Event) { selectedFile.value = (e.target as HTMLInputElement).files?.[0] || null }; function pickConfigFile(e: Event) { configImportFile.value = (e.target as HTMLInputElement).files?.[0] || null }; onMounted(loadDemo)
+function configStatusLabel(status?: string) {
+  return ({ CREATED: '已创建', VALIDATING: '校验中', VALID: '校验并应用通过', INVALID: '校验/应用失败', CANCELLED: '已取消' } as Record<string, string>)[status || ''] || status || '未知'
+}
+
+function configStatusClass(status?: string) {
+  return status === 'VALID' ? 'ok' : status === 'INVALID' || status === 'CANCELLED' ? 'warn' : 'gray'
+}
+
+function configIssueSummary(issues: ConfigurationImportIssue[]) {
+  if (!issues.length) return '服务端未返回问题明细。'
+  return issues.slice(0, 2).map((issue) => `${issue.issueCode}: ${issue.issueMessage}`).join('；')
+}
+
+async function refreshConfigImport(taskNo: string) {
+  const [task, issues] = await Promise.all([api.configImport(taskNo), api.configImportIssues(taskNo)])
+  configImportTask.value = task
+  configTaskQueryNo.value = task.taskNo
+  configIssueRows.value = issues
+  return task
+}
+
+async function queryConfigImport() {
+  const taskNo = configTaskQueryNo.value.trim()
+  if (!taskNo) {
+    configImportMessage.value = '请输入任务编号后再查询。'
+    return
+  }
+  configImportBusy.value = true
+  try {
+    await refreshConfigImport(taskNo)
+    configImportMessage.value = configImportTask.value?.status === 'VALID'
+      ? `任务 ${taskNo} 已完成校验并应用。`
+      : `任务 ${taskNo} 当前状态为${configStatusLabel(configImportTask.value?.status)}：${configIssueSummary(configIssueRows.value)}`
+    source.value = 'api'
+  } catch (e) {
+    configImportMessage.value = `查询任务失败：${e instanceof Error ? e.message : '请求失败'}`
+  } finally {
+    configImportBusy.value = false
+  }
+}
+
+async function runConfigImport() {
+  const file = configImportFile.value
+  if (!file) {
+    configImportMessage.value = '请选择基础配置文件。'
+    return
+  }
+  configImportBusy.value = true
+  configImportTask.value = null
+  configIssueRows.value = []
+  configImportResult.value = null
+  configImportMessage.value = ''
+  try {
+    const created = await api.createConfigImport({ type: configImportType.value, fileName: file.name })
+    configImportTask.value = created
+    configTaskQueryNo.value = created.taskNo
+    configImportMessage.value = `任务 ${created.taskNo} 已创建，正在上传文件。`
+
+    const uploaded = await api.uploadConfigImport(created.taskNo, file)
+    configImportTask.value = uploaded
+    configImportMessage.value = `任务 ${created.taskNo} 已上传文件，正在执行校验并应用。`
+
+    configImportResult.value = await api.validateConfigImport(created.taskNo, file)
+    const finalTask = await refreshConfigImport(created.taskNo)
+    source.value = 'api'
+    if (finalTask.status === 'VALID') {
+      configImportMessage.value = configImportType.value === 'USER_PERMISSION'
+        ? `任务 ${finalTask.taskNo} 结构校验通过；用户角色权限不会自动生效，仍需管理员授权。`
+        : `任务 ${finalTask.taskNo} 校验并应用通过：${configImportResult.value.rowCount} 行配置已生效。`
+    } else if (configImportType.value === 'USER_PERMISSION' && configImportResult.value.status === 'INVALID') {
+      configImportMessage.value = `任务 ${finalTask.taskNo} 已完成结构校验，但未自动应用；当前状态为${configStatusLabel(finalTask.status)}，需管理员授权后另行处理。${configIssueSummary(configIssueRows.value)}`
+    } else {
+      configImportMessage.value = `任务 ${finalTask.taskNo} ${configStatusLabel(finalTask.status)}，配置未写入：${configIssueSummary(configIssueRows.value)}`
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : '请求失败'
+    if (configImportTask.value?.taskNo) {
+      try { await refreshConfigImport(configImportTask.value.taskNo) } catch { /* 保留已知任务状态 */ }
+      configImportMessage.value = `任务 ${configImportTask.value.taskNo} 处理失败：${message}；当前状态为${configStatusLabel(configImportTask.value.status)}，未伪装为成功。`
+    } else {
+      configImportMessage.value = `配置导入失败：${message}`
+    }
+  } finally {
+    configImportBusy.value = false
+  }
+}
+
 function metricRows(payload: V13AnalysisPayload | null): MetricResult[] {
   return (payload?.metrics || []).map((row) => ({
     code: String(row.metricCode || ''),
@@ -162,6 +328,9 @@ async function loadV13() {
 
 onMounted(loadV13)
 watch([view, batchNo, scenario, matrixMetric, activeTopic], () => { void loadV13() })
+watch(view, (next) => {
+  if (['result', 'pvm', 'tree', 'ai'].includes(next)) void load()
+})
 </script>
 
 <template>
@@ -181,8 +350,20 @@ watch([view, batchNo, scenario, matrixMetric, activeTopic], () => { void loadV13
         <section v-else-if="view === 'forecast'" class="view active"><div class="section-head"><div><h2>FC滚动预测与BGT / ACT三口径</h2><p>当前选择：{{ fcVersion }} · 支持版本导入、冻结、对比与追溯</p></div><span class="v13-badge">{{ scenarioLabel }}</span></div><div class="permission-callout"><b>版本治理：</b>FC不在平台内在线编制；正式预测由预算/经营系统生成后按版本导入。<span v-if="v13Forecast?.blockers?.length">当前状态：{{ v13Forecast.blockers.join('；') }}</span></div><div v-if="forecastRows.length" class="panel table-scroll"><table><thead><tr><th>指标</th><th>BGT</th><th>ACT</th><th>FC</th><th>ACT-BGT</th><th>ACT-FC</th><th>FC-BGT</th></tr></thead><tbody><tr v-for="row in forecastRows" :key="String(row.metricCode || row.metricName)"><td>{{ row.metricName || row.metricCode }}</td><td>{{ format(String(row.metricCode || 'REVENUE'), Number(row.budget || 0)) }}</td><td>{{ format(String(row.metricCode || 'REVENUE'), Number(row.actual || 0)) }}</td><td>{{ row.fc == null ? '待接入' : format(String(row.metricCode || 'REVENUE'), Number(row.fc)) }}</td><td>{{ format(String(row.metricCode || 'REVENUE'), Number(row.actual || 0) - Number(row.budget || 0)) }}</td><td>{{ row.fc == null ? '—' : format(String(row.metricCode || 'REVENUE'), Number(row.actual || 0) - Number(row.fc)) }}</td><td>{{ row.fc == null ? '—' : format(String(row.metricCode || 'REVENUE'), Number(row.fc) - Number(row.budget || 0)) }}</td></tr></tbody></table></div><div v-else class="alert">当前 FC 接口未返回可发布快照，页面不再使用演示三口径数字。</div><div class="panel waterfall-panel"><div class="panel-title">单位毛利GAP瀑布拆解 <small>来自后端 PVM 因素</small></div><div v-if="waterfallFactors.length" class="waterfall"><div v-for="factor in waterfallFactors" :key="String(factor.code)" class="water-step"><div class="water-bar" :class="Number(factor.value || 0) >= 0 ? 'good' : 'bad'" :style="{ height: `${Math.max(18, Math.abs(Number(factor.value || 0)) * 6)}px` }">{{ Number(factor.value || 0) > 0 ? '+' : '' }}{{ format('REVENUE', Number(factor.value || 0)) }}</div><small>{{ factor.code }}</small></div></div><div v-else class="placeholder-card">当前后端未返回瀑布因子。</div><div class="formula-box">正式单位毛利仍需冻结单位分母；当前展示后端返回的正式 PVM 因素，不再读取前端演示常量。</div></div></section>
         <section v-else-if="view === 'risk'" class="view active"><div class="risk-sheet"><div class="section-head"><div><h2>经营分析风险提示 · 一页纸</h2><p>{{ period }} · {{ perspectiveName }}视角 · {{ scenarioLabel }}</p></div><button class="btn primary" @click="printRisk">打印 / 导出PDF</button></div><div class="risk-summary"><div class="risk-kpi"><small>总体风险</small><b :class="v13Risk?.risks?.length ? 'risk-level-high' : 'green'">{{ v13Risk?.risks?.length ? '需关注' : '未发现负向偏差' }}</b></div><div class="risk-kpi"><small>需关注事项</small><b>{{ v13Risk?.risks?.length || 0 }}</b></div><div class="risk-kpi"><small>待确认口径</small><b class="risk-level-mid">{{ v13Risk?.blockers?.length || 0 }}</b></div><div class="risk-kpi"><small>数据状态</small><b :class="v13Risk?.status === 'CALCULATED' ? 'green' : 'risk-level-mid'">{{ v13Risk?.status || '待加载' }}</b></div></div><div class="decision-strip"><span class="decision-chip">结果版本：{{ v13Risk?.versionNo || '待加载' }}</span><span class="decision-chip">阈值：后端状态 {{ v13Risk?.status || '待加载' }}</span><span class="decision-chip">发布前需责任人确认</span></div><table><thead><tr><th>等级</th><th>领域</th><th>风险/异常</th><th>责任角色</th><th>建议动作</th><th>状态</th></tr></thead><tbody><tr v-for="row in riskRows" :key="row[1]"><td><span :class="row[0] === '高' ? 'red' : row[0] === '中' ? 'warning' : 'green'">{{ row[0] }}</span></td><td>{{ row[1] }}</td><td>{{ row[2] }}</td><td>{{ row[3] }}</td><td>{{ row[4] }}</td><td>{{ row[5] }}</td></tr></tbody></table><div class="pnl-note">风险等级由后端确定性规则和阈值状态返回；阈值未冻结时只展示观察项，不替代正式风险审批。</div></div></section>
         <section v-else-if="view === 'topics'" class="view active"><div class="section-head"><div><h2>P1专题分析</h2><p>{{ activeTopicData.name }} · {{ activeTopicPayload?.notes?.join('；') || activeTopicData.note }}</p></div><span class="tag">{{ activeTopicPayload?.status || '待加载' }}</span></div><div class="topic-buttons"><button v-for="(topic,key) in p1Topics" :key="key" class="btn" :class="{ primary: activeTopic === key }" @click="activeTopic = key">{{ topic.name }}</button></div><div class="panel table-scroll"><table v-if="topicDisplayRows.length"><thead><tr><th v-for="header in activeTopicData.headers" :key="header">{{ header }}</th></tr></thead><tbody><tr v-for="(row,index) in topicDisplayRows" :key="index"><td v-for="cell in row" :key="cell">{{ cell }}</td></tr></tbody></table><div v-else class="placeholder-card">当前专题尚未接入明细源数据，页面只展示后端阻断状态。</div><div class="formula-box">{{ activeTopicPayload?.blockers?.join('；') || '待P0口径冻结、字段映射与权限范围确认。' }}</div></div></section>
-        <section v-else-if="view === 'configImport' || view === 'mapping' || view === 'metrics'" class="view active"><div class="section-head"><div><h2>{{ title }}</h2><p>基础配置、映射关系和指标展示由总部财经维护，导入与月度业务数据分离</p></div><span class="tag">增量维护 · 保留审计</span></div><div class="permission-callout"><b>权限边界：</b>配置导入先校验匹配键、重复项和口径，不直接替代已发布业务数据。</div><div class="panel" v-if="view === 'configImport'"><div class="config-form"><select v-model="configImportType"><option>SALES_PROJECT_MAPPING</option><option>INVENTORY_MAPPING</option><option>EXPENSE_CATEGORY</option><option>EXPENSE_ALLOCATION</option><option>FX_RATE</option><option>USER_PERMISSION</option></select><input type="file" accept=".xlsx,.xls,.csv" @change="pickConfigFile"><button class="btn primary" @click="uploadConfig">上传配置文件</button></div><div v-if="configImportMessage" class="alert">{{ configImportMessage }}</div><table><thead><tr><th>配置对象</th><th>典型文件/来源</th><th>维护方式</th><th>最近批次</th><th>状态</th></tr></thead><tbody><tr><td>销售项目映射</td><td>销售项目清单-202608.xlsx</td><td>增量导入＋失效维护</td><td>2026-08-31</td><td><span class="status ok">有效</span></td></tr><tr><td>费用分类字典</td><td>2608费用匹配表.xlsx</td><td>每月增量导入</td><td>2026-08-31</td><td><span class="status ok">有效</span></td></tr><tr><td>角色权限名单</td><td>用户角色权限名单</td><td>增量导入＋授权确认</td><td>2026-08-31</td><td><span class="status ok">有效</span></td></tr></tbody></table></div><div class="panel" v-else-if="view === 'mapping'"><div class="config-form"><select v-model="mappingType"><option>SALES_PROJECT</option><option>INVENTORY</option><option>EXPENSE_RULE</option><option>FX_RATE</option></select><input v-model="mappingForm.matchKey" placeholder="匹配键"><input v-model="mappingForm.mappedValue" placeholder="映射值"><button class="btn primary" @click="saveMapping">新增映射</button></div><table><thead><tr><th>映射类型</th><th>匹配条件</th><th>输出归属</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in mappingRows" :key="`${row.type}-${row.matchKey}`"><td>{{ row.type }}</td><td>{{ row.matchKey }}</td><td>{{ row.mappedValue }}</td><td><span :class="['status', row.enabled ? 'ok' : 'gray']">{{ row.enabled ? '有效' : '停用' }}</span></td><td><button v-if="row.enabled" class="link-button" @click="disableMapping(row)">停用</button></td></tr></tbody></table></div><div class="panel" v-else><div class="config-form"><input v-model="metricForm.metricCode" placeholder="指标编码"><input v-model="metricForm.metricName" placeholder="指标名称"><input v-model="metricForm.formulaExpression" placeholder="公式，如 SUM(REVENUE)"><button class="btn primary" @click="saveMetric">保存指标</button></div><div v-if="configMessage" class="alert">{{ configMessage }}</div><table><thead><tr><th>展示</th><th>指标名称</th><th>指标编码</th><th>单位</th><th>适用视角</th><th>状态</th></tr></thead><tbody><tr v-for="row in configMetrics" :key="row.metricCode"><td><input type="checkbox" :checked="row.enabled"></td><td>{{ row.metricName }}</td><td>{{ row.metricCode }}</td><td>{{ row.unit }}</td><td>{{ row.applicablePerspective }}</td><td><span :class="['status', row.enabled ? 'ok' : 'gray']">{{ row.enabled ? '启用' : '停用' }}</span></td></tr></tbody></table></div></section>
+        <section v-else-if="view === 'configImport'" class="view active"><div class="section-head"><div><h2>{{ title }}</h2><p>创建任务、上传文件、校验并应用；每一步都以服务端任务状态为准</p></div><span class="tag">真实接口 · 可追溯</span></div><div class="permission-callout"><b>权限边界：</b>普通配置在校验通过后由服务端应用；用户角色权限文件只做结构校验和任务留存，不会自动生效，仍需管理员授权。</div><div class="panel"><div class="config-form"><select v-model="configImportType"><option>SALES_PROJECT_MAPPING</option><option>INVENTORY_MAPPING</option><option>EXPENSE_CATEGORY</option><option>EXPENSE_ALLOCATION</option><option>FX_RATE</option><option>BASE_GRAIN</option><option>USER_PERMISSION</option><option>METRIC_DEFINITION</option></select><input type="file" accept=".xlsx,.xls,.csv" @change="pickConfigFile"><button class="btn primary" :disabled="configImportBusy" @click="runConfigImport">{{ configImportBusy ? '处理中…' : '创建任务并导入' }}</button><input v-model="configTaskQueryNo" placeholder="输入任务编号查询"><button class="btn" :disabled="configImportBusy" @click="queryConfigImport">查询任务</button></div><div v-if="configImportMessage" class="alert">{{ configImportMessage }}</div><div v-if="configImportTask" class="config-task-summary"><div><small>任务编号</small><b>{{ configImportTask.taskNo }}</b></div><div><small>配置类型</small><b>{{ configImportTask.type }}</b></div><div><small>文件</small><b>{{ configImportTask.fileName }}</b></div><div><small>状态</small><span :class="['status', configStatusClass(configImportTask.status)]">{{ configStatusLabel(configImportTask.status) }}</span></div><div><small>问题数</small><b :class="configIssueRows.length ? 'red' : 'green'">{{ configIssueRows.length }}</b></div></div><div v-if="configImportResult" class="matrix-note">本次服务端返回：{{ configImportResult.rowCount }} 行数据、{{ configImportResult.headers.length }} 个字段标题；状态为{{ configStatusLabel(configImportResult.status) }}。</div></div><div class="panel" style="margin-top:15px"><div class="panel-title">问题明细 <small>{{ configImportTask ? `任务 ${configImportTask.taskNo}` : '提交或查询任务后显示' }}</small></div><div v-if="configIssueRows.length" class="table-scroll"><table><thead><tr><th>行号</th><th>字段</th><th>错误编码</th><th>错误说明</th><th>原始值</th></tr></thead><tbody><tr v-for="(issue, index) in configIssueRows" :key="`${issue.issueCode}-${issue.rowNo}-${index}`"><td>{{ issue.rowNo || '—' }}</td><td>{{ issue.fieldName || '—' }}</td><td class="red">{{ issue.issueCode }}</td><td>{{ issue.issueMessage }}</td><td>{{ issue.rawValue || '—' }}</td></tr></tbody></table></div><p v-else class="muted">{{ configImportTask ? '当前任务没有问题明细。' : '暂无任务问题明细。' }}</p></div></section>
+        <section v-else-if="view === 'mapping' || view === 'metrics'" class="view active"><div class="section-head"><div><h2>{{ title }}</h2><p>基础配置、映射关系和指标展示由总部财经维护，导入与月度业务数据分离</p></div><span class="tag">增量维护 · 保留审计</span></div><div class="permission-callout"><b>权限边界：</b>配置导入先校验匹配键、重复项和口径，不直接替代已发布业务数据。</div><div class="panel" v-if="view === 'mapping'"><div class="config-form"><select v-model="mappingType"><option>SALES_PROJECT</option><option>INVENTORY</option><option>EXPENSE_RULE</option><option>FX_RATE</option></select><input v-model="mappingForm.matchKey" placeholder="匹配键"><input v-model="mappingForm.mappedValue" placeholder="映射值"><button class="btn primary" @click="saveMapping">新增映射</button></div><table><thead><tr><th>映射类型</th><th>匹配条件</th><th>输出归属</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in mappingRows" :key="`${row.type}-${row.matchKey}`"><td>{{ row.type }}</td><td>{{ row.matchKey }}</td><td>{{ row.mappedValue }}</td><td><span :class="['status', row.enabled ? 'ok' : 'gray']">{{ row.enabled ? '有效' : '停用' }}</span></td><td><button v-if="row.enabled" class="link-button" @click="disableMapping(row)">停用</button></td></tr></tbody></table></div><div class="panel" v-else><div class="config-form"><input v-model="metricForm.metricCode" placeholder="指标编码"><input v-model="metricForm.metricName" placeholder="指标名称"><input v-model="metricForm.formulaExpression" placeholder="公式，如 SUM(REVENUE)"><button class="btn primary" @click="saveMetric">保存指标</button></div><div v-if="configMessage" class="alert">{{ configMessage }}</div><table><thead><tr><th>展示</th><th>指标名称</th><th>指标编码</th><th>单位</th><th>适用视角</th><th>状态</th></tr></thead><tbody><tr v-for="row in configMetrics" :key="row.metricCode"><td><input type="checkbox" :checked="row.enabled"></td><td>{{ row.metricName }}</td><td>{{ row.metricCode }}</td><td>{{ row.unit }}</td><td>{{ row.applicablePerspective }}</td><td><span :class="['status', row.enabled ? 'ok' : 'gray']">{{ row.enabled ? '启用' : '停用' }}</span></td></tr></tbody></table></div></section>
         <section v-else-if="view === 'users' || view === 'menus' || view === 'audit'" class="view active"><div class="section-head"><div><h2>{{ title }}</h2><p>维护平台权限、菜单顺序并保留导入、修正、计算、发布、AI生成的追溯信息</p></div><span class="tag">不可篡改审计链</span></div><div class="panel" v-if="view === 'users'"><table><thead><tr><th>姓名</th><th>工号</th><th>用户角色</th><th>数据视角</th><th>可查看范围</th><th>状态</th></tr></thead><tbody><tr><td>演示用户A</td><td>DEMO001</td><td>总部财经</td><td>全部</td><td>全部基地、产品线、事业部</td><td><span class="status ok">有效</span></td></tr><tr><td>演示用户B</td><td>DEMO002</td><td>基地财经</td><td>基地</td><td>南昌基地、宜昌基地</td><td><span class="status ok">有效</span></td></tr><tr><td>演示用户C</td><td>DEMO003</td><td>基地巴长</td><td>基地</td><td>泰国基地</td><td><span class="status ok">有效</span></td></tr></tbody></table></div><div class="panel" v-else-if="view === 'menus'"><table><thead><tr><th>菜单名称</th><th>菜单编码</th><th>分组</th><th>当前顺序</th><th>状态</th></tr></thead><tbody><tr v-for="(group,index) in navGroups.flatMap(g => g.items)" :key="group[0]"><td>{{ group[1] }}</td><td>{{ String(group[0]).toUpperCase() }}</td><td>{{ index < 7 ? '平台功能' : index < 13 ? 'V1.3分析' : '配置与追溯' }}</td><td>{{ index + 1 }}</td><td><span class="status ok">启用</span></td></tr></tbody></table></div><div class="panel" v-else><table><thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>对象</th><th>结果</th></tr></thead><tbody><tr><td>2026-09-17 09:12</td><td>总部财经</td><td>导入数据</td><td>收入成本明细_202608.xlsx</td><td><span class="status ok">成功</span></td></tr><tr><td>2026-09-17 09:25</td><td>总部财经</td><td>忽略未匹配</td><td>批次 202608-01 · 26条</td><td><span class="status warn">已留痕</span></td></tr><tr><td>2026-09-17 09:36</td><td>总部财经</td><td>开始计算</td><td>批次 202608-01</td><td><span class="status ok">成功</span></td></tr><tr><td>2026-09-17 09:41</td><td>总部财经</td><td>生成AI草稿</td><td>批次 202608-01</td><td><span class="status gray">待确认</span></td></tr></tbody></table></div></section></main></div><div v-if="toastMessage" class="toast show">{{ toastMessage }}</div></div>
+  <Teleport to="body">
+    <div v-if="view === 'result'" style="position:fixed;right:24px;bottom:24px;z-index:30;display:flex;gap:8px;align-items:center;padding:10px 12px;background:#fff;border:1px solid #e6e9ed;border-radius:8px;box-shadow:0 4px 18px #202d3a22">
+      <span class="muted">结果状态：{{ calculationStatus || '待计算' }}</span>
+      <button class="btn" :disabled="calculationBusy || calculationStatus !== 'CALCULATED'" @click="confirmCalculation">确认结果</button>
+      <button class="btn primary" :disabled="calculationBusy || calculationStatus !== 'CONFIRMED'" @click="publishCalculation">发布结果</button>
+    </div>
+    <div v-if="view === 'ai' && aiDraft" style="position:fixed;right:24px;bottom:24px;z-index:30;display:flex;gap:8px;align-items:center;padding:10px 12px;background:#fff;border:1px solid #e6e9ed;border-radius:8px;box-shadow:0 4px 18px #202d3a22">
+      <span class="muted">AI状态：{{ aiDraft.status }}</span>
+      <button class="btn primary" :disabled="aiDraft.status !== 'DRAFT'" @click="publishAiDraft">确认并发布AI分析</button>
+    </div>
+  </Teleport>
 </template>
 
 <style>
