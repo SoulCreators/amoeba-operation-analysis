@@ -52,6 +52,16 @@ public final class ExportJob {
                 ExportJobStatus.QUEUED, null);
     }
 
+    /** Rehydrates a task without recomputing persisted lifecycle timestamps. */
+    public static ExportJob restore(String jobId, String userId, String requestKey,
+                                    String fileName, String contentType,
+                                    LocalDateTime createdAt, LocalDateTime updatedAt,
+                                    LocalDateTime finishedAt, LocalDateTime expiresAt,
+                                    ExportJobStatus status, String errorMessage) {
+        return new ExportJob(jobId, userId, requestKey, fileName, contentType,
+                createdAt, updatedAt, finishedAt, expiresAt, status, errorMessage);
+    }
+
     public ExportJob running(LocalDateTime at) {
         return copy(ExportJobStatus.RUNNING, null, at, null);
     }
