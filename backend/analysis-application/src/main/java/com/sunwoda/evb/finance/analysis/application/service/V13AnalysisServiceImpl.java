@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** V1.3 经营分析服务实现。 */
 @Service
@@ -51,20 +52,28 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
     private final PnlFactDetailProvider detailProvider;
     private final FcVersionProvider fcVersionProvider;
     private final FcSnapshotProvider fcSnapshotProvider;
+    private final PermissionService permissionService;
 
     public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService) {
-        this(calculationService, pvmService, null, null, null);
+        this(calculationService, pvmService, null, null, null, null);
+    }
+
+    public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService,
+                                  PnlFactDetailProvider detailProvider, FcVersionProvider fcVersionProvider,
+                                  FcSnapshotProvider fcSnapshotProvider) {
+        this(calculationService, pvmService, detailProvider, fcVersionProvider, fcSnapshotProvider, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public V13AnalysisServiceImpl(CalculationService calculationService, PvmService pvmService,
                                   PnlFactDetailProvider detailProvider, FcVersionProvider fcVersionProvider,
-                                  FcSnapshotProvider fcSnapshotProvider) {
+                                  FcSnapshotProvider fcSnapshotProvider, PermissionService permissionService) {
         this.calculationService = calculationService;
         this.pvmService = pvmService;
         this.detailProvider = detailProvider;
         this.fcVersionProvider = fcVersionProvider;
         this.fcSnapshotProvider = fcSnapshotProvider;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -93,7 +102,7 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         Map<String, Object> response = baseResponse(batchNo, calculation, "ACT_BGT");
         List<PnlFact> detailFacts = calculation.getFacts();
         if ((detailFacts == null || detailFacts.isEmpty()) && detailProvider != null) {
-            detailFacts = detailProvider.findForUser(batchNo, calculation.getPerspective(), userId);
+            detailFacts = loadAuthorizedDetails(batchNo, calculation, userId);
         }
         if (calculation.getPerspective() == com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective.BUSINESS_UNIT
                 && hasMatrixDimensions(detailFacts)) {
@@ -199,7 +208,7 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
         Map<String, Object> response = baseResponse(batchNo, calculation, "ACT_BGT");
         List<PnlFact> facts = calculation.getFacts();
         if ((facts == null || facts.isEmpty()) && detailProvider != null) {
-            facts = detailProvider.findForUser(batchNo, calculation.getPerspective(), userId);
+            facts = loadAuthorizedDetails(batchNo, calculation, userId);
         }
         if (facts == null || facts.isEmpty()) {
             response.put("status", STATUS_PENDING_DEFINITION);
@@ -272,6 +281,24 @@ public class V13AnalysisServiceImpl implements V13AnalysisService {
             response.put("notes", Collections.singletonList("补齐线体、实际/预算 Wh 后再进入技术计算；业务口径确认后才能发布正式数值"));
         }
         return response;
+    }
+
+    private List<PnlFact> loadAuthorizedDetails(String batchNo, CalculationResult calculation, String userId) {
+        if (permissionService == null) return Collections.emptyList();
+        Set<String> detailScopes = permissionService.detailScopes(userId, calculation.getPerspective());
+        if (detailScopes.isEmpty()) return Collections.emptyList();
+        List<PnlFact> candidates = detailProvider.findForUser(batchNo, calculation.getPerspective(), userId);
+        List<PnlFact> authorized = new ArrayList<PnlFact>();
+        for (PnlFact fact : candidates) {
+            if (containsScope(detailScopes, fact.getScopeCode())) authorized.add(fact);
+        }
+        return authorized;
+    }
+
+    private boolean containsScope(Set<String> scopes, String scopeCode) {
+        if (scopeCode == null) return false;
+        String normalized = scopeCode.trim().toUpperCase(java.util.Locale.ROOT);
+        return scopes.contains("ALL") || scopes.contains(normalized);
     }
 
     private List<String> unique(List<String> values) {

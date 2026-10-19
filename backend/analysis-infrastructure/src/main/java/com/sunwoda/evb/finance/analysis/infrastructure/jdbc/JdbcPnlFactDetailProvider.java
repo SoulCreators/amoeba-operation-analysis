@@ -35,6 +35,7 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 + "WHERE b.batch_no = ? AND f.perspective = ? "
                 + "AND EXISTS (SELECT 1 FROM iam.user_scope s "
                 + "WHERE s.user_id = ? AND s.perspective = f.perspective AND s.enabled = TRUE "
+                + "AND s.can_view_detail = TRUE "
                 + "AND (s.scope_code = 'ALL' OR s.scope_code = f.scope_code)) "
                 + "ORDER BY f.scope_code, f.base_code, f.product_code, f.line_code, f.id";
         return jdbc.query(sql, (rs, row) -> new PnlFact(

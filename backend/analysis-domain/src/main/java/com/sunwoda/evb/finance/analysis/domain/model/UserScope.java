@@ -35,4 +35,26 @@ public class UserScope {
     public boolean isCanExport() { return canExport; }
     public boolean isCanEditConfig() { return canEditConfig; }
     public boolean isEnabled() { return enabled; }
+
+    public boolean matchesScope(String requestedScope) {
+        return requestedScope != null && !requestedScope.trim().isEmpty()
+                && ("ALL".equalsIgnoreCase(scopeCode)
+                || scopeCode.equalsIgnoreCase(requestedScope.trim()));
+    }
+
+    public boolean allows(PermissionAction action) {
+        if (!enabled || action == null) return false;
+        switch (action) {
+            case VIEW_SCOPE:
+                return true;
+            case VIEW_DETAIL:
+                return canViewDetail;
+            case EXPORT:
+                return canExport;
+            case EDIT_CONFIG:
+                return canEditConfig;
+            default:
+                return false;
+        }
+    }
 }

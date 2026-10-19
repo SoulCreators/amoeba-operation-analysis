@@ -18,34 +18,39 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.HashSet;
+import java.util.Set;
 
 @Service
 public class CalculationServiceImpl implements CalculationService {
     private final AnalysisBatchRepository batchRepository;
     private final PnlFactProvider factProvider;
-    private final UserScopeRepository userScopeRepository;
+    private final PermissionService permissionService;
     private final Map<String, CalculationResult> results = new LinkedHashMap<String, CalculationResult>();
     private final CalculationResultRepository resultRepository;
 
     @Autowired
     public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
-                                  UserScopeRepository userScopeRepository,
+                                  PermissionService permissionService,
                                   CalculationResultRepository resultRepository) {
         this.batchRepository = batchRepository;
         this.factProvider = factProvider;
-        this.userScopeRepository = userScopeRepository;
+        this.permissionService = permissionService;
         this.resultRepository = resultRepository;
+    }
+
+    /** 保留原有基于 UserScopeRepository 的应用层构造调用。 */
+    public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
+                                  UserScopeRepository userScopeRepository,
+                                  CalculationResultRepository resultRepository) {
+        this(batchRepository, factProvider, new PermissionServiceImpl(userScopeRepository), resultRepository);
     }
 
     /** 保留给领域单元测试和无Spring场景的轻量构造器。 */
     public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
                                   UserScopeRepository userScopeRepository) {
-        this.batchRepository = batchRepository;
-        this.factProvider = factProvider;
-        this.userScopeRepository = userScopeRepository;
-        this.resultRepository = null;
+        this(batchRepository, factProvider, new PermissionServiceImpl(userScopeRepository), null);
     }
 
     @Override
@@ -103,19 +108,35 @@ public class CalculationServiceImpl implements CalculationService {
     public synchronized CalculationResult getForUser(String batchNo, String userId) {
         if (userId == null || userId.trim().isEmpty()) throw new IllegalArgumentException("用户工号不能为空");
         CalculationResult result = get(batchNo);
-        java.util.List<com.sunwoda.evb.finance.analysis.domain.model.UserScope> scopes =
-                userScopeRepository.findByUserAndPerspective(userId.trim(), result.getPerspective());
-        java.util.Set<String> allowed = new HashSet<String>();
-        boolean canReviewDraft = false;
-        for (com.sunwoda.evb.finance.analysis.domain.model.UserScope scope : scopes) {
-            allowed.add(scope.getScopeCode());
-            String role = scope.getRoleCode().toUpperCase(java.util.Locale.ROOT);
-            canReviewDraft = canReviewDraft || role.contains("FINANCE") || role.contains("ADMIN");
+        String normalizedUser = userId.trim();
+        if (!permissionService.canViewResult(normalizedUser, result.getPerspective(), result.getStatus())) {
+            if (result.getStatus() != CalculationResultStatus.PUBLISHED) {
+                throw new IllegalStateException("当前结果尚未发布，仅财经角色可查看草稿");
+            }
+            throw new IllegalStateException("当前用户无结果查看权限");
         }
-        if (result.getStatus() != CalculationResultStatus.PUBLISHED && !canReviewDraft) {
-            throw new IllegalStateException("当前结果尚未发布，仅财经角色可查看草稿");
+        Set<String> allowed = permissionService.viewableScopes(normalizedUser, result.getPerspective());
+        Set<String> detailScopes = permissionService.detailScopes(normalizedUser, result.getPerspective());
+        List<PnlResult> visibleResults = new ArrayList<PnlResult>();
+        for (PnlResult pnl : result.getResults()) {
+            if (containsScope(allowed, pnl.getScopeCode())) visibleResults.add(pnl);
         }
-        return result.filterScopes(allowed);
+        List<PnlFact> visibleFacts = new ArrayList<PnlFact>();
+        for (PnlFact fact : result.getFacts()) {
+            if (containsScope(detailScopes, fact.getScopeCode())) visibleFacts.add(fact);
+        }
+        if (visibleResults.isEmpty() && !result.getResults().isEmpty()) {
+            throw new IllegalStateException("当前用户无结果范围查看权限");
+        }
+        return new CalculationResult(result.getBatchNo(), result.getPerspective(), visibleResults,
+                result.getVersionNo(), result.getStatus(), result.getConfirmedBy(), result.getPublishedBy(),
+                result.getCalculatedAt(), result.getConfirmedAt(), result.getPublishedAt(), visibleFacts);
+    }
+
+    private boolean containsScope(Set<String> allowedScopes, String scopeCode) {
+        if (allowedScopes == null || allowedScopes.isEmpty() || scopeCode == null) return false;
+        String normalized = scopeCode.trim().toUpperCase(Locale.ROOT);
+        return allowedScopes.contains("ALL") || allowedScopes.contains(normalized);
     }
 
     @Override
