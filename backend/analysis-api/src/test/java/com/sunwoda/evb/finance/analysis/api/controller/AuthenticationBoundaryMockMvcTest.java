@@ -77,4 +77,24 @@ class AuthenticationBoundaryMockMvcTest {
 
         verifyNoInteractions(exportService);
     }
+
+    @Test
+    void anonymousExportStatusRequestReturnsHandledAuthenticationFailure() throws Exception {
+        exportMockMvc.perform(get("/api/v1/exports/TASK-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(exportService);
+    }
+
+    @Test
+    void anonymousExportDownloadRequestReturnsHandledAuthenticationFailure() throws Exception {
+        exportMockMvc.perform(get("/api/v1/exports/TASK-001/download"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(exportService);
+    }
 }
