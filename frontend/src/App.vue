@@ -9,7 +9,7 @@ const period = ref('2026-08')
 const batchNo = ref('BATCH-202608-BASE-001')
 const perspective = ref<Perspective>('BASE')
 const scope = ref('ALL')
-const currentUser = ref(localStorage.getItem('amoeba.user') || 'demo-finance')
+const currentUser = ref(localStorage.getItem('amoeba.user') || 'local-finance')
 const source = ref<'api' | 'demo'>('demo')
 const loading = ref(false)
 const error = ref('')
@@ -87,7 +87,7 @@ function v13MatrixPair(row: typeof v13MatrixRows[number]) { const key = matrixMe
 function v13MatrixCell(rows: typeof v13MatrixRows) { const pairs = rows.map(v13MatrixPair); const current = pairs.reduce((sum, pair) => sum + pair[0], 0); const base = pairs.reduce((sum, pair) => sum + pair[1], 0); return { current, gap: current - base } }
 function printRisk() { window.print() }
 
-function setUser() { localStorage.setItem('amoeba.user', currentUser.value.trim() || 'demo-finance'); currentUser.value = localStorage.getItem('amoeba.user') || 'demo-finance' }
+function setUser() { localStorage.setItem('amoeba.user', currentUser.value.trim() || 'local-finance'); currentUser.value = localStorage.getItem('amoeba.user') || 'local-finance' }
 function loadDemo() { source.value = 'demo'; metrics.value = demoMetrics; results.value = demoResults; pvmRows.value = demoPvm; treeRows.value = demoMetrics; aiDraft.value = { ...demoAi, batchNo: batchNo.value }; readiness.value = { batchNo: batchNo.value, perspective: perspective.value, readyForCalculation: true, datasets: [{ datasetCode: 'INC_COST', datasetName: '收入成本明细', required: true, present: true, status: 'VALID', issueCount: 0 }, { datasetCode: 'BUDGET', datasetName: '年度预算收入成本', required: true, present: true, status: 'VALID', issueCount: 0 }] }; quality.value = { batchNo: batchNo.value, perspective: perspective.value, status: 'READY', totalDatasetCount: 2, requiredDatasetCount: 2, presentRequiredDatasetCount: 2, validRequiredDatasetCount: 2, issueCount: 0, missingDatasetCodes: [], invalidDatasetCodes: [], datasets: readiness.value.datasets }; datasets.value = [{ code: 'BASE_ACT_INC_COST', name: '基地实际收入成本明细', required: true, fields: [] }, { code: 'BASE_BUD_INC_COST', name: '基地年度预算收入成本', required: true, fields: [] }]; configMetrics.value = demoMetrics.map((m, i) => ({ metricCode: m.code, metricName: m.name, applicablePerspective: 'ALL', unit: m.code.includes('RATE') ? '%' : 'CNY', formulaExpression: `SUM(${m.code})`, displayOrder: (i + 1) * 10, enabled: true, aiSummaryTemplate: m.aiSummary })); mappingRows.value = [{ type: 'SALES_PROJECT', matchKey: '项目A', mappedValue: '产品线一', enabled: true }, { type: 'SALES_PROJECT', matchKey: '项目B', mappedValue: '产品线二', enabled: true }] }
 async function load() {
   loading.value = true; error.value = ''

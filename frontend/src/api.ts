@@ -2,6 +2,12 @@ import axios from 'axios'
 
 export type Perspective = 'BASE' | 'PRODUCT_LINE' | 'BUSINESS_UNIT'
 
+const DEFAULT_LOCAL_USER = 'local-finance'
+function normalizeUserId(value?: string | null) {
+  const userId = value?.trim()
+  return !userId || userId === 'demo-finance' ? DEFAULT_LOCAL_USER : userId
+}
+
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 15000,
@@ -9,7 +15,7 @@ const http = axios.create({
 
 http.interceptors.request.use((config) => {
   config.headers = config.headers || {}
-  config.headers['X-User-Id'] = localStorage.getItem('amoeba.user') || 'demo-finance'
+  config.headers['X-User-Id'] = normalizeUserId(localStorage.getItem('amoeba.user'))
   return config
 })
 
