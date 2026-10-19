@@ -22,6 +22,7 @@ class BatchServiceImplTest {
                 AnalysisPerspective.BASE, "finance");
         assertEquals(BatchStatus.DRAFT, created.getStatus());
 
+        service.move("B20260801", BatchStatus.CHECKING);
         AnalysisBatch moved = service.move("B20260801", BatchStatus.READY_FOR_CALCULATION);
         assertEquals(BatchStatus.READY_FOR_CALCULATION, moved.getStatus());
     }

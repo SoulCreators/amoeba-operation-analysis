@@ -26,10 +26,8 @@ public class AnalysisBatch {
     }
 
     public void moveTo(BatchStatus next) {
-        if (next == null) throw new IllegalArgumentException("批次状态不能为空");
-        if (status == BatchStatus.PUBLISHED && next != BatchStatus.PUBLISHED) {
-            throw new IllegalStateException("已发布批次不可直接修改状态");
-        }
+        BatchLifecyclePolicy.validate(status, next);
+        if (status == next) return;
         this.status = next;
         this.updatedAt = LocalDateTime.now();
     }
