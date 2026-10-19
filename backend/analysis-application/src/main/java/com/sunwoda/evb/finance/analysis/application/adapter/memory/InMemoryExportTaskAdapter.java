@@ -82,6 +82,9 @@ public class InMemoryExportTaskAdapter implements ExportTaskPort, ExportFileStor
         if (job.getStatus() != ExportJobStatus.QUEUED) {
             throw new IllegalStateException("导出任务不可开始: " + jobId);
         }
+        if (job.isExpired(LocalDateTime.now())) {
+            throw new IllegalStateException("导出任务已过期: " + jobId);
+        }
         jobs.put(jobId, job.running(LocalDateTime.now()));
     }
 
@@ -92,6 +95,9 @@ public class InMemoryExportTaskAdapter implements ExportTaskPort, ExportFileStor
         if (job.getStatus() != ExportJobStatus.QUEUED
                 && job.getStatus() != ExportJobStatus.RUNNING) {
             throw new IllegalStateException("导出任务不可完成: " + jobId);
+        }
+        if (job.isExpired(LocalDateTime.now())) {
+            throw new IllegalStateException("导出任务已过期: " + jobId);
         }
         String normalizedName = required(fileName, "fileName");
         String normalizedType = defaultContentType(contentType);
@@ -131,6 +137,16 @@ public class InMemoryExportTaskAdapter implements ExportTaskPort, ExportFileStor
             return Optional.empty();
         }
         return Optional.of(file.file);
+    }
+
+    @Override
+    public synchronized void delete(String fileKey, String userId) {
+        if (isBlank(fileKey) || isBlank(userId)) return;
+        String key = fileKey.trim();
+        StoredFile file = files.get(key);
+        if (file != null && file.ownerUserId.equals(userId.trim())) {
+            files.remove(key, file);
+        }
     }
 
     private ExportJob findOwnedJob(String jobId, String userId) {

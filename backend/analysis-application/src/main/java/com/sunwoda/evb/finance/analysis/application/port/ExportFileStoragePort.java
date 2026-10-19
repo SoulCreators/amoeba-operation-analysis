@@ -14,4 +14,14 @@ public interface ExportFileStoragePort {
               String contentType, byte[] content);
 
     Optional<ExportFile> open(String fileKey, String userId);
+
+    /**
+     * Deletes a file only within the supplied user's storage scope.
+     *
+     * <p>The default fails closed so existing storage adapters remain source
+     * compatible until they explicitly implement deletion.</p>
+     */
+    default void delete(String fileKey, String userId) {
+        throw new UnsupportedOperationException("导出文件存储适配器未实现删除");
+    }
 }

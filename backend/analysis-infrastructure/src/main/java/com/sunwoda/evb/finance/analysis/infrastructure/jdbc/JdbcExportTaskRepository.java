@@ -55,18 +55,24 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
                     + "WHERE job_id = ? AND user_id = ?";
 
     private static final String EXPIRE_SQL =
-            "UPDATE flow.export_task SET status = 'EXPIRED', updated_at = ? "
+            "UPDATE flow.export_task SET status = 'EXPIRED', "
+                    + "cleanup_status = CASE WHEN status = 'SUCCEEDED' "
+                    + "THEN 'PENDING' ELSE cleanup_status END, "
+                    + "cleanup_next_attempt_at = CASE WHEN status = 'SUCCEEDED' "
+                    + "THEN ? ELSE cleanup_next_attempt_at END, updated_at = ? "
                     + "WHERE job_id = ? AND user_id = ? AND status <> 'EXPIRED' "
                     + "AND expires_at <= ?";
 
     private static final String MARK_RUNNING_SQL =
             "UPDATE flow.export_task SET status = 'RUNNING', updated_at = ? "
-                    + "WHERE job_id = ? AND status = 'QUEUED'";
+                    + "WHERE job_id = ? AND status = 'QUEUED' AND expires_at > ?";
 
     private static final String COMPLETE_SQL =
             "UPDATE flow.export_task SET file_name = ?, content_type = ?, "
-                    + "status = 'SUCCEEDED', finished_at = ?, updated_at = ?, error_message = NULL "
-                    + "WHERE job_id = ? AND status IN ('QUEUED', 'RUNNING')";
+                    + "status = 'SUCCEEDED', finished_at = ?, updated_at = ?, "
+                    + "expires_at = ?, error_message = NULL "
+                    + "WHERE job_id = ? AND status IN ('QUEUED', 'RUNNING') "
+                    + "AND expires_at > ?";
 
     private static final String FAIL_SQL =
             "UPDATE flow.export_task SET status = 'FAILED', error_message = ?, "
@@ -168,7 +174,7 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
     public void markRunning(String jobId) {
         String key = required(jobId, "jobId");
         LocalDateTime now = LocalDateTime.now();
-        if (jdbc.update(MARK_RUNNING_SQL, timestamp(now), key) > 0) {
+        if (jdbc.update(MARK_RUNNING_SQL, timestamp(now), key, timestamp(now)) > 0) {
             return;
         }
 
@@ -188,6 +194,7 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
         String normalizedName = required(fileName, "fileName");
         String normalizedType = defaultContentType(contentType);
         requireContent(content);
+        LocalDateTime now = LocalDateTime.now();
 
         if (fileStorage != null) {
             ExportJob existing = findById(key);
@@ -198,6 +205,9 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
                     && existing.getStatus() != ExportJobStatus.RUNNING) {
                 throw new IllegalStateException("导出任务不可完成: " + key);
             }
+            if (existing.isExpired(now)) {
+                throw new IllegalStateException("导出任务已过期: " + key);
+            }
 
             // Persist bytes before publishing SUCCEEDED.  If the database
             // transition is rejected, the file remains unreachable because
@@ -206,10 +216,8 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
                     normalizedType, content);
         }
 
-        LocalDateTime now = LocalDateTime.now();
-
         if (jdbc.update(COMPLETE_SQL, normalizedName, normalizedType, timestamp(now),
-                timestamp(now), key) > 0) {
+                timestamp(now), timestamp(now.plusHours(24)), key, timestamp(now)) > 0) {
             return;
         }
 
@@ -255,7 +263,7 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
             return job;
         }
 
-        int updated = jdbc.update(EXPIRE_SQL, timestamp(now), job.getJobId(),
+        int updated = jdbc.update(EXPIRE_SQL, timestamp(now), timestamp(now), job.getJobId(),
                 job.getUserId(), timestamp(now));
         if (updated > 0) {
             return job.expired(now);

@@ -35,7 +35,8 @@ class JdbcExportTaskRepositoryFileStorageTest {
 
         when(jdbc.query(anyString(), any(RowMapper.class), eq(JOB_ID)))
                 .thenReturn(Collections.singletonList(queued));
-        when(jdbc.update(anyString(), eq("result.csv"), eq("text/csv"), any(), any(), eq(JOB_ID)))
+        when(jdbc.update(anyString(), eq("result.csv"), eq("text/csv"), any(), any(), any(),
+                eq(JOB_ID), any()))
                 .thenReturn(1);
 
         JdbcExportTaskRepository repository = new JdbcExportTaskRepository(jdbc, storage);

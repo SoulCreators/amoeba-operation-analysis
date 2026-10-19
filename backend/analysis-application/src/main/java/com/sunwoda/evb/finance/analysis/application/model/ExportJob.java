@@ -69,7 +69,8 @@ public final class ExportJob {
     public ExportJob succeeded(String completedFileName, String completedContentType,
                                LocalDateTime at) {
         return new ExportJob(jobId, userId, requestKey,
-                completedFileName, completedContentType, createdAt, at, at, expiresAt,
+                completedFileName, completedContentType, createdAt, at, at,
+                at.plusHours(24),
                 ExportJobStatus.SUCCEEDED, null);
     }
 

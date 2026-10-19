@@ -2,9 +2,14 @@ spring:
   application:
     name: amoeba-analysis-worker
 
+analysis:
+  worker:
+    cleanup:
+      worker-id: ${ANALYSIS_WORKER_ID:analysis-worker}
+      batch-size: ${ANALYSIS_WORKER_CLEANUP_BATCH_SIZE:100}
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics
-

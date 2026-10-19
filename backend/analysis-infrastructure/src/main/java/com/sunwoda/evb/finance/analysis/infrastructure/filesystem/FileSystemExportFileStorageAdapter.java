@@ -128,6 +128,37 @@ public final class FileSystemExportFileStorageAdapter implements ExportFileStora
         }
     }
 
+    /**
+     * Deletes one export file in the supplied user's namespace.
+     *
+     * <p>The operation is idempotent: a missing user directory or file is
+     * treated as already deleted. A file belonging to another user resolves
+     * to that user's namespace and is therefore not affected.</p>
+     */
+    @Override
+    public void delete(String fileKey, String userId) {
+        String key = required(fileKey, "fileKey");
+        String owner = required(userId, "userId");
+        Path target = resolveStoragePath(key, owner);
+        try {
+            rejectUserDirectorySymlink(target.getParent());
+            if (!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                return;
+            }
+            ensureExistingFileIsInRoot(target);
+            rejectExistingSymlink(target);
+            if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("导出文件目标不是普通文件");
+            }
+            Files.deleteIfExists(target);
+        } catch (NoSuchFileException ex) {
+            // The target or its user directory disappeared concurrently.
+            // Deletion remains idempotently successful.
+        } catch (IOException ex) {
+            throw new IllegalStateException("导出文件删除失败: " + key, ex);
+        }
+    }
+
     private Path resolveStoragePath(String fileKey, String userId) {
         Path userRoot = root.resolve(userScope(userId)).normalize();
         if (fileKey.indexOf('/') >= 0 || fileKey.indexOf('\\') >= 0) {
