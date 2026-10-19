@@ -43,12 +43,10 @@ public class JdbcImportTaskRepository implements ImportTaskRepository {
     @Override
     public Optional<ImportTask> findByTaskNo(String taskNo) {
         return jdbc.query("SELECT t.id, t.task_no, b.batch_no, t.dataset_code, t.file_name, t.checksum, "
-                        + "t.status, t.issue_count, t.created_by, t.created_at FROM flow.import_task t "
+                        + "t.status, t.issue_count, t.created_by, t.created_at, t.updated_at FROM flow.import_task t "
                         + "JOIN meta.analysis_batch b ON b.id = t.batch_id WHERE t.task_no = ?", rs -> {
                     if (!rs.next()) return Optional.<ImportTask>empty();
-                    ImportTask task = task(rs);
-                    task.moveTo(ImportStatus.valueOf(rs.getString("status")), rs.getInt("issue_count"));
-                    return Optional.of(task);
+                    return Optional.of(task(rs));
                 }, taskNo);
     }
 
@@ -63,27 +61,25 @@ public class JdbcImportTaskRepository implements ImportTaskRepository {
     @Override
     public List<ImportTask> findByBatchNo(String batchNo) {
         List<ImportTask> result = jdbc.query("SELECT t.id, t.task_no, b.batch_no, t.dataset_code, t.file_name, t.checksum, "
-                        + "t.status, t.issue_count, t.created_by, t.created_at FROM flow.import_task t "
+                        + "t.status, t.issue_count, t.created_by, t.created_at, t.updated_at FROM flow.import_task t "
                         + "JOIN meta.analysis_batch b ON b.id = t.batch_id WHERE b.batch_no = ? ORDER BY t.id",
-                (rs, row) -> {
-                    ImportTask task = task(rs);
-                    task.moveTo(ImportStatus.valueOf(rs.getString("status")), rs.getInt("issue_count"));
-                    return task;
-                }, batchNo);
+                (rs, row) -> task(rs), batchNo);
         return Collections.unmodifiableList(new ArrayList<ImportTask>(result));
     }
 
     private ImportTask task(java.sql.ResultSet rs) throws java.sql.SQLException {
         Timestamp created = rs.getTimestamp("created_at");
-        return new ImportTask(rs.getLong("id"), rs.getString("task_no"), rs.getString("batch_no"),
+        Timestamp updated = rs.getTimestamp("updated_at");
+        LocalDateTime createdAt = created == null ? LocalDateTime.now() : created.toLocalDateTime();
+        return ImportTask.restore(rs.getLong("id"), rs.getString("task_no"), rs.getString("batch_no"),
                 rs.getString("dataset_code"), rs.getString("file_name"), rs.getString("checksum"),
-                rs.getString("created_by"), created == null ? LocalDateTime.now() : created.toLocalDateTime());
+                rs.getString("created_by"), createdAt, ImportStatus.valueOf(rs.getString("status")),
+                rs.getInt("issue_count"), updated == null ? createdAt : updated.toLocalDateTime());
     }
 
     private ImportTask copyWithId(ImportTask task, Long id) {
-        ImportTask copy = new ImportTask(id, task.getTaskNo(), task.getBatchNo(), task.getDatasetCode(),
-                task.getFileName(), task.getChecksum(), task.getCreatedBy(), task.getCreatedAt());
-        copy.moveTo(task.getStatus(), task.getIssueCount());
-        return copy;
+        return ImportTask.restore(id, task.getTaskNo(), task.getBatchNo(), task.getDatasetCode(),
+                task.getFileName(), task.getChecksum(), task.getCreatedBy(), task.getCreatedAt(),
+                task.getStatus(), task.getIssueCount(), task.getUpdatedAt());
     }
 }

@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
+import com.sunwoda.evb.finance.analysis.domain.model.BatchReadiness;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import org.springframework.stereotype.Service;
@@ -11,9 +12,11 @@ import java.time.LocalDateTime;
 @Service
 public class BatchServiceImpl implements BatchService {
     private final AnalysisBatchRepository repository;
+    private final BatchReadinessService readinessService;
 
-    public BatchServiceImpl(AnalysisBatchRepository repository) {
+    public BatchServiceImpl(AnalysisBatchRepository repository, BatchReadinessService readinessService) {
         this.repository = repository;
+        this.readinessService = readinessService;
     }
 
     @Override
@@ -40,8 +43,21 @@ public class BatchServiceImpl implements BatchService {
     @Override
     public AnalysisBatch move(String batchNo, BatchStatus status) {
         AnalysisBatch batch = get(batchNo);
+        ensureReadyForCalculation(batch, status);
         batch.moveTo(status);
         return repository.save(batch);
+    }
+
+    private void ensureReadyForCalculation(AnalysisBatch batch, BatchStatus nextStatus) {
+        if (batch.getStatus() != BatchStatus.CHECKING
+                || nextStatus != BatchStatus.READY_FOR_CALCULATION) {
+            return;
+        }
+        BatchReadiness readiness = readinessService.get(batch.getBatchNo());
+        if (readiness == null || !readiness.isReadyForCalculation()) {
+            throw new IllegalStateException("批次完整性未通过，无法进入 READY_FOR_CALCULATION: "
+                    + batch.getBatchNo());
+        }
     }
 
     private boolean isBlank(String value) {

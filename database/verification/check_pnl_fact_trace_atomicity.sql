@@ -71,7 +71,7 @@ WITH inserted_batch AS (
     SELECT
         batch_no,
         '2026-01',
-        'CREATED',
+        'DRAFT',
         'BASE',
         'pnl-atomicity-verification',
         'pnl-atomicity-verification'
