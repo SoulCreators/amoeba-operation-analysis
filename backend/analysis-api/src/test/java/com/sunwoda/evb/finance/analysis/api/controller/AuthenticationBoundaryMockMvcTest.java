@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.AiAnalysisService;
 import com.sunwoda.evb.finance.analysis.application.service.BatchReadinessService;
+import com.sunwoda.evb.finance.analysis.application.service.ExportAuthorizationException;
 import com.sunwoda.evb.finance.analysis.application.service.ExportService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -49,7 +51,7 @@ class AuthenticationBoundaryMockMvcTest {
     @Test
     void anonymousBatchReadinessRequestReturnsHandledAuthenticationFailure() throws Exception {
         batchReadinessMockMvc.perform(get("/api/v1/batches/BATCH-001/readiness"))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("A0002"))
                 .andExpect(jsonPath("$.success").value(false));
 
@@ -59,7 +61,7 @@ class AuthenticationBoundaryMockMvcTest {
     @Test
     void anonymousAiAnalysisRequestReturnsHandledAuthenticationFailure() throws Exception {
         aiAnalysisMockMvc.perform(get("/api/v1/ai/analysis/BATCH-001"))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("A0002"))
                 .andExpect(jsonPath("$.success").value(false));
 
@@ -71,7 +73,7 @@ class AuthenticationBoundaryMockMvcTest {
         exportMockMvc.perform(post("/api/v1/exports")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("A0002"))
                 .andExpect(jsonPath("$.success").value(false));
 
@@ -81,7 +83,7 @@ class AuthenticationBoundaryMockMvcTest {
     @Test
     void anonymousExportStatusRequestReturnsHandledAuthenticationFailure() throws Exception {
         exportMockMvc.perform(get("/api/v1/exports/TASK-001"))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("A0002"))
                 .andExpect(jsonPath("$.success").value(false));
 
@@ -91,10 +93,28 @@ class AuthenticationBoundaryMockMvcTest {
     @Test
     void anonymousExportDownloadRequestReturnsHandledAuthenticationFailure() throws Exception {
         exportMockMvc.perform(get("/api/v1/exports/TASK-001/download"))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("A0002"))
                 .andExpect(jsonPath("$.success").value(false));
 
         verifyNoInteractions(exportService);
+    }
+
+    @Test
+    void explicitExportPermissionDenialReturnsForbiddenWithCompatibleBody() throws Exception {
+        when(exportService.create(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new ExportAuthorizationException("角色不允许导出"));
+
+        exportMockMvc.perform(post("/api/v1/exports")
+                        .principal(() -> "U001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"requestKey\":\"REQ-001\",\"batchNo\":\"BATCH-001\","
+                                + "\"resultVersion\":\"V1\",\"perspective\":\"BASE\","
+                                + "\"format\":\"CSV\",\"resultStatus\":\"PUBLISHED\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("导出权限拒绝: 角色不允许导出"));
     }
 }
