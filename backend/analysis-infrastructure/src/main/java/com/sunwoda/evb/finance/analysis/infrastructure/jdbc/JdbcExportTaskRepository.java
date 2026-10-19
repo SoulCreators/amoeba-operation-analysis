@@ -3,9 +3,12 @@ package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 import com.sunwoda.evb.finance.analysis.application.model.ExportFile;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJobStatus;
+import com.sunwoda.evb.finance.analysis.application.port.ExportFileStoragePort;
 import com.sunwoda.evb.finance.analysis.application.port.ExportTaskPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
+import org.springframework.lang.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -22,10 +25,10 @@ import java.util.UUID;
 /**
  * PostgreSQL/JDBC export task metadata repository.
  *
- * <p>The database stores task metadata only.  Export bytes are deliberately
- * not persisted by this adapter; a successful completion therefore records
- * the worker-supplied file metadata, while download remains unavailable until
- * a file storage adapter is connected.</p>
+ * <p>The database stores task metadata only.  Export bytes are persisted
+ * through the optional file storage port, using the task id as the stable
+ * file key.  Without that port this remains a metadata-only adapter and
+ * download stays unavailable.</p>
  */
 @Repository
 @Primary
@@ -79,16 +82,32 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
             };
 
     private final JdbcTemplate jdbc;
+    private final ExportFileStoragePort fileStorage;
+
+    /**
+     * Spring entry point.  The nullable dependency keeps the db profile safe
+     * when no export file storage adapter has been configured.
+     */
+    @Autowired
+    public JdbcExportTaskRepository(DataSource dataSource,
+                                    @Nullable ExportFileStoragePort fileStorage) {
+        this(new JdbcTemplate(dataSource), fileStorage);
+    }
 
     public JdbcExportTaskRepository(DataSource dataSource) {
-        this(new JdbcTemplate(dataSource));
+        this(dataSource, null);
     }
 
     JdbcExportTaskRepository(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    JdbcExportTaskRepository(JdbcTemplate jdbc, ExportFileStoragePort fileStorage) {
         if (jdbc == null) {
             throw new IllegalArgumentException("jdbc must not be null");
         }
         this.jdbc = jdbc;
+        this.fileStorage = fileStorage;
     }
 
     @Override
@@ -137,9 +156,12 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
             return Optional.empty();
         }
 
-        // This metadata-only adapter has no byte store.  Do not fabricate a
-        // file from metadata or return content without the ownership check.
-        return Optional.empty();
+        // Keep metadata-only mode non-downloadable.  A storage lookup is only
+        // allowed after the ownership, lifecycle, and expiry checks above.
+        if (fileStorage == null) {
+            return Optional.empty();
+        }
+        return fileStorage.open(fileKey(job), job.getUserId());
     }
 
     @Override
@@ -166,6 +188,24 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
         String normalizedName = required(fileName, "fileName");
         String normalizedType = defaultContentType(contentType);
         requireContent(content);
+
+        if (fileStorage != null) {
+            ExportJob existing = findById(key);
+            if (existing == null) {
+                throw new IllegalArgumentException("导出任务不存在: " + key);
+            }
+            if (existing.getStatus() != ExportJobStatus.QUEUED
+                    && existing.getStatus() != ExportJobStatus.RUNNING) {
+                throw new IllegalStateException("导出任务不可完成: " + key);
+            }
+
+            // Persist bytes before publishing SUCCEEDED.  If the database
+            // transition is rejected, the file remains unreachable because
+            // download requires the persisted successful task state.
+            fileStorage.save(fileKey(existing), existing.getUserId(), normalizedName,
+                    normalizedType, content);
+        }
+
         LocalDateTime now = LocalDateTime.now();
 
         if (jdbc.update(COMPLETE_SQL, normalizedName, normalizedType, timestamp(now),
@@ -233,6 +273,11 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
     private ExportJob findOwned(String jobId, String userId) {
         List<ExportJob> rows = jdbc.query(FIND_OWNED_SQL, JOB_ROW_MAPPER, jobId, userId);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** The schema has no file_key column; the task id is the durable file key. */
+    private static String fileKey(ExportJob job) {
+        return job.getJobId();
     }
 
     private static ExportJob mapJob(ResultSet rs) throws SQLException {

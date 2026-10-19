@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class FileSystemImportRepositoryTest {
     @Test
@@ -31,6 +32,22 @@ class FileSystemImportRepositoryTest {
         List<ImportIssue> loaded = reopenedIssues.findByTaskNo("TASK-001");
         assertEquals(1, loaded.size());
         assertEquals("南昌\t基地", loaded.get(0).getRawValue());
+    }
+
+    @Test
+    void rejectsTaskNumbersThatCouldEscapeTheControlledRoot() throws Exception {
+        Path root = Files.createTempDirectory("amoeba-import-security-");
+        FileSystemImportFileRepository files = new FileSystemImportFileRepository(root.toString());
+        FileSystemImportIssueRepository issues = new FileSystemImportIssueRepository(root.toString());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> files.save("../outside", "result.xlsx", new byte[] {1}));
+        assertThrows(IllegalArgumentException.class,
+                () -> files.open("../../outside"));
+        assertThrows(IllegalArgumentException.class,
+                () -> issues.replace("../outside", java.util.Collections.<ImportIssue>emptyList()));
+        assertThrows(IllegalArgumentException.class,
+                () -> issues.findByTaskNo("../../outside"));
     }
 
     private static byte[] read(InputStream input) throws Exception {
