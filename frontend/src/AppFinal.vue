@@ -461,17 +461,43 @@ function applyMatrixPayload(payload: V13AnalysisPayload) {
   matrixRows.value = rows
 }
 
+function firstPresent(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key]
+    if (value !== null && value !== undefined && value !== '') return value
+  }
+  return null
+}
+
+function formatUnitValue(code: string, value: unknown) {
+  if (value === null || value === undefined || value === '') return '—'
+  const number = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(number) ? format(code, number) : '—'
+}
+
 function applyUnitPayload(payload: V13AnalysisPayload) {
   if (!payload.rows?.length) {
     unitRows.value = []
     return
   }
-  unitRows.value = payload.rows.map((row) => [
-    String(row.baseCode || row.base || '—'), String(row.lineCode || row.line || '—'),
-    format('MANUFACTURING_COST', Number(row.manufacturingCost || 0)),
-    format('OUTPUT_WH', Number(row.outputWh || 0)), format('UNIT_COST', Number(row.unitCost || 0)),
-    row.momGap == null ? '—' : `${Number(row.momGap) >= 0 ? '+' : ''}${format('UNIT_COST', Number(row.momGap))}`,
-  ])
+  unitRows.value = payload.rows.map((row) => {
+    const scopeCode = firstPresent(row, ['scopeCode', 'baseCode', 'base'])
+    const manufacturingCost = firstPresent(row, ['actualManufacturingCost', 'manufacturingCost'])
+    const outputWh = firstPresent(row, ['actualOutputWh', 'outputWh'])
+    const actualPerWh = firstPresent(row, ['actualPerWh', 'unitCost'])
+    const momGap = row.momGap
+    const momGapNumber = momGap === null || momGap === undefined || momGap === '' ? null : Number(momGap)
+    return [
+      String(scopeCode ?? '—'),
+      String(firstPresent(row, ['lineCode', 'line']) ?? '—'),
+      formatUnitValue('MANUFACTURING_COST', manufacturingCost),
+      formatUnitValue('OUTPUT_WH', outputWh),
+      formatUnitValue('UNIT_COST', actualPerWh),
+      momGapNumber !== null && Number.isFinite(momGapNumber)
+        ? `${momGapNumber >= 0 ? '+' : ''}${format('UNIT_COST', momGapNumber)}`
+        : '—',
+    ]
+  })
 }
 
 function applyRiskPayload(payload: V13AnalysisPayload) {
