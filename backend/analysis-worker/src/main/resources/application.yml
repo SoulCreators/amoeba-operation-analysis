@@ -1,6 +1,13 @@
 spring:
   application:
     name: amoeba-analysis-worker
+  aop:
+    # Cleanup adapters expose ports, so interface proxies also support the
+    # existing final filesystem adapter when the opt-in profile is active.
+    proxy-target-class: false
+  profiles:
+    # No database or filesystem adapter is enabled unless the deployment opts in.
+    default: memory
 
 analysis:
   worker:
@@ -13,3 +20,30 @@ management:
     web:
       exposure:
         include: health,info,metrics
+
+---
+
+# Loaded only when the deployment explicitly activates the db profile.
+spring:
+  config:
+    activate:
+      on-profile: db
+  datasource:
+    # Do not commit production credentials; inject these variables at runtime.
+    url: ${AMOEBA_DB_URL:jdbc:postgresql://localhost:5432/amoeba_analysis}
+    username: ${AMOEBA_DB_USERNAME:}
+    password: ${AMOEBA_DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+---
+
+# Loaded only when the deployment explicitly activates the filesystem profile.
+spring:
+  config:
+    activate:
+      on-profile: filesystem
+
+analysis:
+  storage:
+    # Set this to the controlled export mount in a deployed worker.
+    root: ${ANALYSIS_STORAGE_ROOT:./data/exports}

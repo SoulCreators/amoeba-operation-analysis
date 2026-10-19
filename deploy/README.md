@@ -24,4 +24,26 @@ mvn -pl backend/analysis-api -am spring-boot:run \
 ```
 
 本地 Profile 会使用脱敏/内存适配器，并将 `X-User-Id` 转成本地 `Principal`，便于前端联调。它不是生产认证方案；生产环境必须关闭 `local`，由统一认证网关注入用户主体。
+
+## Worker GOV-006 清理运行时配置
+
+Worker 默认使用 `memory` profile，`db` 和 `filesystem` 不会自动启用。只有在数据库迁移已完成、文件根目录已挂载并明确激活两个 profile 后，才会运行 GOV-006 导出文件清理：
+
+```bash
+SPRING_PROFILES_ACTIVE=db,filesystem \
+AMOEBA_DB_URL=jdbc:postgresql://db:5432/amoeba_analysis \
+AMOEBA_DB_USERNAME=... \
+AMOEBA_DB_PASSWORD=... \
+ANALYSIS_STORAGE_ROOT=/var/lib/amoeba/exports \
+java -jar analysis-worker.jar
+```
+
+Worker 运行时配置：
+
+- `SPRING_PROFILES_ACTIVE`：必须显式设置为 `db,filesystem` 才启用清理接线；默认不启用。
+- `AMOEBA_DB_URL`、`AMOEBA_DB_USERNAME`、`AMOEBA_DB_PASSWORD`：PostgreSQL datasource 配置。账号密码只能由密钥管理平台或运行时环境注入。
+- `ANALYSIS_STORAGE_ROOT`：受控导出文件根目录，必须与挂载目录一致；Worker 不实现 S3/OSS。
+- `ANALYSIS_WORKER_ID`、`ANALYSIS_WORKER_CLEANUP_BATCH_SIZE`：可选的 Worker 标识和单次清理批量上限。
+
+只启用 `db` 或只启用 `filesystem` 都不会运行清理任务；两者同时启用时，`ExportCleanupWorker` 每十分钟执行一次有界清理。数据库不可用时，Worker 启动接线测试不代表数据库契约通过；请另行提供 `AMOEBA_DB_URL` 运行 PostgreSQL 契约测试。
 Maven 依赖缓存也固定在 `.toolchain/m2`，避免修改用户目录。

@@ -1,0 +1,73 @@
+package com.sunwoda.evb.finance.amoeba.worker;
+
+import com.sunwoda.evb.finance.analysis.application.port.ExportFileStoragePort;
+import com.sunwoda.evb.finance.analysis.application.port.ExportCleanupPort;
+import com.sunwoda.evb.finance.analysis.infrastructure.filesystem.FileSystemExportFileStorageAdapter;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
+
+import javax.sql.DataSource;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class AnalysisWorkerApplicationContextTest {
+
+    @Test
+    void defaultStartupDoesNotEnableDbOrFilesystemCleanup() {
+        try (ConfigurableApplicationContext context = start()) {
+            assertEquals("memory", context.getEnvironment().getProperty("spring.profiles.default"));
+            assertFalse(context.getEnvironment().acceptsProfiles("db"));
+                assertFalse(context.getEnvironment().acceptsProfiles("filesystem"));
+                assertFalse(context.getBeansOfType(DataSource.class).size() > 0);
+                assertFalse(context.getBeansOfType(ExportCleanupWorker.class).size() > 0);
+            assertFalse(context.getBeansOfType(FileSystemExportFileStorageAdapter.class).size() > 0);
+        }
+    }
+
+    @Test
+    void explicitDbAndFilesystemProfilesEnableCleanupWiringFromEnvironmentProperties() throws Exception {
+        Path storageRoot = Files.createTempDirectory("analysis-worker-storage-");
+        try {
+            System.setProperty("AMOEBA_DB_URL", "jdbc:postgresql://127.0.0.1:1/unused");
+            System.setProperty("AMOEBA_DB_USERNAME", "test-user");
+            System.setProperty("AMOEBA_DB_PASSWORD", "test-password");
+            System.setProperty("ANALYSIS_STORAGE_ROOT", storageRoot.toString());
+
+            try (ConfigurableApplicationContext context = start("db", "filesystem")) {
+                assertTrue(context.getEnvironment().acceptsProfiles("db"));
+                assertTrue(context.getEnvironment().acceptsProfiles("filesystem"));
+                assertEquals("jdbc:postgresql://127.0.0.1:1/unused",
+                        context.getEnvironment().getProperty("spring.datasource.url"));
+                assertEquals(storageRoot.toString(),
+                        context.getEnvironment().getProperty("analysis.storage.root"));
+                assertNotNull(context.getBean(DataSource.class));
+                assertTrue(context.getBeansOfType(ExportCleanupPort.class).size() > 0);
+                assertTrue(context.getBeansOfType(ExportFileStoragePort.class).size() > 0);
+                assertNotNull(context.getBean(ExportCleanupWorker.class));
+                assertNotNull(context.getBean(ExportFileStoragePort.class));
+            }
+        } finally {
+            System.clearProperty("AMOEBA_DB_URL");
+            System.clearProperty("AMOEBA_DB_USERNAME");
+            System.clearProperty("AMOEBA_DB_PASSWORD");
+            System.clearProperty("ANALYSIS_STORAGE_ROOT");
+            Files.deleteIfExists(storageRoot);
+        }
+    }
+
+    private ConfigurableApplicationContext start(String... profiles) {
+        return new SpringApplicationBuilder(AnalysisWorkerApplication.class)
+                .web(WebApplicationType.NONE)
+                .profiles(profiles)
+                .properties("spring.main.web-application-type=none",
+                        "analysis.worker.cleanup.scheduling-enabled=false")
+                .run();
+    }
+}
