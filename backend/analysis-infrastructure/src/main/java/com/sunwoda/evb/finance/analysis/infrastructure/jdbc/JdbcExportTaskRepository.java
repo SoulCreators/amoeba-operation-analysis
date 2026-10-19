@@ -3,6 +3,8 @@ package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 import com.sunwoda.evb.finance.analysis.application.model.ExportFile;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJobStatus;
+import com.sunwoda.evb.finance.analysis.application.model.ExportFormat;
+import com.sunwoda.evb.finance.analysis.application.model.ExportTaskSnapshot;
 import com.sunwoda.evb.finance.analysis.application.port.ExportFileStoragePort;
 import com.sunwoda.evb.finance.analysis.application.port.ExportTaskPort;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,12 +16,19 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
+import java.sql.Array;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -40,12 +49,17 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
 
     private static final String CREATE_SQL =
             "INSERT INTO flow.export_task AS existing "
-                    + "(job_id, user_id, request_key, file_name, content_type, status, "
-                    + "created_at, updated_at, expires_at) "
-                    + "VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?) "
+                    + "(job_id, user_id, request_key, file_name, content_type, "
+                    + "batch_no, result_version, perspective, result_status, format, "
+                    + "summary_scopes, detail_scopes, status, created_at, updated_at, expires_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?) "
                     + "ON CONFLICT (user_id, request_key) DO UPDATE "
                     + "SET updated_at = existing.updated_at "
                     + "RETURNING " + SELECT_COLUMNS;
+
+    private static final String FIND_SNAPSHOT_SQL =
+            "SELECT batch_no, result_version, perspective, result_status, format, "
+                    + "summary_scopes, detail_scopes FROM flow.export_task WHERE job_id = ?";
 
     private static final String FIND_BY_ID_SQL =
             "SELECT " + SELECT_COLUMNS + " FROM flow.export_task WHERE job_id = ?";
@@ -119,6 +133,38 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
     @Override
     public ExportJob create(String userId, String requestKey,
                             String fileName, String contentType) {
+        return createInternal(userId, requestKey, required(fileName, "fileName"),
+                defaultContentType(contentType), null);
+    }
+
+    @Override
+    public ExportJob create(String userId, String requestKey,
+                            ExportTaskSnapshot snapshot) {
+        if (snapshot == null) throw new IllegalArgumentException("snapshot 不能为空");
+        return createInternal(userId, requestKey, snapshot.fileName(),
+                snapshot.contentType(), snapshot);
+    }
+
+    @Override
+    public Optional<ExportTaskSnapshot> snapshot(String jobId) {
+        if (isBlank(jobId)) {
+            return Optional.empty();
+        }
+        List<ExportTaskSnapshot> rows = jdbc.query(FIND_SNAPSHOT_SQL,
+                new RowMapper<ExportTaskSnapshot>() {
+                    @Override
+                    public ExportTaskSnapshot mapRow(ResultSet rs, int rowNum)
+                            throws SQLException {
+                        return mapSnapshot(rs);
+                    }
+                }, jobId.trim());
+        return rows.isEmpty() ? Optional.<ExportTaskSnapshot>empty()
+                : Optional.ofNullable(rows.get(0));
+    }
+
+    private ExportJob createInternal(String userId, String requestKey,
+                                     String fileName, String contentType,
+                                     final ExportTaskSnapshot snapshot) {
         String owner = required(userId, "userId");
         String key = required(requestKey, "requestKey");
         String normalizedName = required(fileName, "fileName");
@@ -127,9 +173,42 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
         LocalDateTime expiresAt = now.plusMinutes(15);
         String jobId = "EXP-" + UUID.randomUUID().toString().replace("-", "");
 
-        List<ExportJob> rows = jdbc.query(CREATE_SQL, JOB_ROW_MAPPER, jobId, owner, key,
-                normalizedName, normalizedType, timestamp(now), timestamp(now),
-                timestamp(expiresAt));
+        List<ExportJob> rows = jdbc.query(new org.springframework.jdbc.core.PreparedStatementCreator() {
+            @Override
+            public PreparedStatement createPreparedStatement(Connection connection)
+                    throws SQLException {
+                PreparedStatement statement = connection.prepareStatement(CREATE_SQL);
+                int index = 1;
+                statement.setString(index++, jobId);
+                statement.setString(index++, owner);
+                statement.setString(index++, key);
+                statement.setString(index++, normalizedName);
+                statement.setString(index++, normalizedType);
+                if (snapshot == null) {
+                    statement.setNull(index++, Types.VARCHAR);
+                    statement.setNull(index++, Types.VARCHAR);
+                    statement.setNull(index++, Types.VARCHAR);
+                    statement.setNull(index++, Types.VARCHAR);
+                    statement.setNull(index++, Types.VARCHAR);
+                    statement.setNull(index++, Types.ARRAY);
+                    statement.setNull(index++, Types.ARRAY);
+                } else {
+                    statement.setString(index++, snapshot.getBatchNo());
+                    statement.setString(index++, snapshot.getResultVersion());
+                    statement.setString(index++, snapshot.getPerspective().getCode());
+                    statement.setString(index++, snapshot.getResultStatus().name());
+                    statement.setString(index++, snapshot.getFormat().name());
+                    statement.setArray(index++, connection.createArrayOf("text",
+                            snapshot.getSummaryScopes().toArray(new String[0])));
+                    statement.setArray(index++, connection.createArrayOf("text",
+                            snapshot.getDetailScopes().toArray(new String[0])));
+                }
+                statement.setTimestamp(index++, timestamp(now));
+                statement.setTimestamp(index++, timestamp(now));
+                statement.setTimestamp(index, timestamp(expiresAt));
+                return statement;
+            }
+        }, JOB_ROW_MAPPER);
         if (rows.isEmpty()) {
             throw new IllegalStateException("创建导出任务未返回任务记录: " + key);
         }
@@ -306,6 +385,42 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
         }
         return ExportJob.restore(jobId, userId, requestKey, fileName, contentType,
                 createdAt, updatedAt, finishedAt, expiresAt, status, errorMessage);
+    }
+
+    private static ExportTaskSnapshot mapSnapshot(ResultSet rs) throws SQLException {
+        String batchNo = rs.getString("batch_no");
+        String resultVersion = rs.getString("result_version");
+        String perspective = rs.getString("perspective");
+        String resultStatus = rs.getString("result_status");
+        String format = rs.getString("format");
+        if (isBlank(batchNo) || isBlank(resultVersion) || isBlank(perspective)
+                || isBlank(resultStatus) || isBlank(format)) {
+            return null;
+        }
+        return new ExportTaskSnapshot(batchNo, resultVersion,
+                com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective
+                        .fromCode(perspective),
+                com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus
+                        .valueOf(resultStatus),
+                ExportFormat.fromCode(format),
+                arrayScopes(rs.getArray("summary_scopes")),
+                arrayScopes(rs.getArray("detail_scopes")));
+    }
+
+    private static Set<String> arrayScopes(Array value) throws SQLException {
+        if (value == null) {
+            return Collections.emptySet();
+        }
+        Object raw = value.getArray();
+        LinkedHashSet<String> scopes = new LinkedHashSet<String>();
+        if (raw instanceof Object[]) {
+            for (Object item : (Object[]) raw) {
+                if (item != null && !isBlank(item.toString())) {
+                    scopes.add(item.toString());
+                }
+            }
+        }
+        return scopes;
     }
 
     private static LocalDateTime localDateTime(Timestamp value, String field) {

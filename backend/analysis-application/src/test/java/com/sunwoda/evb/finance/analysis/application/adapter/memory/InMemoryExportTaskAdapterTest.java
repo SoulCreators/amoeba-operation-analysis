@@ -2,9 +2,14 @@ package com.sunwoda.evb.finance.analysis.application.adapter.memory;
 
 import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJobStatus;
+import com.sunwoda.evb.finance.analysis.application.model.ExportFormat;
+import com.sunwoda.evb.finance.analysis.application.model.ExportTaskSnapshot;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,6 +18,25 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryExportTaskAdapterTest {
+    @Test
+    void persistsSnapshotForWorkerAndKeepsItOnIdempotentReplay() {
+        InMemoryExportTaskAdapter adapter = new InMemoryExportTaskAdapter();
+        ExportTaskSnapshot snapshot = new ExportTaskSnapshot("B-001", "R3",
+                AnalysisPerspective.BASE, CalculationResultStatus.PUBLISHED,
+                ExportFormat.XLSX, Collections.singleton("NANCHANG"),
+                Collections.<String>emptySet());
+
+        ExportJob first = adapter.create("U001", "REQ-SNAPSHOT", snapshot);
+        ExportJob replay = adapter.create("U001", "REQ-SNAPSHOT",
+                new ExportTaskSnapshot("B-CHANGED", "R9", AnalysisPerspective.BASE,
+                        CalculationResultStatus.PUBLISHED, ExportFormat.CSV,
+                        Collections.singleton("WUHAN"), Collections.<String>emptySet()));
+
+        assertEquals(first.getJobId(), replay.getJobId());
+        assertEquals(snapshot.getBatchNo(), adapter.snapshot(first.getJobId()).get().getBatchNo());
+        assertEquals(snapshot.getSummaryScopes(),
+                adapter.snapshot(first.getJobId()).get().getSummaryScopes());
+    }
     @Test
     void sameUserAndRequestKeyReturnTheSameJob() {
         InMemoryExportTaskAdapter adapter = new InMemoryExportTaskAdapter();

@@ -67,6 +67,17 @@ public final class ExportRequest {
     public CalculationResultStatus getResultStatus() { return resultStatus; }
     public Set<String> getRequestedScopes() { return requestedScopes; }
 
+    /**
+     * Freezes this request together with the scopes already clipped by the
+     * authorization policy.  Callers must pass policy output, never the
+     * original requested scopes.
+     */
+    public ExportTaskSnapshot snapshot(Set<String> summaryScopes,
+                                       Set<String> detailScopes) {
+        return new ExportTaskSnapshot(batchNo, resultVersion, perspective,
+                resultStatus, format, summaryScopes, detailScopes);
+    }
+
     /** Stable, application-owned name passed to the task port. */
     public String fileName() {
         return batchNo + "-" + resultVersion + "." + format.getExtension();

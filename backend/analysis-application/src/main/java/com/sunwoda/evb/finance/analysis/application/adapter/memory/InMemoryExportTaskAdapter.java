@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.application.adapter.memory;
 import com.sunwoda.evb.finance.analysis.application.model.ExportFile;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJobStatus;
+import com.sunwoda.evb.finance.analysis.application.model.ExportTaskSnapshot;
 import com.sunwoda.evb.finance.analysis.application.port.ExportFileStoragePort;
 import com.sunwoda.evb.finance.analysis.application.port.ExportTaskPort;
 import org.springframework.stereotype.Repository;
@@ -28,12 +29,36 @@ public class InMemoryExportTaskAdapter implements ExportTaskPort, ExportFileStor
             new ConcurrentHashMap<String, ExportJob>();
     private final ConcurrentMap<String, String> requestIndex =
             new ConcurrentHashMap<String, String>();
+    private final ConcurrentMap<String, ExportTaskSnapshot> snapshots =
+            new ConcurrentHashMap<String, ExportTaskSnapshot>();
     private final ConcurrentMap<String, StoredFile> files =
             new ConcurrentHashMap<String, StoredFile>();
 
     @Override
     public synchronized ExportJob create(String userId, String requestKey,
                                          String fileName, String contentType) {
+        return createInternal(userId, requestKey, fileName, contentType, null);
+    }
+
+    @Override
+    public synchronized ExportJob create(String userId, String requestKey,
+                                         ExportTaskSnapshot snapshot) {
+        if (snapshot == null) throw new IllegalArgumentException("snapshot 不能为空");
+        return createInternal(userId, requestKey, snapshot.fileName(),
+                snapshot.contentType(), snapshot);
+    }
+
+    @Override
+    public synchronized Optional<ExportTaskSnapshot> snapshot(String jobId) {
+        if (isBlank(jobId)) return Optional.empty();
+        ExportTaskSnapshot snapshot = snapshots.get(jobId.trim());
+        return snapshot == null ? Optional.<ExportTaskSnapshot>empty()
+                : Optional.of(snapshot);
+    }
+
+    private ExportJob createInternal(String userId, String requestKey,
+                                     String fileName, String contentType,
+                                     ExportTaskSnapshot snapshot) {
         String owner = required(userId, "userId");
         String key = required(requestKey, "requestKey");
         String normalizedName = required(fileName, "fileName");
@@ -49,6 +74,9 @@ public class InMemoryExportTaskAdapter implements ExportTaskPort, ExportFileStor
         ExportJob job = ExportJob.queued(jobId, owner, key, normalizedName,
                 normalizedType, LocalDateTime.now());
         jobs.put(jobId, job);
+        if (snapshot != null) {
+            snapshots.put(jobId, snapshot);
+        }
         requestIndex.put(requestIndexKey, jobId);
         return job;
     }

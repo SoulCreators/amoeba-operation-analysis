@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.application.port;
 
 import com.sunwoda.evb.finance.analysis.application.model.ExportFile;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
+import com.sunwoda.evb.finance.analysis.application.model.ExportTaskSnapshot;
 
 import java.util.Optional;
 
@@ -13,6 +14,22 @@ import java.util.Optional;
  */
 public interface ExportTaskPort {
     ExportJob create(String userId, String requestKey, String fileName, String contentType);
+
+    /**
+     * Creates a task with the authorization result and result identity frozen
+     * for the eventual worker.  The legacy overload remains available for
+     * existing callers that only manage task metadata.
+     */
+    default ExportJob create(String userId, String requestKey,
+                             ExportTaskSnapshot snapshot) {
+        if (snapshot == null) throw new IllegalArgumentException("snapshot 不能为空");
+        return create(userId, requestKey, snapshot.fileName(), snapshot.contentType());
+    }
+
+    /** Reads the immutable worker input, when this task was created with one. */
+    default Optional<ExportTaskSnapshot> snapshot(String jobId) {
+        return Optional.empty();
+    }
 
     Optional<ExportJob> status(String jobId, String userId);
 

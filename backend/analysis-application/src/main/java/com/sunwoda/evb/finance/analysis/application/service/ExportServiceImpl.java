@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 import com.sunwoda.evb.finance.analysis.application.model.ExportFile;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
 import com.sunwoda.evb.finance.analysis.application.model.ExportRequest;
+import com.sunwoda.evb.finance.analysis.application.model.ExportTaskSnapshot;
 import com.sunwoda.evb.finance.analysis.application.port.ExportTaskPort;
 import org.springframework.stereotype.Service;
 
@@ -46,8 +47,9 @@ public class ExportServiceImpl implements ExportService {
             throw new ExportAuthorizationException(permission.getDenialReason());
         }
 
-        return taskPort.create(userId, request.getRequestKey(), request.fileName(),
-                request.getFormat().getContentType());
+        ExportTaskSnapshot snapshot = request.snapshot(permission.getSummaryScopes(),
+                permission.getDetailScopes());
+        return taskPort.create(userId, request.getRequestKey(), snapshot);
     }
 
     @Override

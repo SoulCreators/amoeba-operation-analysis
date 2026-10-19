@@ -5,6 +5,7 @@ import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJobStatus;
 import com.sunwoda.evb.finance.analysis.application.model.ExportRequest;
 import com.sunwoda.evb.finance.analysis.application.model.ExportFormat;
+import com.sunwoda.evb.finance.analysis.application.model.ExportTaskSnapshot;
 import com.sunwoda.evb.finance.analysis.application.port.ExportTaskPort;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,6 +33,14 @@ class ExportServiceImplTest {
         assertEquals("REQ-001", port.createdRequestKey);
         assertEquals("B-001-R3.xlsx", port.createdFileName);
         assertEquals(ExportFormat.XLSX.getContentType(), port.createdContentType);
+        assertEquals("B-001", port.createdSnapshot.getBatchNo());
+        assertEquals("R3", port.createdSnapshot.getResultVersion());
+        assertEquals(AnalysisPerspective.BASE, port.createdSnapshot.getPerspective());
+        assertEquals(CalculationResultStatus.PUBLISHED,
+                port.createdSnapshot.getResultStatus());
+        assertEquals(Collections.singleton("NANCHANG"),
+                port.createdSnapshot.getSummaryScopes());
+        assertTrue(port.createdSnapshot.getDetailScopes().isEmpty());
         assertEquals("EXP-001", job.getJobId());
     }
 
@@ -126,8 +136,22 @@ class ExportServiceImplTest {
         private String createdRequestKey;
         private String createdFileName;
         private String createdContentType;
+        private ExportTaskSnapshot createdSnapshot;
         private String lastUserId;
         private String lastJobId;
+
+        @Override
+        public ExportJob create(String userId, String requestKey,
+                                ExportTaskSnapshot snapshot) {
+            created = true;
+            createdUserId = userId;
+            createdRequestKey = requestKey;
+            createdFileName = snapshot.fileName();
+            createdContentType = snapshot.contentType();
+            createdSnapshot = snapshot;
+            return ExportJob.queued("EXP-001", userId, requestKey,
+                    createdFileName, createdContentType, LocalDateTime.now());
+        }
 
         @Override
         public ExportJob create(String userId, String requestKey, String fileName,

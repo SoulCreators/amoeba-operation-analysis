@@ -2,7 +2,11 @@ package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 
 import com.sunwoda.evb.finance.analysis.application.model.ExportJob;
 import com.sunwoda.evb.finance.analysis.application.model.ExportJobStatus;
+import com.sunwoda.evb.finance.analysis.application.model.ExportFormat;
+import com.sunwoda.evb.finance.analysis.application.model.ExportTaskSnapshot;
 import com.sunwoda.evb.finance.analysis.application.port.ExportTaskPort;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -87,6 +92,32 @@ class JdbcExportTaskRepositorySecurityContractTest {
         assertEquals(first.getRequestKey(), second.getRequestKey());
         assertEquals("first.csv", second.getFileName(),
                 "idempotent replay must not overwrite the original task metadata");
+    }
+
+    @Test
+    void persistsSnapshotAndKeepsTheFirstSnapshotOnReplay() {
+        assumeTrue(snapshotColumnsPresent(),
+                "BLOCKED: V021 snapshot migration is not applied");
+        String userId = user("SNAPSHOT");
+        String requestKey = key("SNAPSHOT");
+        ExportTaskSnapshot firstSnapshot = new ExportTaskSnapshot("B-001", "R3",
+                AnalysisPerspective.BASE, CalculationResultStatus.PUBLISHED,
+                ExportFormat.XLSX, Collections.singleton("NANCHANG"),
+                Collections.<String>emptySet());
+
+        ExportJob first = repository.create(userId, requestKey, firstSnapshot);
+        ExportTaskSnapshot replaySnapshot = new ExportTaskSnapshot("B-002", "R4",
+                AnalysisPerspective.BASE, CalculationResultStatus.PUBLISHED,
+                ExportFormat.CSV, Collections.singleton("WUHAN"),
+                Collections.<String>emptySet());
+        ExportJob replay = repository.create(userId, requestKey, replaySnapshot);
+
+        assertEquals(first.getJobId(), replay.getJobId());
+        assertEquals(firstSnapshot.getBatchNo(), repository.snapshot(first.getJobId())
+                .get().getBatchNo());
+        assertEquals(firstSnapshot.getSummaryScopes(), repository.snapshot(first.getJobId())
+                .get().getSummaryScopes());
+        assertEquals(ExportFormat.XLSX, repository.snapshot(first.getJobId()).get().getFormat());
     }
 
     @Test
@@ -219,6 +250,16 @@ class JdbcExportTaskRepositorySecurityContractTest {
     private static boolean migrationPresent() {
         Path root = repositoryRoot();
         return root != null && Files.exists(root.resolve("database/migration").resolve(MIGRATION_FILE));
+    }
+
+    private boolean snapshotColumnsPresent() {
+        Integer columns = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns"
+                        + " WHERE table_schema = 'flow' AND table_name = 'export_task'"
+                        + " AND column_name IN ('batch_no', 'result_version', 'perspective',"
+                        + " 'result_status', 'format', 'summary_scopes', 'detail_scopes')",
+                Integer.class);
+        return columns != null && columns == 7;
     }
 
     private static Path repositoryRoot() {
