@@ -23,7 +23,6 @@ public class InMemoryImportTaskRepository implements ImportTaskRepository {
             ImportTask saved = new ImportTask(sequence.getAndIncrement(), task.getTaskNo(),
                     task.getBatchNo(), task.getDatasetCode(), task.getFileName(),
                     task.getChecksum(), task.getCreatedBy(), task.getCreatedAt());
-            saved.moveTo(task.getStatus(), task.getIssueCount());
             store.put(saved.getTaskNo(), saved);
             return saved;
         }
