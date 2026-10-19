@@ -21,7 +21,7 @@ public class LocalDemoUserScopeSeed {
     @PostConstruct
     public void seed() {
         for (AnalysisPerspective perspective : AnalysisPerspective.values()) {
-            repository.save(new UserScope("demo-finance", "FINANCE_ADMIN", perspective,
+            repository.save(new UserScope("local-finance", "FINANCE_ADMIN", perspective,
                     "ALL", true, true, true, true));
         }
     }

@@ -58,7 +58,7 @@ mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-
 
 `GET /api/v1/overview?period=2026-09&perspective=BASE&scope=ALL`
 
-当前返回可替换的演示结果，后续将由 Excel 导入、规则计算和数据库结果适配器替换，不改变前端接口契约。
+本地 Profile 不预置经营指标；只有真实 Excel 导入、规则计算完成后才返回经营结果。生产环境由数据库结果适配器提供真实数据，不改变前端接口契约。
 
 ### 查询当前视角数据集目录
 

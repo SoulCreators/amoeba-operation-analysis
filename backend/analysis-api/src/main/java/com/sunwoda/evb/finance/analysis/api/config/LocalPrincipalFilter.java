@@ -24,7 +24,7 @@ public class LocalPrincipalFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        final String userId = value(request.getHeader(USER_HEADER), "demo-finance");
+        final String userId = value(request.getHeader(USER_HEADER), "local-finance");
         HttpServletRequestWrapper wrapped = new HttpServletRequestWrapper(request) {
             @Override
             public Principal getUserPrincipal() {
