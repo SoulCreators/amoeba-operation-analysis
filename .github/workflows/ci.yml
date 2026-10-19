@@ -37,3 +37,44 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  e2e:
+    name: Frontend browser E2E smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Start backend with local profile
+        run: |
+          mvn -B -pl backend/analysis-api -am -DskipTests install
+          nohup mvn -B -f backend/analysis-api/pom.xml spring-boot:run \
+            -Dspring-boot.run.profiles=local \
+            -Dspring-boot.run.mainClass=com.sunwoda.evb.finance.analysis.api.AnalysisApiApplication \
+            > "$RUNNER_TEMP/analysis-api-e2e.log" 2>&1 &
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8080/api/v1/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/analysis-api-e2e.log"
+          exit 1
+      - name: Run browser E2E smoke
+        working-directory: frontend
+        run: npm run test:e2e
