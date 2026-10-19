@@ -1,0 +1,80 @@
+package com.sunwoda.evb.finance.analysis.api.controller;
+
+import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
+import com.sunwoda.evb.finance.analysis.application.service.AiAnalysisService;
+import com.sunwoda.evb.finance.analysis.application.service.BatchReadinessService;
+import com.sunwoda.evb.finance.analysis.application.service.ExportService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+class AuthenticationBoundaryMockMvcTest {
+    private BatchReadinessService batchReadinessService;
+    private AiAnalysisService aiAnalysisService;
+    private ExportService exportService;
+
+    private MockMvc batchReadinessMockMvc;
+    private MockMvc aiAnalysisMockMvc;
+    private MockMvc exportMockMvc;
+
+    @BeforeEach
+    void setUp() {
+        batchReadinessService = mock(BatchReadinessService.class);
+        aiAnalysisService = mock(AiAnalysisService.class);
+        exportService = mock(ExportService.class);
+
+        batchReadinessMockMvc = MockMvcBuilders
+                .standaloneSetup(new BatchReadinessController(batchReadinessService))
+                .setControllerAdvice(new ApiExceptionHandler())
+                .build();
+        aiAnalysisMockMvc = MockMvcBuilders
+                .standaloneSetup(new AiAnalysisController(aiAnalysisService))
+                .setControllerAdvice(new ApiExceptionHandler())
+                .build();
+        exportMockMvc = MockMvcBuilders
+                .standaloneSetup(new ExportController(exportService))
+                .setControllerAdvice(new ApiExceptionHandler())
+                .build();
+    }
+
+    @Test
+    void anonymousBatchReadinessRequestReturnsHandledAuthenticationFailure() throws Exception {
+        batchReadinessMockMvc.perform(get("/api/v1/batches/BATCH-001/readiness"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(batchReadinessService);
+    }
+
+    @Test
+    void anonymousAiAnalysisRequestReturnsHandledAuthenticationFailure() throws Exception {
+        aiAnalysisMockMvc.perform(get("/api/v1/ai/analysis/BATCH-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(aiAnalysisService);
+    }
+
+    @Test
+    void anonymousExportRequestReturnsHandledAuthenticationFailure() throws Exception {
+        exportMockMvc.perform(post("/api/v1/exports")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.success").value(false));
+
+        verifyNoInteractions(exportService);
+    }
+}
