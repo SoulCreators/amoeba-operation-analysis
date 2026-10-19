@@ -111,7 +111,10 @@ class JdbcExportCleanupRepositorySecurityContractTest {
     }
 
     private List<ExportCleanupTask> claim(LocalDateTime now) {
-        return cleanup.claimExpired("contract-worker", 10, now, now.plusMinutes(5));
+        // The contract database can be reused across local runs. Claim a
+        // bounded but sufficiently broad window so unrelated historical test
+        // rows cannot hide the row owned by this test's unique run prefix.
+        return cleanup.claimExpired("contract-worker", 1000, now, now.plusMinutes(5));
     }
 
     private void due(String jobId, LocalDateTime now) {
