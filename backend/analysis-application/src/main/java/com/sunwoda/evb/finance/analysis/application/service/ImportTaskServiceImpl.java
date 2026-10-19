@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
 import com.sunwoda.evb.finance.analysis.application.port.TemplateValidator;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactTaskReader;
+import com.sunwoda.evb.finance.analysis.application.port.PnlFactSourceReader;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
@@ -13,8 +14,10 @@ import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.PnlFactWriter;
+import com.sunwoda.evb.finance.analysis.domain.repository.PnlFactSourceWriter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.io.InputStream;
@@ -35,6 +38,10 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     private PnlFactTaskReader factReader;
     @Autowired(required = false)
     private PnlFactWriter factWriter;
+    @Autowired(required = false)
+    private PnlFactSourceReader sourceReader;
+    @Autowired(required = false)
+    private PnlFactSourceWriter sourceWriter;
 
     public ImportTaskServiceImpl(AnalysisBatchRepository batchRepository,
                                  ImportTaskRepository taskRepository,
@@ -82,6 +89,7 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     }
 
     @Override
+    @Transactional
     public ImportValidationResult validate(String taskNo, InputStream inputStream) {
         if (inputStream == null) throw new IllegalArgumentException("导入文件不能为空");
         ImportTask task = get(taskNo);
@@ -97,8 +105,17 @@ public class ImportTaskServiceImpl implements ImportTaskService {
         issueRepository.replace(taskNo, result.getIssues());
         task.moveTo(result.getStatus(), result.getIssues().size());
         taskRepository.save(task);
-        if (result.getStatus() == ImportStatus.VALID && factReader != null && factWriter != null) {
-            factWriter.replace(batch, task, factReader.read(batch, task));
+        if (result.getStatus() == ImportStatus.VALID && factWriter != null) {
+            if (factReader == null || sourceReader == null || sourceWriter == null) {
+                throw new IllegalStateException(
+                        "事实写入已配置，但事实读取器、来源读取器和来源写入器必须成套配置");
+            }
+            List<com.sunwoda.evb.finance.analysis.domain.model.PnlFact> facts =
+                    factReader.read(batch, task);
+            List<com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource> sources =
+                    sourceReader.readSources(batch, task);
+            factWriter.replace(batch, task, facts);
+            sourceWriter.replace(batch, task, sources);
         }
         return result;
     }

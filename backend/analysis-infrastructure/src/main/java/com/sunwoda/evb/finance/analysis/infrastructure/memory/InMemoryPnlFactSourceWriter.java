@@ -5,6 +5,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource;
 import com.sunwoda.evb.finance.analysis.domain.repository.PnlFactSourceWriter;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ import java.util.concurrent.ConcurrentMap;
  * 事务原子性、跨进程一致性或生产 JDBC 实现。</p>
  */
 @Repository
+@Profile("!db")
 public class InMemoryPnlFactSourceWriter implements PnlFactSourceWriter {
     private final ConcurrentMap<SourceKey, List<PnlFactSource>> store =
             new ConcurrentHashMap<SourceKey, List<PnlFactSource>>();
