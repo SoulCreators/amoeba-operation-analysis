@@ -42,11 +42,14 @@ type MatrixRow = { base: string; product: string; revenue: number[]; gross: numb
 const matrixRows = ref<MatrixRow[]>([])
 const unitRows = ref<string[][]>([])
 const riskRows = ref<string[][]>([])
-const riskReady = computed(() => v13Risk.value?.status === 'CALCULATED')
-const riskHasRows = computed(() => riskReady.value && Boolean(v13Risk.value?.risks?.length))
-const riskSummaryLabel = computed(() => !riskReady.value ? (v13Risk.value ? '待计算' : '待加载') : riskHasRows.value ? '需关注' : '未发现负向偏差')
-const riskSummaryClass = computed(() => !riskReady.value ? 'risk-level-mid' : riskHasRows.value ? 'risk-level-high' : 'green')
-const riskSummaryCount = computed(() => riskReady.value ? (v13Risk.value?.risks?.length || 0) : '—')
+const riskReady = computed(() => Boolean(v13Risk.value && v13Risk.value.status === 'CALCULATED'))
+const riskDataComplete = computed(() => riskReady.value && Array.isArray(v13Risk.value?.risks))
+const riskHasRows = computed(() => riskDataComplete.value && Boolean(v13Risk.value?.risks?.length))
+const riskSummaryLabel = computed(() => !riskReady.value ? (v13Risk.value?.status === 'PARTIAL_PENDING_THRESHOLD' ? '待确认' : v13Risk.value ? '待计算' : '待加载') : !riskDataComplete.value ? '待确认' : riskHasRows.value ? '需关注' : '未发现负向偏差')
+const riskSummaryClass = computed(() => !riskReady.value || !riskDataComplete.value ? 'risk-level-mid' : riskHasRows.value ? 'risk-level-high' : 'green')
+const riskSummaryCount = computed(() => riskDataComplete.value ? (v13Risk.value?.risks?.length || 0) : '—')
+let loadRequestId = 0
+let v13LoadRequestId = 0
 function resetOverviewPresentation() {
   dashboardCards.value = [
     { key: 'revenue', label: '营业收入', value: '—', unit: '', delta: '暂无真实计算结果', good: false },
@@ -63,6 +66,21 @@ function resetOverviewPresentation() {
   topFavorable.value = []
   topAdverse.value = []
 }
+function resetV13State() {
+  resetOverviewPresentation()
+  matrixRows.value = []
+  unitRows.value = []
+  riskRows.value = []
+  forecastRows.value = []
+  waterfallFactors.value = []
+  v13Overview.value = null
+  v13Matrix.value = null
+  v13Unit.value = null
+  v13Forecast.value = null
+  v13Risk.value = null
+  v13Waterfall.value = null
+  v13TopicPayloads.value = {}
+}
 function scenarioPair(actual: number, budget: number, fc = budget + (actual - budget) * 0.72) { return scenario.value === 'ACT_FC' ? [actual, fc] : scenario.value === 'FC_BGT' ? [fc, budget] : [actual, budget] }; function scenarioGap(actual: number, budget: number, fc?: number) { const [current, base] = scenarioPair(actual, budget, fc); return { current, base, gap: current - base, rate: base ? (current - base) / Math.abs(base) : null } }; function format(code: string, value: number) { if (code.includes('RATE')) return `${(value * 100).toFixed(2)}%`; return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value) }; function matrixPair(row: MatrixRow) { const values = matrixMetric.value === 'GROSS' ? row.gross : matrixMetric.value === 'PROFIT' ? row.profit : row.revenue; return scenarioPair(values[0], values[1], values[2]) }; function matrixTotal() { return matrixRows.value.reduce((r, row) => { const p = matrixPair(row); r.current += p[0]; r.base += p[1]; return r }, { current: 0, base: 0 }) }
 function setUser() { const normalizedUser = normalizeUserId(currentUser.value); localStorage.setItem('amoeba.user', normalizedUser); currentUser.value = normalizedUser; showToast('用户范围已切换') }; function showToast(message: string) { toastMessage.value = message; window.setTimeout(() => { if (toastMessage.value === message) toastMessage.value = '' }, 2600) }; function go(next: View) { view.value = next; error.value = ''; if (next === 'overview' || next === 'import' || next === 'configImport' || next === 'mapping' || next === 'metrics' || next === 'result' || next === 'pvm' || next === 'tree' || next === 'ai') void load() }
 async function ensureBatch() {
@@ -75,7 +93,76 @@ async function ensureBatch() {
   }
 }
 
-async function load() { loading.value = true; error.value = ''; source.value = 'empty'; try { await ensureBatch(); if (view.value !== 'import') metrics.value = await api.overview(period.value, perspective.value, scope.value); readiness.value = await api.readiness(batchNo.value); quality.value = await api.quality(batchNo.value); datasets.value = await api.datasets(perspective.value); source.value = 'api'; if (view.value === 'result') { const result = await api.result(batchNo.value); results.value = result.pnls; calculationStatus.value = result.status } if (view.value === 'pvm') pvmRows.value = await api.pvm(batchNo.value); if (view.value === 'tree') treeRows.value = (await api.metricTree(batchNo.value)); if (view.value === 'ai') aiDraft.value = await api.ai(batchNo.value); if (view.value === 'metrics') configMetrics.value = await api.metrics(perspective.value, true); if (view.value === 'mapping') mappingRows.value = await api.mappings(mappingType.value, true) } catch (e) { const message = e instanceof Error ? e.message : '请求失败'; source.value = 'empty'; metrics.value = []; results.value = []; pvmRows.value = []; treeRows.value = []; aiDraft.value = null; calculationStatus.value = ''; resetOverviewPresentation(); matrixRows.value = []; unitRows.value = []; riskRows.value = []; error.value = message.includes('批次尚未完成计算') ? '当前批次尚未完成计算：请先上传并校验必需数据集，再开始计算。' : `真实数据接口暂不可用：${message}。页面不会展示演示数据。` } finally { loading.value = false } }
+async function load() {
+  const requestId = ++loadRequestId
+  resetV13State()
+  loading.value = true
+  error.value = ''
+  source.value = 'empty'
+  try {
+    await ensureBatch()
+    if (requestId !== loadRequestId) return
+    if (view.value !== 'import') {
+      const nextMetrics = await api.overview(period.value, perspective.value, scope.value)
+      if (requestId !== loadRequestId) return
+      metrics.value = nextMetrics
+    }
+    const nextReadiness = await api.readiness(batchNo.value)
+    if (requestId !== loadRequestId) return
+    readiness.value = nextReadiness
+    const nextQuality = await api.quality(batchNo.value)
+    if (requestId !== loadRequestId) return
+    quality.value = nextQuality
+    const nextDatasets = await api.datasets(perspective.value)
+    if (requestId !== loadRequestId) return
+    datasets.value = nextDatasets
+    source.value = 'api'
+    if (view.value === 'result') {
+      const result = await api.result(batchNo.value)
+      if (requestId !== loadRequestId) return
+      results.value = result.pnls
+      calculationStatus.value = result.status
+    }
+    if (view.value === 'pvm') {
+      const nextPvmRows = await api.pvm(batchNo.value)
+      if (requestId !== loadRequestId) return
+      pvmRows.value = nextPvmRows
+    }
+    if (view.value === 'tree') {
+      const nextTreeRows = await api.metricTree(batchNo.value)
+      if (requestId !== loadRequestId) return
+      treeRows.value = nextTreeRows
+    }
+    if (view.value === 'ai') {
+      const nextAiDraft = await api.ai(batchNo.value)
+      if (requestId !== loadRequestId) return
+      aiDraft.value = nextAiDraft
+    }
+    if (view.value === 'metrics') {
+      const nextConfigMetrics = await api.metrics(perspective.value, true)
+      if (requestId !== loadRequestId) return
+      configMetrics.value = nextConfigMetrics
+    }
+    if (view.value === 'mapping') {
+      const nextMappingRows = await api.mappings(mappingType.value, true)
+      if (requestId !== loadRequestId) return
+      mappingRows.value = nextMappingRows
+    }
+  } catch (e) {
+    if (requestId !== loadRequestId) return
+    const message = e instanceof Error ? e.message : '请求失败'
+    source.value = 'empty'
+    metrics.value = []
+    results.value = []
+    pvmRows.value = []
+    treeRows.value = []
+    aiDraft.value = null
+    calculationStatus.value = ''
+    error.value = message.includes('批次尚未完成计算') ? '当前批次尚未完成计算：请先上传并校验必需数据集，再开始计算。' : `真实数据接口暂不可用：${message}。页面不会展示演示数据。`
+  } finally {
+    if (requestId === loadRequestId) loading.value = false
+  }
+}
 
 async function calculateBatch() {
   calculationBusy.value = true
@@ -153,6 +240,7 @@ async function disableMapping(row: MappingEntry) { try { await api.disableMappin
 
 async function uploadConfig() { if (!configImportFile.value) { configImportMessage.value = '请选择基础配置文件。'; return }; await runConfigImport() }
 
+function refreshAnalysis() { void load(); void loadV13() }
 function changeRole() { currentScope.value = currentRole.value === '总部财经' ? '全部基地' : currentRole.value === '基地运营' ? '泰国基地' : '南昌基地'; roleScope.value = currentScope.value; showToast(`已切换为${currentRole.value}`) }; function printRisk() { document.body.classList.add('risk-print'); window.print(); window.setTimeout(() => document.body.classList.remove('risk-print'), 500) }; function exportView(name: string) { showToast(`${name}导出任务已创建，当前仅导出真实接口返回内容`) }; function showMetric(name: string) { selectedMetric.value = name }; function pickFile(e: Event) { selectedFile.value = (e.target as HTMLInputElement).files?.[0] || null }; function pickConfigFile(e: Event) { configImportFile.value = (e.target as HTMLInputElement).files?.[0] || null }; onMounted(load)
 function configStatusLabel(status?: string) {
   return ({ CREATED: '已创建', VALIDATING: '校验中', VALID: '校验并应用通过', INVALID: '校验/应用失败', CANCELLED: '已取消' } as Record<string, string>)[status || ''] || status || '未知'
@@ -312,7 +400,7 @@ function applyUnitPayload(payload: V13AnalysisPayload) {
 }
 
 function applyRiskPayload(payload: V13AnalysisPayload) {
-  if (!payload.risks?.length) {
+  if (payload.status !== 'CALCULATED' || !Array.isArray(payload.risks) || !payload.risks.length) {
     riskRows.value = []
     return
   }
@@ -332,48 +420,49 @@ function applyWaterfallPayload(payload: V13AnalysisPayload) {
 }
 
 async function loadV13() {
+  const requestId = ++v13LoadRequestId
+  resetV13State()
   if (!['overview', 'gross', 'matrix', 'unit', 'forecast', 'risk', 'topics'].includes(view.value)) return
   try {
     if (view.value === 'overview' || view.value === 'gross') {
-      v13Overview.value = await api.v13Overview(batchNo.value, scenario.value)
+      const payload = await api.v13Overview(batchNo.value, scenario.value)
+      if (requestId !== v13LoadRequestId) return
+      v13Overview.value = payload
       applyOverviewPayload(v13Overview.value)
     } else if (view.value === 'matrix') {
-      v13Matrix.value = await api.v13Matrix(batchNo.value, matrixMetric.value)
+      const payload = await api.v13Matrix(batchNo.value, matrixMetric.value)
+      if (requestId !== v13LoadRequestId) return
+      v13Matrix.value = payload
       applyMatrixPayload(v13Matrix.value)
     } else if (view.value === 'unit') {
-      v13Unit.value = await api.v13UnitEfficiency(batchNo.value)
+      const payload = await api.v13UnitEfficiency(batchNo.value)
+      if (requestId !== v13LoadRequestId) return
+      v13Unit.value = payload
       applyUnitPayload(v13Unit.value)
     } else if (view.value === 'forecast') {
-      v13Forecast.value = await api.v13Forecast(batchNo.value, scenario.value, fcVersion.value)
+      const payload = await api.v13Forecast(batchNo.value, scenario.value, fcVersion.value)
+      if (requestId !== v13LoadRequestId) return
+      v13Forecast.value = payload
       applyForecastPayload(v13Forecast.value)
-      v13Waterfall.value = await api.v13Waterfall(batchNo.value)
+      const waterfallPayload = await api.v13Waterfall(batchNo.value)
+      if (requestId !== v13LoadRequestId) return
+      v13Waterfall.value = waterfallPayload
       applyWaterfallPayload(v13Waterfall.value)
     } else if (view.value === 'risk') {
-      v13Risk.value = await api.v13Risk(batchNo.value)
+      const payload = await api.v13Risk(batchNo.value)
+      if (requestId !== v13LoadRequestId) return
+      v13Risk.value = payload
       applyRiskPayload(v13Risk.value)
     } else if (view.value === 'topics') {
-      v13TopicPayloads.value[activeTopic.value] = await api.v13Topic(batchNo.value, activeTopic.value)
+      const payload = await api.v13Topic(batchNo.value, activeTopic.value)
+      if (requestId !== v13LoadRequestId) return
+      v13TopicPayloads.value[activeTopic.value] = payload
     }
+    if (requestId !== v13LoadRequestId) return
     source.value = 'api'
   } catch (e) {
-    if (view.value === 'overview' || view.value === 'gross') {
-      v13Overview.value = null
-      resetOverviewPresentation()
-    } else if (view.value === 'matrix') {
-      v13Matrix.value = null
-      matrixRows.value = []
-    } else if (view.value === 'unit') {
-      v13Unit.value = null
-      unitRows.value = []
-    } else if (view.value === 'forecast') {
-      v13Forecast.value = null
-      v13Waterfall.value = null
-      forecastRows.value = []
-      waterfallFactors.value = []
-    } else if (view.value === 'risk') {
-      v13Risk.value = null
-      riskRows.value = []
-    }
+    if (requestId !== v13LoadRequestId) return
+    resetV13State()
     const message = e instanceof Error ? e.message : '请求失败'
     error.value = message.includes('批次尚未完成计算')
       ? '当前批次尚未完成计算：请先上传并校验必需数据集，再查看V1.3分析。'
@@ -382,7 +471,8 @@ async function loadV13() {
 }
 
 onMounted(loadV13)
-watch([view, batchNo, scenario, matrixMetric, activeTopic], () => { void loadV13() })
+watch([view, scenario, matrixMetric, activeTopic], () => { void loadV13() })
+watch([batchNo, period, periodMode, perspective], () => { void refreshAnalysis() })
 watch(view, (next) => {
   if (['result', 'pvm', 'tree', 'ai'].includes(next)) void load()
 })
