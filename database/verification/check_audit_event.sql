@@ -94,6 +94,49 @@ BEGIN
 END
 $$;
 
+DO $$
+DECLARE
+    v_duplicate_rejected BOOLEAN := FALSE;
+    v_metadata_rejected BOOLEAN := FALSE;
+BEGIN
+    BEGIN
+        INSERT INTO audit.audit_event (
+            event_id, trace_id, operator, service, action, object_type, object_id,
+            from_state, to_state, result, reason, metadata, occurred_at
+        ) VALUES (
+            'audit-event-verification', NULL, 'verification', 'verification', 'DUPLICATE',
+            'audit_event', 'audit-event-verification-duplicate', NULL, NULL, 'SUCCESS', NULL,
+            '{"probe":true}'::jsonb, CURRENT_TIMESTAMP
+        );
+    EXCEPTION
+        WHEN unique_violation THEN
+            v_duplicate_rejected := TRUE;
+    END;
+
+    IF NOT v_duplicate_rejected THEN
+        RAISE EXCEPTION 'Duplicate audit event_id was accepted';
+    END IF;
+
+    BEGIN
+        INSERT INTO audit.audit_event (
+            event_id, trace_id, operator, service, action, object_type, object_id,
+            from_state, to_state, result, reason, metadata, occurred_at
+        ) VALUES (
+            'audit-event-verification-non-object', NULL, 'verification', 'verification', 'INVALID_METADATA',
+            'audit_event', 'audit-event-verification-non-object', NULL, NULL, 'SUCCESS', NULL,
+            '[]'::jsonb, CURRENT_TIMESTAMP
+        );
+    EXCEPTION
+        WHEN check_violation THEN
+            v_metadata_rejected := TRUE;
+    END;
+
+    IF NOT v_metadata_rejected THEN
+        RAISE EXCEPTION 'Non-object audit metadata was accepted';
+    END IF;
+END
+$$;
+
 ROLLBACK;
 
 SELECT 'V020 audit.audit_event structure and insert verification passed.'
