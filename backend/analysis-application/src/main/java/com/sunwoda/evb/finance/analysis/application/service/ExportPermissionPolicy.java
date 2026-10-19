@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
+import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -16,6 +17,7 @@ import java.util.Set;
  * as the source of truth and returns the already-clipped summary/detail scope
  * sets for an eventual export task.</p>
  */
+@Service
 public final class ExportPermissionPolicy {
     private final PermissionService permissionService;
 

@@ -132,6 +132,56 @@ class ExportAuthorizationPolicyTest {
         assertFalse(decision.canExportSummary("NANCHANG"));
     }
 
+    @Test
+    void policyDeniesUserWithoutAnyExportPermission() {
+        PermissionService permissions = permissions(
+                grant("U001", "OPS", "NANCHANG", true, false));
+
+        ExportPermission decision = new ExportPermissionPolicy(permissions)
+                .authorize("U001", AnalysisPerspective.BASE,
+                        CalculationResultStatus.PUBLISHED);
+
+        assertFalse(decision.isAllowed());
+        assertTrue(decision.getSummaryScopes().isEmpty());
+        assertTrue(decision.getDetailScopes().isEmpty());
+    }
+
+    @Test
+    void policyDeniesMissingAuthenticatedIdentity() {
+        ExportPermissionPolicy policy = new ExportPermissionPolicy(permissions(
+                grant("U001", "FINANCE", "NANCHANG", true, true)));
+
+        assertFalse(policy.authorize(null, AnalysisPerspective.BASE,
+                CalculationResultStatus.PUBLISHED).isAllowed());
+        assertFalse(policy.authorize(" ", AnalysisPerspective.BASE,
+                CalculationResultStatus.PUBLISHED).isAllowed());
+    }
+
+    @Test
+    void requestedSummaryAndDetailScopesAreClippedToTheUsersGrant() {
+        PermissionService permissions = permissions(
+                grant("U001", "FINANCE", "NANCHANG", true, true),
+                grant("U001", "OPS", "YICHANG", false, true));
+
+        ExportPermission summaryOnly = new ExportPermissionPolicy(permissions)
+                .authorize("U001", AnalysisPerspective.BASE,
+                        CalculationResultStatus.PUBLISHED,
+                        setOf("NANCHANG", "YICHANG"));
+
+        assertTrue(summaryOnly.isAllowed());
+        assertEquals(setOf("NANCHANG", "YICHANG"), summaryOnly.getSummaryScopes());
+        assertEquals(Collections.singleton("NANCHANG"), summaryOnly.getDetailScopes());
+
+        ExportPermission overreach = new ExportPermissionPolicy(permissions)
+                .authorize("U001", AnalysisPerspective.BASE,
+                        CalculationResultStatus.PUBLISHED,
+                        setOf("WUHAN"));
+
+        assertFalse(overreach.isAllowed());
+        assertTrue(overreach.getSummaryScopes().isEmpty());
+        assertTrue(overreach.getDetailScopes().isEmpty());
+    }
+
     private PermissionService permissions(UserScope... grants) {
         InMemoryScopes repository = new InMemoryScopes();
         for (UserScope grant : grants) {
@@ -144,6 +194,12 @@ class ExportAuthorizationPolicyTest {
                             boolean canViewDetail, boolean canExport) {
         return new UserScope(userId, roleCode, AnalysisPerspective.BASE, scopeCode,
                 canViewDetail, canExport, false, true);
+    }
+
+    private java.util.Set<String> setOf(String... values) {
+        java.util.LinkedHashSet<String> result = new java.util.LinkedHashSet<String>();
+        Collections.addAll(result, values);
+        return result;
     }
 
     private static final class InMemoryScopes implements UserScopeRepository {
