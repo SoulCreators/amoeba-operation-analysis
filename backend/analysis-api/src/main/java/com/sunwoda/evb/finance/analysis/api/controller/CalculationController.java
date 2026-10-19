@@ -23,8 +23,11 @@ public class CalculationController {
     }
 
     @PostMapping
-    public ApiResult<CalculationResult> calculate(@RequestBody CalculateRequest request) {
-        return ApiResult.ok(service.calculate(request.getBatchNo()));
+    public ApiResult<CalculationResult> calculate(@RequestBody CalculateRequest request,
+                                                  Principal principal) {
+        String userId = requiredUser(principal);
+        service.calculate(request.getBatchNo());
+        return ApiResult.ok(service.getForUser(request.getBatchNo(), userId));
     }
 
     @GetMapping("/{batchNo}")

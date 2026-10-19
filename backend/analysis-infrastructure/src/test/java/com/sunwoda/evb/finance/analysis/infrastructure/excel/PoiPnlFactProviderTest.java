@@ -43,9 +43,11 @@ class PoiPnlFactProviderTest {
 
         ImportTask task = new ImportTask(1L, "IMP-1", "B-1", "BASE_ACT_INC_COST",
                 "actual.xlsx", null, "tester", LocalDateTime.now());
+        task.moveTo(ImportStatus.VALIDATING, 0);
         task.moveTo(ImportStatus.VALID, 0);
         ImportTask budgetTask = new ImportTask(2L, "IMP-2", "B-1", "BASE_BUD_INC_COST",
                 "budget.xlsx", null, "tester", LocalDateTime.now());
+        budgetTask.moveTo(ImportStatus.VALIDATING, 0);
         budgetTask.moveTo(ImportStatus.VALID, 0);
         PnlFactProviderHolder provider = new PnlFactProviderHolder(Arrays.asList(task, budgetTask), output.toByteArray());
         List<PnlFact> facts = provider.load(new AnalysisBatch(1L, "B-1", "2026-09",

@@ -31,14 +31,12 @@ public class ImportTask {
     }
 
     public void moveTo(ImportStatus next, int issueCount) {
-        if (next == null) throw new IllegalArgumentException("导入状态不能为空");
+        ImportLifecyclePolicy.validate(status, next);
         if (issueCount < 0) throw new IllegalArgumentException("问题数不能为负数");
-        if (status == ImportStatus.CANCELLED && next != ImportStatus.CANCELLED) {
-            throw new IllegalStateException("已取消的导入任务不可恢复");
-        }
         if (next == ImportStatus.VALID && issueCount > 0) {
             throw new IllegalStateException("存在校验问题时不可标记为有效");
         }
+        if (status == next) return;
         this.status = next;
         this.issueCount = issueCount;
         this.updatedAt = LocalDateTime.now();
