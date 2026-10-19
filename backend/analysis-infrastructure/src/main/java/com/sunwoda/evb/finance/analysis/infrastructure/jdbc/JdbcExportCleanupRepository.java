@@ -78,7 +78,7 @@ public class JdbcExportCleanupRepository implements ExportCleanupPort {
                     + " OR ? THEN 'FAILED' ELSE 'PENDING' END, "
                     + "cleanup_claim_token = NULL, cleanup_lease_until = NULL, "
                     + "cleanup_next_attempt_at = CASE WHEN cleanup_attempts >= " + MAX_ATTEMPTS
-                    + " OR ? THEN NULL ELSE ? END, cleanup_last_error = ?, "
+                    + " OR ? THEN NULL ELSE CAST(? AS TIMESTAMP) END, cleanup_last_error = ?, "
                     + "cleanup_completed_at = NULL, updated_at = ? "
                     + "WHERE job_id = ? AND status = 'EXPIRED' "
                     + "AND cleanup_status = 'IN_PROGRESS' AND cleanup_claim_token = ?";

@@ -39,7 +39,15 @@ class JdbcExportCleanupRepositorySecurityContractTest {
                 url, environment("AMOEBA_DB_USERNAME"), environment("AMOEBA_DB_PASSWORD"));
         jdbc = new JdbcTemplate(dataSource);
         try {
-            jdbc.queryForObject("SELECT cleanup_status FROM flow.export_task LIMIT 0", String.class);
+            Integer cleanupColumns = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.columns "
+                            + "WHERE table_schema = 'flow' AND table_name = 'export_task' "
+                            + "AND column_name IN ('cleanup_status', 'cleanup_claim_token', "
+                            + "'cleanup_lease_until', 'cleanup_attempts', "
+                            + "'cleanup_next_attempt_at')",
+                    Integer.class);
+            assumeTrue(cleanupColumns != null && cleanupColumns == 5,
+                    "BLOCKED: V019 cleanup columns are not available");
         } catch (RuntimeException failure) {
             assumeTrue(false, "BLOCKED: V019 cleanup columns are not available: "
                     + failure.getMessage());
@@ -107,7 +115,8 @@ class JdbcExportCleanupRepositorySecurityContractTest {
     }
 
     private void due(String jobId, LocalDateTime now) {
-        jdbc.update("UPDATE flow.export_task SET expires_at = ? WHERE job_id = ?",
+        jdbc.update("UPDATE flow.export_task SET created_at = ?, expires_at = ? WHERE job_id = ?",
+                Timestamp.valueOf(now.minusMinutes(2)),
                 Timestamp.valueOf(now.minusMinutes(1)), jobId);
     }
 
