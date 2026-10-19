@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
 import java.util.List;
 
 @RestController
@@ -28,25 +29,31 @@ public class ImportTaskQueryController {
     }
 
     @GetMapping("/{taskNo}")
-    public ApiResult<ImportTask> get(@PathVariable String taskNo) {
+    public ApiResult<ImportTask> get(@PathVariable String taskNo, Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(importTaskService.get(taskNo));
     }
 
     @GetMapping("/{taskNo}/issues")
-    public ApiResult<List<ImportIssue>> issues(@PathVariable String taskNo) {
+    public ApiResult<List<ImportIssue>> issues(@PathVariable String taskNo, Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(importTaskService.issues(taskNo));
     }
 
     @PostMapping("/{taskNo}/status")
     public ApiResult<ImportTask> move(@PathVariable String taskNo,
-                                      @RequestBody MoveImportTaskRequest request) {
+                                      @RequestBody MoveImportTaskRequest request,
+                                      Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(importTaskService.move(taskNo,
                 ImportStatus.valueOf(request.getStatus()), request.getIssueCount()));
     }
 
     @PostMapping(value = "/{taskNo}/validate", consumes = "multipart/form-data")
     public ApiResult<ImportValidationResult> validate(@PathVariable String taskNo,
-                                                      @RequestPart("file") MultipartFile file) {
+                                                      @RequestPart("file") MultipartFile file,
+                                                      Principal principal) {
+        requiredUser(principal);
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("导入文件不能为空");
         }
@@ -55,5 +62,12 @@ public class ImportTaskQueryController {
         } catch (java.io.IOException ex) {
             throw new IllegalArgumentException("导入文件无法读取: " + ex.getMessage(), ex);
         }
+    }
+
+    private String requiredUser(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户");
+        }
+        return principal.getName();
     }
 }

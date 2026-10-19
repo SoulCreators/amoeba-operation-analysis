@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
 import java.util.List;
 
 @RestController
@@ -21,7 +22,14 @@ public class DatasetController {
     }
 
     @GetMapping
-    public ApiResult<List<DatasetDefinition>> list(@RequestParam String perspective) {
+    public ApiResult<List<DatasetDefinition>> list(@RequestParam String perspective, Principal principal) {
+        requireUser(principal);
         return ApiResult.ok(catalog.list(AnalysisPerspective.fromCode(perspective)));
+    }
+
+    private void requireUser(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户");
+        }
     }
 }

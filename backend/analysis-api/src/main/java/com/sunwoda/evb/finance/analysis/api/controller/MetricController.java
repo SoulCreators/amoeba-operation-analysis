@@ -26,7 +26,9 @@ public class MetricController {
     @GetMapping
     public ApiResult<List<MetricDefinition>> list(
             @RequestParam(required = false) String perspective,
-            @RequestParam(defaultValue = "false") boolean includeDisabled) {
+            @RequestParam(defaultValue = "false") boolean includeDisabled,
+            Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(service.list(perspective, includeDisabled));
     }
 

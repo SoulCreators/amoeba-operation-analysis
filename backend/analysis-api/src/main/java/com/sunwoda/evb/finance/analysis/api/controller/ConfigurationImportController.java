@@ -37,12 +37,14 @@ public class ConfigurationImportController {
     }
 
     @GetMapping("/{taskNo}")
-    public ApiResult<ConfigurationImportTask> get(@PathVariable String taskNo) {
+    public ApiResult<ConfigurationImportTask> get(@PathVariable String taskNo, Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(service.get(taskNo));
     }
 
     @GetMapping("/{taskNo}/issues")
-    public ApiResult<List<ImportIssue>> issues(@PathVariable String taskNo) {
+    public ApiResult<List<ImportIssue>> issues(@PathVariable String taskNo, Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(service.issues(taskNo));
     }
 
@@ -74,7 +76,9 @@ public class ConfigurationImportController {
 
     @PostMapping("/{taskNo}/status")
     public ApiResult<ConfigurationImportTask> move(@PathVariable String taskNo,
-                                                  @RequestBody MoveConfigurationImportRequest request) {
+                                                  @RequestBody MoveConfigurationImportRequest request,
+                                                  Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(service.move(taskNo, ImportStatus.valueOf(request.getStatus())));
     }
 

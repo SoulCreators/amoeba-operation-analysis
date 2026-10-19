@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
 import java.util.List;
 
 @RestController
@@ -24,7 +25,15 @@ public class OverviewController {
     public ApiResult<List<OverviewMetricResult>> query(
             @RequestParam String period,
             @RequestParam String perspective,
-            @RequestParam(required = false, defaultValue = "ALL") String scope) {
+            @RequestParam(required = false, defaultValue = "ALL") String scope,
+            Principal principal) {
+        requireUser(principal);
         return ApiResult.ok(overviewService.query(period, AnalysisPerspective.fromCode(perspective), scope));
+    }
+
+    private void requireUser(Principal principal) {
+        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
+            throw new IllegalStateException("未获取到认证用户");
+        }
     }
 }

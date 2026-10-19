@@ -26,13 +26,16 @@ public class BatchController {
     }
 
     @GetMapping("/{batchNo}")
-    public ApiResult<AnalysisBatch> get(@PathVariable String batchNo) {
+    public ApiResult<AnalysisBatch> get(@PathVariable String batchNo, Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(batchService.get(batchNo));
     }
 
     @PostMapping("/{batchNo}/status")
     public ApiResult<AnalysisBatch> move(@PathVariable String batchNo,
-                                         @RequestBody MoveBatchRequest request) {
+                                         @RequestBody MoveBatchRequest request,
+                                         Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(batchService.move(batchNo, BatchStatus.valueOf(request.getStatus())));
     }
 

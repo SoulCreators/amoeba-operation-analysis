@@ -26,7 +26,9 @@ public class MappingController {
 
     @GetMapping
     public ApiResult<List<MappingEntry>> list(@RequestParam String type,
-                                              @RequestParam(defaultValue = "false") boolean includeDisabled) {
+                                              @RequestParam(defaultValue = "false") boolean includeDisabled,
+                                              Principal principal) {
+        requiredUser(principal);
         return ApiResult.ok(service.list(MappingType.valueOf(type), includeDisabled));
     }
 
