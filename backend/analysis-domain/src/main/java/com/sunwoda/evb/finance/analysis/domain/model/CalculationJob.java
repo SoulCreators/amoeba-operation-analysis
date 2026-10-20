@@ -30,6 +30,42 @@ public final class CalculationJob {
         this.attemptNo = 1;
     }
 
+    /**
+     * 从持久化记录恢复计算作业的完整领域状态。
+     *
+     * <p>本次修改仅提供 JDBC 适配器所需的状态恢复入口，不新增重试、调度或幂等业务规则。</p>
+     */
+    public static CalculationJob restore(String jobId, String requestKey, String batchNo,
+                                         LocalDateTime createdAt, CalculationJobStatus status,
+                                         int attemptNo, String lastError, LocalDateTime startedAt,
+                                         LocalDateTime finishedAt) {
+        if (status == null) {
+            throw new IllegalArgumentException("status 不能为空");
+        }
+        if (attemptNo < 1) {
+            throw new IllegalArgumentException("attemptNo 必须大于等于 1");
+        }
+        return new CalculationJob(jobId, requestKey, batchNo, createdAt, status, attemptNo,
+                lastError, startedAt, finishedAt);
+    }
+
+    private CalculationJob(String jobId, String requestKey, String batchNo, LocalDateTime createdAt,
+                            CalculationJobStatus status, int attemptNo, String lastError,
+                            LocalDateTime startedAt, LocalDateTime finishedAt) {
+        this.jobId = requiredText(jobId, "jobId");
+        this.requestKey = requiredText(requestKey, "requestKey");
+        this.batchNo = requiredText(batchNo, "batchNo");
+        if (createdAt == null) {
+            throw new IllegalArgumentException("createdAt 不能为空");
+        }
+        this.createdAt = createdAt;
+        this.status = status;
+        this.attemptNo = attemptNo;
+        this.lastError = lastError;
+        this.startedAt = startedAt;
+        this.finishedAt = finishedAt;
+    }
+
     public void moveTo(CalculationJobStatus next) {
         CalculationJobLifecyclePolicy.validate(status, next);
         if (status == CalculationJobStatus.FAILED && next == CalculationJobStatus.QUEUED) {
