@@ -33,10 +33,8 @@ public class CalculationController {
     @GetMapping("/{batchNo}")
     public ApiResult<CalculationResult> get(@PathVariable String batchNo,
                                             Principal principal) {
-        if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
-            throw new IllegalStateException("未获取到认证用户，拒绝返回经营结果");
-        }
-        return ApiResult.ok(service.getForUser(batchNo, principal.getName()));
+        return ApiResult.ok(service.getForUser(batchNo,
+                requiredUser(principal, "未获取到认证用户，拒绝返回经营结果")));
     }
 
     @PostMapping("/confirm")
@@ -50,9 +48,14 @@ public class CalculationController {
     }
 
     private String requiredUser(Principal principal) {
+        return requiredUser(principal, "未获取到认证用户");
+    }
+
+    private String requiredUser(Principal principal, String message) {
         if (principal == null || principal.getName() == null || principal.getName().trim().isEmpty()) {
-            throw new IllegalStateException("未获取到认证用户");
+            throw new IllegalStateException(message);
         }
-        return principal.getName();
+        // Principal 是认证边界的唯一用户来源；这里只规范化首尾空白，不改变身份值、授权范围或业务状态。
+        return principal.getName().trim();
     }
 }
