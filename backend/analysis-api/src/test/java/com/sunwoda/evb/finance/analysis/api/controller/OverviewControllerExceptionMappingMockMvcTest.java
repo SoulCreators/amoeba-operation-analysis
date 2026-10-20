@@ -61,6 +61,18 @@ class OverviewControllerExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNameOverviewQueryWithUnauthorizedA0002() throws Exception {
+        // 认证主体存在但用户名为 null 时，仍必须在进入 OverviewService 前拒绝请求。
+        mockMvc.perform(overviewRequest(principal(null), "BASE"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void mapsIllegalPerspectiveToOkAndA0001() throws Exception {
         mockMvc.perform(overviewRequest(principal(USER_ID), "UNKNOWN"))
                 .andExpect(status().isOk())

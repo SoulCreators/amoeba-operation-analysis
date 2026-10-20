@@ -62,6 +62,18 @@ class BatchControllerExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNameCreateWithUnauthorizedA0002() throws Exception {
+        // 认证主体存在但用户名为 null 时，仍须在进入批次服务前拒绝请求。
+        mockMvc.perform(createRequest(principal(null), "BASE"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void rejectsAnonymousReadWithUnauthorizedA0002() throws Exception {
         mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO))
                 .andExpect(status().isUnauthorized())
@@ -85,6 +97,19 @@ class BatchControllerExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNameReadWithUnauthorizedA0002() throws Exception {
+        // 查询入口对 null 用户名保持与匿名、空用户名相同的认证边界。
+        mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
+                        .principal(principal(null)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void rejectsAnonymousMoveWithUnauthorizedA0002() throws Exception {
         mockMvc.perform(moveRequest(null, "READY_FOR_CALCULATION"))
                 .andExpect(status().isUnauthorized())
@@ -98,6 +123,18 @@ class BatchControllerExceptionMappingMockMvcTest {
     @Test
     void rejectsBlankMoveWithUnauthorizedA0002() throws Exception {
         mockMvc.perform(moveRequest(principal("  "), "READY_FOR_CALCULATION"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rejectsNullNameMoveWithUnauthorizedA0002() throws Exception {
+        // 状态流转入口拒绝 null 用户名，避免未认证主体触发业务服务。
+        mockMvc.perform(moveRequest(principal(null), "READY_FOR_CALCULATION"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.data").value(nullValue()))

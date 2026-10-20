@@ -85,6 +85,8 @@ class DataQualityControllerMockMvcContractTest {
     @Test
     void anonymousOrBlankPrincipalReturnsUnauthorizedAndDoesNotCallService() throws Exception {
         assertUnauthenticated(qualityRequest(null));
+        // 认证主体存在但用户名为 null 时，同样必须在进入数据质量 Service 前拒绝请求。
+        assertUnauthenticated(qualityRequest(principal(null)));
         assertUnauthenticated(qualityRequest(principal("")));
         assertUnauthenticated(qualityRequest(principal("   ")));
 
