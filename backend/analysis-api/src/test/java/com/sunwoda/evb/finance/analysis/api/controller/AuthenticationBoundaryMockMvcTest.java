@@ -9,7 +9,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.RequestBuilder;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.security.Principal;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -68,36 +72,65 @@ class AuthenticationBoundaryMockMvcTest {
         verifyNoInteractions(aiAnalysisService);
     }
 
+    /** 认证主体缺失或名称为空时，创建导出请求必须返回 401 且不调用导出服务。 */
     @Test
     void anonymousExportRequestReturnsHandledAuthenticationFailure() throws Exception {
-        exportMockMvc.perform(post("/api/v1/exports")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("A0002"))
-                .andExpect(jsonPath("$.success").value(false));
+        assertUnauthenticated(exportCreateRequest(null));
+        assertUnauthenticated(exportCreateRequest(principal(null)));
+        assertUnauthenticated(exportCreateRequest(principal("")));
+        assertUnauthenticated(exportCreateRequest(principal("   ")));
 
         verifyNoInteractions(exportService);
     }
 
+    /** 认证主体缺失或名称为空时，查询导出状态必须返回 401 且不调用导出服务。 */
     @Test
     void anonymousExportStatusRequestReturnsHandledAuthenticationFailure() throws Exception {
-        exportMockMvc.perform(get("/api/v1/exports/TASK-001"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("A0002"))
-                .andExpect(jsonPath("$.success").value(false));
+        assertUnauthenticated(exportStatusRequest(null));
+        assertUnauthenticated(exportStatusRequest(principal(null)));
+        assertUnauthenticated(exportStatusRequest(principal("")));
+        assertUnauthenticated(exportStatusRequest(principal("   ")));
 
         verifyNoInteractions(exportService);
     }
 
+    /** 认证主体缺失或名称为空时，下载导出文件必须返回 401 且不调用导出服务。 */
     @Test
     void anonymousExportDownloadRequestReturnsHandledAuthenticationFailure() throws Exception {
-        exportMockMvc.perform(get("/api/v1/exports/TASK-001/download"))
+        assertUnauthenticated(exportDownloadRequest(null));
+        assertUnauthenticated(exportDownloadRequest(principal(null)));
+        assertUnauthenticated(exportDownloadRequest(principal("")));
+        assertUnauthenticated(exportDownloadRequest(principal("   ")));
+
+        verifyNoInteractions(exportService);
+    }
+
+    private void assertUnauthenticated(RequestBuilder request) throws Exception {
+        exportMockMvc.perform(request)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("A0002"))
                 .andExpect(jsonPath("$.success").value(false));
+    }
 
-        verifyNoInteractions(exportService);
+    private RequestBuilder exportCreateRequest(Principal principal) {
+        MockHttpServletRequestBuilder request = post("/api/v1/exports")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}");
+        return principal == null ? request : request.principal(principal);
+    }
+
+    private RequestBuilder exportStatusRequest(Principal principal) {
+        MockHttpServletRequestBuilder request = get("/api/v1/exports/TASK-001");
+        return principal == null ? request : request.principal(principal);
+    }
+
+    private RequestBuilder exportDownloadRequest(Principal principal) {
+        MockHttpServletRequestBuilder request = get("/api/v1/exports/TASK-001/download");
+        return principal == null ? request : request.principal(principal);
+    }
+
+    private Principal principal(String name) {
+        return () -> name;
     }
 
     @Test

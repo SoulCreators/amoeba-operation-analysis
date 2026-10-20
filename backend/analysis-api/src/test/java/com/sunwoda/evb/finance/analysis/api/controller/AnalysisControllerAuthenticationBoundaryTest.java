@@ -51,6 +51,8 @@ class AnalysisControllerAuthenticationBoundaryTest {
     @Test
     void rejectsBatchReadinessWhenPrincipalIsMissingOrUsernameIsEmpty() {
         assertRejected(() -> batchReadinessController.get("BATCH-001", null));
+        // Principal 对象存在但用户名为 null 时，认证边界仍必须拒绝请求。
+        assertRejected(() -> batchReadinessController.get("BATCH-001", principalWithName(null)));
         assertRejected(() -> batchReadinessController.get("BATCH-001", principalWithName("")));
         assertRejected(() -> batchReadinessController.get("BATCH-001", principalWithName("   ")));
 
@@ -60,6 +62,8 @@ class AnalysisControllerAuthenticationBoundaryTest {
     @Test
     void rejectsDataQualityWhenPrincipalIsMissingOrUsernameIsEmpty() {
         assertRejected(() -> dataQualityController.get("BATCH-001", null));
+        // null 用户名不能被当作已认证用户传入数据质量 Service。
+        assertRejected(() -> dataQualityController.get("BATCH-001", principalWithName(null)));
         assertRejected(() -> dataQualityController.get("BATCH-001", principalWithName("")));
         assertRejected(() -> dataQualityController.get("BATCH-001", principalWithName("   ")));
 
@@ -69,6 +73,8 @@ class AnalysisControllerAuthenticationBoundaryTest {
     @Test
     void rejectsMetricTreeWhenPrincipalIsMissingOrUsernameIsEmpty() {
         assertRejected(() -> metricTreeController.calculate("BATCH-001", null));
+        // null 用户名必须在指标树 Service 调用前被拒绝。
+        assertRejected(() -> metricTreeController.calculate("BATCH-001", principalWithName(null)));
         assertRejected(() -> metricTreeController.calculate("BATCH-001", principalWithName("")));
         assertRejected(() -> metricTreeController.calculate("BATCH-001", principalWithName("   ")));
 
@@ -78,6 +84,8 @@ class AnalysisControllerAuthenticationBoundaryTest {
     @Test
     void rejectsPvmWhenPrincipalIsMissingOrUsernameIsEmpty() {
         assertRejected(() -> pvmController.analyze("BATCH-001", null));
+        // null 用户名不得绕过 PVM Controller 的认证门禁。
+        assertRejected(() -> pvmController.analyze("BATCH-001", principalWithName(null)));
         assertRejected(() -> pvmController.analyze("BATCH-001", principalWithName("")));
         assertRejected(() -> pvmController.analyze("BATCH-001", principalWithName("   ")));
 
@@ -87,12 +95,16 @@ class AnalysisControllerAuthenticationBoundaryTest {
     @Test
     void rejectsAiAnalysisWhenPrincipalIsMissingOrUsernameIsEmpty() {
         assertRejected(() -> aiAnalysisController.generate("BATCH-001", null));
+        // AI 三类入口统一验证 Principal.getName()==null，且不能触发 Service。
+        assertRejected(() -> aiAnalysisController.generate("BATCH-001", principalWithName(null)));
         assertRejected(() -> aiAnalysisController.generate("BATCH-001", principalWithName("")));
         assertRejected(() -> aiAnalysisController.generate("BATCH-001", principalWithName("   ")));
         assertRejected(() -> aiAnalysisController.get("BATCH-001", null));
+        assertRejected(() -> aiAnalysisController.get("BATCH-001", principalWithName(null)));
         assertRejected(() -> aiAnalysisController.get("BATCH-001", principalWithName("")));
         assertRejected(() -> aiAnalysisController.get("BATCH-001", principalWithName("   ")));
         assertRejected(() -> aiAnalysisController.publish("BATCH-001", null));
+        assertRejected(() -> aiAnalysisController.publish("BATCH-001", principalWithName(null)));
         assertRejected(() -> aiAnalysisController.publish("BATCH-001", principalWithName("")));
         assertRejected(() -> aiAnalysisController.publish("BATCH-001", principalWithName("   ")));
 
@@ -102,24 +114,32 @@ class AnalysisControllerAuthenticationBoundaryTest {
     @Test
     void rejectsV13AnalysisWhenPrincipalIsMissingOrUsernameIsEmpty() {
         assertRejected(() -> v13AnalysisController.overview("BATCH-001", "ACT_BGT", null));
+        // V1.3 七类查询均需在 Service 调用前拒绝 null 用户名。
+        assertRejected(() -> v13AnalysisController.overview("BATCH-001", "ACT_BGT", principalWithName(null)));
         assertRejected(() -> v13AnalysisController.overview("BATCH-001", "ACT_BGT", principalWithName("")));
         assertRejected(() -> v13AnalysisController.overview("BATCH-001", "ACT_BGT", principalWithName("   ")));
         assertRejected(() -> v13AnalysisController.matrix("BATCH-001", "GROSS_PROFIT", null));
+        assertRejected(() -> v13AnalysisController.matrix("BATCH-001", "GROSS_PROFIT", principalWithName(null)));
         assertRejected(() -> v13AnalysisController.matrix("BATCH-001", "GROSS_PROFIT", principalWithName("")));
         assertRejected(() -> v13AnalysisController.matrix("BATCH-001", "GROSS_PROFIT", principalWithName("   ")));
         assertRejected(() -> v13AnalysisController.unitEfficiency("BATCH-001", null));
+        assertRejected(() -> v13AnalysisController.unitEfficiency("BATCH-001", principalWithName(null)));
         assertRejected(() -> v13AnalysisController.unitEfficiency("BATCH-001", principalWithName("")));
         assertRejected(() -> v13AnalysisController.unitEfficiency("BATCH-001", principalWithName("   ")));
         assertRejected(() -> v13AnalysisController.forecast("BATCH-001", "ACT_BGT", "FC-001", null));
+        assertRejected(() -> v13AnalysisController.forecast("BATCH-001", "ACT_BGT", "FC-001", principalWithName(null)));
         assertRejected(() -> v13AnalysisController.forecast("BATCH-001", "ACT_BGT", "FC-001", principalWithName("")));
         assertRejected(() -> v13AnalysisController.forecast("BATCH-001", "ACT_BGT", "FC-001", principalWithName("   ")));
         assertRejected(() -> v13AnalysisController.risk("BATCH-001", null));
+        assertRejected(() -> v13AnalysisController.risk("BATCH-001", principalWithName(null)));
         assertRejected(() -> v13AnalysisController.risk("BATCH-001", principalWithName("")));
         assertRejected(() -> v13AnalysisController.risk("BATCH-001", principalWithName("   ")));
         assertRejected(() -> v13AnalysisController.waterfall("BATCH-001", null));
+        assertRejected(() -> v13AnalysisController.waterfall("BATCH-001", principalWithName(null)));
         assertRejected(() -> v13AnalysisController.waterfall("BATCH-001", principalWithName("")));
         assertRejected(() -> v13AnalysisController.waterfall("BATCH-001", principalWithName("   ")));
         assertRejected(() -> v13AnalysisController.topic("BATCH-001", "TOPIC-001", null));
+        assertRejected(() -> v13AnalysisController.topic("BATCH-001", "TOPIC-001", principalWithName(null)));
         assertRejected(() -> v13AnalysisController.topic("BATCH-001", "TOPIC-001", principalWithName("")));
         assertRejected(() -> v13AnalysisController.topic("BATCH-001", "TOPIC-001", principalWithName("   ")));
 
