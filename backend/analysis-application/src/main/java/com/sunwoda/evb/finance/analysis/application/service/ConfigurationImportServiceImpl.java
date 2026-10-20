@@ -72,9 +72,18 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
         ConfigurationImportTask task = get(taskNo);
         byte[] content = readBytes(inputStream);
         Optional<ImportFileSnapshot> previousFile = fileRepository.snapshot(taskNo);
-        fileRepository.save(taskNo, task.getFileName(), content);
-        task.moveTo(ImportStatus.VALIDATING);
-        return repository.save(task);
+        if (previousFile == null) previousFile = Optional.empty();
+        try {
+            fileRepository.save(taskNo, task.getFileName(), content);
+            task.moveTo(ImportStatus.VALIDATING);
+            return repository.save(task);
+        } catch (RuntimeException ex) {
+            restoreAfterFailure(taskNo, previousFile, ex);
+            throw ex;
+        } catch (Error ex) {
+            restoreAfterFailure(taskNo, previousFile, ex);
+            throw ex;
+        }
     }
 
     @Override
