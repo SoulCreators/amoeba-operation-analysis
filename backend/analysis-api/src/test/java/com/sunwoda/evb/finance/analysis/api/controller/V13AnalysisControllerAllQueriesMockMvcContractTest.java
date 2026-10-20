@@ -210,31 +210,45 @@ class V13AnalysisControllerAllQueriesMockMvcContractTest {
         mockMvc.perform(get("/api/v1/v13/overview/{batchNo}", BATCH_NO)
                         .principal(() -> null))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                // Principal.getName() 为 null 仍由统一认证异常处理映射为 A0002。
+                .andExpect(jsonPath("$.code").value("A0002"));
         mockMvc.perform(get("/api/v1/v13/matrix/{batchNo}", BATCH_NO)
                         .principal(() -> null))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                // Principal.getName() 为 null 仍由统一认证异常处理映射为 A0002。
+                .andExpect(jsonPath("$.code").value("A0002"));
         mockMvc.perform(get("/api/v1/v13/unit-efficiency/{batchNo}", BATCH_NO)
                         .principal(() -> null))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                // Principal.getName() 为 null 仍由统一认证异常处理映射为 A0002。
+                .andExpect(jsonPath("$.code").value("A0002"));
         mockMvc.perform(get("/api/v1/v13/forecast/{batchNo}", BATCH_NO)
                         .principal(() -> null))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                // Principal.getName() 为 null 仍由统一认证异常处理映射为 A0002。
+                .andExpect(jsonPath("$.code").value("A0002"));
         mockMvc.perform(get("/api/v1/v13/risk/{batchNo}", BATCH_NO)
                         .principal(() -> null))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                // Principal.getName() 为 null 仍由统一认证异常处理映射为 A0002。
+                .andExpect(jsonPath("$.code").value("A0002"));
         mockMvc.perform(get("/api/v1/v13/waterfall/{batchNo}", BATCH_NO)
                         .principal(() -> null))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                // Principal.getName() 为 null 仍由统一认证异常处理映射为 A0002。
+                .andExpect(jsonPath("$.code").value("A0002"));
         mockMvc.perform(get("/api/v1/v13/topics/{batchNo}/{topicCode}", BATCH_NO, "INVENTORY")
                         .principal(() -> null))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                // Principal.getName() 为 null 仍由统一认证异常处理映射为 A0002。
+                .andExpect(jsonPath("$.code").value("A0002"));
 
         // 七类查询均在 Controller 认证门禁处结束，不进入任何业务 Service。
         org.mockito.Mockito.verifyNoInteractions(service);
