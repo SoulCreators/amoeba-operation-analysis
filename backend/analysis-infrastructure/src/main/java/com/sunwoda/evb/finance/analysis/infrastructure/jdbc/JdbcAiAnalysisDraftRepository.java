@@ -69,10 +69,36 @@ public class JdbcAiAnalysisDraftRepository implements AiAnalysisDraftRepository 
         Map<String, String> sections = new LinkedHashMap<String, String>();
         if (value == null || value.isEmpty()) return sections;
         for (String item : value.split("\\|")) {
-            String[] pair = item.split("=", 2);
-            if (pair.length == 2) sections.put(decode(pair[0]), decode(pair[1]));
+            int separator = findPairSeparator(item);
+            if (separator >= 0) {
+                sections.put(decode(item.substring(0, separator)),
+                        decode(item.substring(separator + 1)));
+            }
         }
         return sections;
+    }
+
+    /**
+     * 本次修复：标准 Base64 的 padding 也使用等号，不能再按第一个等号切分。
+     * 逐个扫描候选分隔符，并要求两侧均为可重新编码的标准 Base64，兼容历史数据。
+     */
+    private int findPairSeparator(String item) {
+        for (int index = 0; index < item.length(); index++) {
+            if (item.charAt(index) != '=') continue;
+            String key = item.substring(0, index);
+            String value = item.substring(index + 1);
+            if (isCanonicalBase64(key) && isCanonicalBase64(value)) return index;
+        }
+        return -1;
+    }
+
+    /** 本次修复：用标准 Base64 的规范形式校验候选片段，保留历史 padding 语义。 */
+    private boolean isCanonicalBase64(String value) {
+        try {
+            return Base64.getEncoder().encodeToString(Base64.getDecoder().decode(value)).equals(value);
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
     }
 
     private String encode(String value) {
