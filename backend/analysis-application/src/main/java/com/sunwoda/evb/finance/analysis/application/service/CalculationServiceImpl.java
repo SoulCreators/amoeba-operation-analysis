@@ -29,6 +29,7 @@ public class CalculationServiceImpl implements CalculationService {
     private final PermissionService permissionService;
     private final Map<String, CalculationResult> results = new LinkedHashMap<String, CalculationResult>();
     private final CalculationResultRepository resultRepository;
+    private final PvmReconciliationValidator pvmReconciliationValidator;
 
     @Autowired
     public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
@@ -38,6 +39,7 @@ public class CalculationServiceImpl implements CalculationService {
         this.factProvider = factProvider;
         this.permissionService = permissionService;
         this.resultRepository = resultRepository;
+        this.pvmReconciliationValidator = new PvmReconciliationValidator();
     }
 
     /** 保留原有基于 UserScopeRepository 的应用层构造调用。 */
@@ -160,6 +162,7 @@ public class CalculationServiceImpl implements CalculationService {
             throw new IllegalArgumentException("发布人不能为空");
         }
         CalculationResult current = get(batchNo);
+        pvmReconciliationValidator.validate(current);
         CalculationResult published = current.publish(operator.trim());
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));

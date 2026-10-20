@@ -7,7 +7,6 @@ import com.sunwoda.evb.finance.analysis.domain.model.PvmResult;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,9 +19,11 @@ public class PvmServiceImpl implements PvmService {
     private static final String BUSINESS_UNIT_LOGIC_CODE = "BUSINESS_UNIT_VOLUME_PRICE_COST";
 
     private final CalculationService calculationService;
+    private final PvmReconciliationValidator reconciliationValidator;
 
     public PvmServiceImpl(CalculationService calculationService) {
         this.calculationService = calculationService;
+        this.reconciliationValidator = new PvmReconciliationValidator();
     }
 
     @Override
@@ -38,26 +39,20 @@ public class PvmServiceImpl implements PvmService {
             BigDecimal actualRevenue = value(v, "REVENUE");
             BigDecimal budgetCost = value(v, "BUDGET_SALES_COST");
             BigDecimal actualCost = value(v, "SALES_COST");
-            BigDecimal budgetUnitPrice = unitPrice(budgetRevenue, budgetVolume);
-            BigDecimal actualUnitPrice = unitPrice(actualRevenue, actualVolume);
-            BigDecimal volumeImpact = actualVolume.subtract(budgetVolume).multiply(budgetUnitPrice);
-            BigDecimal priceImpact = actualUnitPrice.subtract(budgetUnitPrice).multiply(actualVolume);
-            BigDecimal revenueGap = actualRevenue.subtract(budgetRevenue);
-            BigDecimal costGap = actualCost.subtract(budgetCost);
-            BigDecimal grossProfitGap = value(v, "GAP_GROSS_PROFIT");
+            PvmReconciliationValidator.Checks checks = reconciliationValidator.calculate(pnl);
             Map<String, BigDecimal> values = new LinkedHashMap<String, BigDecimal>();
             values.put("BUDGET_VOLUME", budgetVolume);
             values.put("ACTUAL_VOLUME", actualVolume);
             values.put("VOLUME_GAP", actualVolume.subtract(budgetVolume));
             values.put("BUDGET_REVENUE", budgetRevenue);
             values.put("ACTUAL_REVENUE", actualRevenue);
-            values.put("REVENUE_GAP", revenueGap);
-            values.put("REVENUE_VOLUME_IMPACT", volumeImpact);
-            values.put("REVENUE_PRICE_IMPACT", priceImpact);
+            values.put("REVENUE_GAP", checks.getRevenueGap());
+            values.put("REVENUE_VOLUME_IMPACT", checks.getVolumeImpact());
+            values.put("REVENUE_PRICE_IMPACT", checks.getPriceImpact());
             values.put("BUDGET_COST", budgetCost);
             values.put("ACTUAL_COST", actualCost);
-            values.put("COST_GAP", costGap);
-            values.put("GROSS_PROFIT_GAP", grossProfitGap);
+            values.put("COST_GAP", checks.getCostGap());
+            values.put("GROSS_PROFIT_GAP", checks.getGrossProfitGap());
             BigDecimal materialGap = value(v, "GAP_MATERIAL_COST");
             BigDecimal laborGap = value(v, "GAP_LABOR_COST");
             BigDecimal outsourcingGap = value(v, "GAP_OUTSOURCING_COST");
@@ -68,16 +63,16 @@ public class PvmServiceImpl implements PvmService {
             values.put("OUTSOURCING_GAP", outsourcingGap);
             values.put("VARIABLE_MFG_GAP", variableMfgGap);
             values.put("FIXED_MFG_GAP", fixedMfgGap);
-            values.put("PROFIT_VOLUME_IMPACT", volumeImpact);
-            values.put("PROFIT_PRICE_IMPACT", priceImpact);
-            values.put("PROFIT_COST_IMPACT", costGap.negate());
+            values.put("PROFIT_VOLUME_IMPACT", checks.getVolumeImpact());
+            values.put("PROFIT_PRICE_IMPACT", checks.getPriceImpact());
+            values.put("PROFIT_COST_IMPACT", checks.getCostGap().negate());
             values.put("PROFIT_MATERIAL_IMPACT", materialGap.negate());
             values.put("PROFIT_LABOR_IMPACT", laborGap.negate());
             values.put("PROFIT_OUTSOURCING_IMPACT", outsourcingGap.negate());
             values.put("PROFIT_VARIABLE_MFG_IMPACT", variableMfgGap.negate());
             values.put("PROFIT_FIXED_MFG_IMPACT", fixedMfgGap.negate());
-            values.put("REVENUE_CHECK_DIFF", revenueGap.subtract(volumeImpact).subtract(priceImpact));
-            values.put("GROSS_PROFIT_CHECK_DIFF", grossProfitGap.subtract(revenueGap).add(costGap));
+            values.put("REVENUE_CHECK_DIFF", checks.getRevenueCheckDiff());
+            values.put("GROSS_PROFIT_CHECK_DIFF", checks.getGrossProfitCheckDiff());
             result.add(new PvmResult(pnl.getScopeCode(), logicCode, values));
         }
         return result;
@@ -101,8 +96,4 @@ public class PvmServiceImpl implements PvmService {
         return value == null ? BigDecimal.ZERO : value;
     }
 
-    private BigDecimal unitPrice(BigDecimal revenue, BigDecimal volume) {
-        return volume.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
-                : revenue.divide(volume, 8, RoundingMode.HALF_UP);
-    }
 }

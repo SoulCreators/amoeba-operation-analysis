@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class CalculationServiceImplTest {
     @Test
@@ -82,6 +83,31 @@ class CalculationServiceImplTest {
         assertEquals(CalculationResultStatus.PUBLISHED, published.getStatus());
         assertEquals("finance-002", published.getPublishedBy());
         assertEquals(BatchStatus.PUBLISHED, repository.findByBatchNo("B-005").get().getStatus());
+    }
+
+    @Test
+    void confirmIsNotBlockedButPublishRejectsNonZeroPvmReconciliation() {
+        FakeBatchRepository repository = new FakeBatchRepository();
+        repository.save(new AnalysisBatch(1L, "B-005-DIFF", "2026-09", AnalysisPerspective.BASE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
+        PnlFactProvider provider = batch -> Arrays.asList(
+                new PnlFact("南昌", decimal(7), decimal(2), decimal(5),
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO,
+                        decimal(3), decimal(1), decimal(4), BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+        CalculationServiceImpl service = new CalculationServiceImpl(repository, provider, new FakeUserScopeRepository());
+
+        service.calculate("B-005-DIFF");
+        CalculationResult confirmed = service.confirm("B-005-DIFF", "finance-001");
+
+        assertEquals(CalculationResultStatus.CONFIRMED, confirmed.getStatus());
+        assertEquals(BatchStatus.CONFIRMED, repository.findByBatchNo("B-005-DIFF").get().getStatus());
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.publish("B-005-DIFF", "finance-002"));
+        assertEquals(BatchStatus.CONFIRMED, repository.findByBatchNo("B-005-DIFF").get().getStatus());
+        assertEquals(CalculationResultStatus.CONFIRMED, service.get("B-005-DIFF").getStatus());
+        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("REVENUE_CHECK_DIFF"));
     }
 
     @Test
