@@ -9,6 +9,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.RequestBuilder;
@@ -31,6 +32,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -71,6 +73,62 @@ class ConfigurationImportControllerMultipartContractTest {
                 .andExpect(jsonPath("$.data").value(nullValue()))
                 .andExpect(jsonPath("$.code").value("A0001"))
                 .andExpect(jsonPath("$.message").value("配置文件不能为空"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void validateWithoutFilePartUsesCurrentGenericBindingErrorEnvelope() throws Exception {
+        mockMvc.perform(multipart("/api/v1/config/imports/{taskNo}/validate", TASK_NO)
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A9999"))
+                .andExpect(jsonPath("$.message").value("系统处理失败"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void uploadWithoutFilePartUsesCurrentGenericBindingErrorEnvelope() throws Exception {
+        mockMvc.perform(multipart("/api/v1/config/imports/{taskNo}/upload", TASK_NO)
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A9999"))
+                .andExpect(jsonPath("$.message").value("系统处理失败"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void validateWithNonMultipartRequestUsesCurrentGenericBindingErrorEnvelope() throws Exception {
+        mockMvc.perform(post("/api/v1/config/imports/{taskNo}/validate", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A9999"))
+                .andExpect(jsonPath("$.message").value("系统处理失败"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void uploadWithNonMultipartRequestUsesCurrentGenericBindingErrorEnvelope() throws Exception {
+        mockMvc.perform(post("/api/v1/config/imports/{taskNo}/upload", TASK_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A9999"))
+                .andExpect(jsonPath("$.message").value("系统处理失败"));
 
         verifyNoInteractions(service);
     }
