@@ -9,6 +9,8 @@ import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
+import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
+import com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
@@ -41,9 +43,11 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 import javax.sql.DataSource;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -55,7 +59,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * TEST-DATA-002-B-TX-001: real PostgreSQL transaction rollback contract.
+ * TEST-DATA-002-B-TX-002: real PostgreSQL transaction rollback contract.
  *
  * <p>The test uses a real Spring CGLIB proxy around {@link ImportTaskServiceImpl},
  * real JDBC fact/source writers, and the real XLSX import readers. The source
@@ -77,6 +81,8 @@ class PnlFactImportPostgresRollbackContractTest {
     private AnalysisBatchRepository batches;
     private ImportTaskRepository tasks;
     private RollbackProbe probe;
+    private JdbcPnlFactWriter realFactWriter;
+    private JdbcPnlFactSourceWriter realTraceWriter;
     private String batchNo;
     private String taskNo;
 
@@ -100,6 +106,8 @@ class PnlFactImportPostgresRollbackContractTest {
         batches = context.getBean(AnalysisBatchRepository.class);
         tasks = context.getBean(ImportTaskRepository.class);
         probe = context.getBean(RollbackProbe.class);
+        realFactWriter = context.getBean(JdbcPnlFactWriter.class);
+        realTraceWriter = context.getBean(JdbcPnlFactSourceWriter.class);
 
         assertTrue(AopUtils.isAopProxy(service),
                 "ImportTaskServiceImpl must be invoked through a Spring transaction proxy");
@@ -140,26 +148,67 @@ class PnlFactImportPostgresRollbackContractTest {
         batchNo = "TX-ROLLBACK-DB-" + UUID.randomUUID().toString().replace("-", "");
         AnalysisBatch batch = batches.save(new AnalysisBatch(
                 null, batchNo, "2026-10", AnalysisPerspective.BASE,
-                BatchStatus.DRAFT, "TEST-DATA-002-B-TX-001", LocalDateTime.now()));
+                BatchStatus.DRAFT, "TEST-DATA-002-B-TX-002", LocalDateTime.now()));
         ImportTask task = service.create(batch.getBatchNo(), "BASE_ACT_INC_COST",
-                "rollback.xlsx", "rollback-checksum", "TEST-DATA-002-B-TX-001");
+                "rollback.xlsx", "rollback-checksum", "TEST-DATA-002-B-TX-002");
         taskNo = task.getTaskNo();
 
+        realFactWriter.replace(batch, task, Arrays.asList(
+                fact("旧事实-甲", 111, 222),
+                fact("旧事实-乙", 333, 444)));
+        realTraceWriter.replace(batch, task, Arrays.asList(
+                source(taskNo, 2, "旧事实-甲"),
+                source(taskNo, 3, "旧事实-乙")));
+        assertEquals(2, count("SELECT COUNT(*) FROM raw.pnl_fact WHERE source_task_no = ?"),
+                "old fact set must be committed before validate starts");
+        assertEquals(2, count("SELECT COUNT(*) FROM raw.pnl_fact_trace WHERE source_task_no = ?"),
+                "old trace set must be committed before validate starts");
+
+        probe.factWriteCompleted.set(false);
+        probe.traceWriteCompleted.set(false);
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> service.validate(taskNo, new ByteArrayInputStream(workbookBytes())));
 
-        assertTrue(failure.getMessage().contains("TEST-DATA-002-B-TX-001"));
+        assertTrue(failure.getMessage().contains("TEST-DATA-002-B-TX-002"));
         assertTrue(probe.factWriteCompleted.get(),
                 "real fact writer must complete before the injected trace failure");
         assertTrue(probe.traceWriteCompleted.get(),
                 "real trace writer must complete before the injected failure");
-        assertEquals(0, count("SELECT COUNT(*) FROM raw.pnl_fact WHERE source_task_no = ?"),
-                "fact rows must be rolled back");
-        assertEquals(0, count("SELECT COUNT(*) FROM raw.pnl_fact_trace WHERE source_task_no = ?"),
-                "trace rows must be rolled back");
+        assertEquals(2, count("SELECT COUNT(*) FROM raw.pnl_fact WHERE source_task_no = ?"),
+                "old fact rows must remain after failed replacement");
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM raw.pnl_fact WHERE source_task_no = ? "
+                        + "AND scope_code IN (?, ?)", Integer.class,
+                taskNo, "旧事实-甲", "旧事实-乙").intValue(),
+                "the complete old fact set must remain");
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM raw.pnl_fact WHERE source_task_no = ? "
+                        + "AND scope_code = ? AND volume = ? AND revenue = ?", Integer.class,
+                taskNo, "旧事实-甲", new BigDecimal("111"), new BigDecimal("222")).intValue(),
+                "old fact values must remain unchanged");
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM raw.pnl_fact WHERE source_task_no = ? AND scope_code = ?",
+                Integer.class, taskNo, "南昌").intValue(),
+                "new fact set must not remain");
+        assertEquals(2, count("SELECT COUNT(*) FROM raw.pnl_fact_trace WHERE source_task_no = ?"),
+                "old trace rows must remain after failed replacement");
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM raw.pnl_fact_trace WHERE source_task_no = ? "
+                        + "AND source_file_name = ? AND source_checksum = ? "
+                        + "AND source_sheet_name = ?", Integer.class,
+                taskNo, "old-rollback.xlsx", "old-rollback-checksum", "旧明细").intValue(),
+                "the complete old trace set must remain");
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM raw.pnl_fact_trace WHERE source_task_no = ? "
+                        + "AND source_file_name = ?", Integer.class,
+                taskNo, "rollback.xlsx").intValue(),
+                "new trace set must not remain");
         assertEquals("CREATED", jdbc.queryForObject(
                 "SELECT status FROM flow.import_task WHERE task_no = ?", String.class, taskNo),
                 "task lifecycle update must be rolled back");
+        assertEquals(Integer.valueOf(0), jdbc.queryForObject(
+                "SELECT issue_count FROM flow.import_task WHERE task_no = ?", Integer.class, taskNo),
+                "task issue count must remain at its pre-validation value");
         assertEquals(0, count("SELECT COUNT(*) FROM flow.import_issue i "
                 + "JOIN flow.import_task t ON t.id = i.task_id WHERE t.task_no = ?"),
                 "issue replacement must be rolled back");
@@ -294,7 +343,7 @@ class PnlFactImportPostgresRollbackContractTest {
                             List<com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource> sources) {
             delegate.replace(batch, task, sources);
             probe.traceWriteCompleted.set(true);
-            throw new IllegalStateException("TEST-DATA-002-B-TX-001: injected trace write failure");
+            throw new IllegalStateException("TEST-DATA-002-B-TX-002: injected trace write failure");
         }
 
         @Override
@@ -308,6 +357,21 @@ class PnlFactImportPostgresRollbackContractTest {
     private int count(String sql) {
         Integer count = jdbc.queryForObject(sql, Integer.class, taskNo);
         return count == null ? 0 : count;
+    }
+
+    private PnlFact fact(String scope, int volume, int revenue) {
+        return new PnlFact(scope, decimal(volume), decimal(revenue), decimal(revenue - 10),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    private PnlFactSource source(String taskNo, int rowNo, String scope) {
+        return new PnlFactSource(taskNo, "old-rollback.xlsx", "old-rollback-checksum",
+                "旧明细", rowNo, scope, "旧基地", "旧产品", "旧拉线");
+    }
+
+    private static BigDecimal decimal(int value) {
+        return BigDecimal.valueOf(value);
     }
 
     private void verifySchema() {
