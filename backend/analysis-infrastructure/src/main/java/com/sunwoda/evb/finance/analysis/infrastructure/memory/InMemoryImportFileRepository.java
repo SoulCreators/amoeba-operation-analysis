@@ -1,5 +1,6 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.memory;
 
+import com.sunwoda.evb.finance.analysis.domain.model.ImportFileSnapshot;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import org.springframework.stereotype.Repository;
 import org.springframework.context.annotation.Profile;
@@ -10,6 +11,7 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.Optional;
 
 @Repository
 @Profile("!filesystem")
@@ -27,5 +29,17 @@ public class InMemoryImportFileRepository implements ImportFileRepository {
         byte[] content = files.get(taskNo);
         if (content == null) throw new IOException("导入文件内容不存在: " + taskNo);
         return new ByteArrayInputStream(Arrays.copyOf(content, content.length));
+    }
+
+    @Override
+    public void delete(String taskNo) {
+        files.remove(taskNo);
+    }
+
+    @Override
+    public Optional<ImportFileSnapshot> snapshot(String taskNo) {
+        byte[] content = files.get(taskNo);
+        return content == null ? Optional.<ImportFileSnapshot>empty()
+                : Optional.of(new ImportFileSnapshot("", content));
     }
 }

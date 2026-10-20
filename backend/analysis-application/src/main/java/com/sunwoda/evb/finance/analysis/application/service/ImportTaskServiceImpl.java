@@ -7,6 +7,7 @@ import com.sunwoda.evb.finance.analysis.application.port.PnlFactSourceReader;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportFileSnapshot;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
@@ -25,6 +26,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.UUID;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ImportTaskServiceImpl implements ImportTaskService {
@@ -98,26 +100,45 @@ public class ImportTaskServiceImpl implements ImportTaskService {
         task.moveTo(ImportStatus.VALIDATING, 0);
         taskRepository.save(task);
         byte[] content = readBytes(inputStream);
-        fileRepository.save(taskNo, task.getFileName(), content);
-        ImportValidationResult result = templateValidator.validate(taskNo,
-                datasetCatalog.require(task.getDatasetCode(), batch.getPerspective()),
-                new java.io.ByteArrayInputStream(content));
-        issueRepository.replace(taskNo, result.getIssues());
-        task.moveTo(result.getStatus(), result.getIssues().size());
-        taskRepository.save(task);
-        if (result.getStatus() == ImportStatus.VALID && factWriter != null) {
-            if (factReader == null || sourceReader == null || sourceWriter == null) {
-                throw new IllegalStateException(
-                        "事实写入已配置，但事实读取器、来源读取器和来源写入器必须成套配置");
+        Optional<ImportFileSnapshot> previousFile = fileRepository.snapshot(taskNo);
+        if (previousFile == null) previousFile = Optional.empty();
+        try {
+            fileRepository.save(taskNo, task.getFileName(), content);
+            ImportValidationResult result = templateValidator.validate(taskNo,
+                    datasetCatalog.require(task.getDatasetCode(), batch.getPerspective()),
+                    new java.io.ByteArrayInputStream(content));
+            issueRepository.replace(taskNo, result.getIssues());
+            task.moveTo(result.getStatus(), result.getIssues().size());
+            taskRepository.save(task);
+            if (result.getStatus() == ImportStatus.VALID && factWriter != null) {
+                if (factReader == null || sourceReader == null || sourceWriter == null) {
+                    throw new IllegalStateException(
+                            "事实写入已配置，但事实读取器、来源读取器和来源写入器必须成套配置");
+                }
+                List<com.sunwoda.evb.finance.analysis.domain.model.PnlFact> facts =
+                        factReader.read(batch, task);
+                List<com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource> sources =
+                        sourceReader.readSources(batch, task);
+                factWriter.replace(batch, task, facts);
+                sourceWriter.replace(batch, task, sources);
             }
-            List<com.sunwoda.evb.finance.analysis.domain.model.PnlFact> facts =
-                    factReader.read(batch, task);
-            List<com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource> sources =
-                    sourceReader.readSources(batch, task);
-            factWriter.replace(batch, task, facts);
-            sourceWriter.replace(batch, task, sources);
+            return result;
+        } catch (RuntimeException ex) {
+            restoreAfterFailure(taskNo, previousFile, ex);
+            throw ex;
+        } catch (Error ex) {
+            restoreAfterFailure(taskNo, previousFile, ex);
+            throw ex;
         }
-        return result;
+    }
+
+    private void restoreAfterFailure(String taskNo, Optional<ImportFileSnapshot> previousFile,
+                                     Throwable originalFailure) {
+        try {
+            fileRepository.restore(taskNo, previousFile.orElse(null));
+        } catch (RuntimeException cleanupFailure) {
+            originalFailure.addSuppressed(cleanupFailure);
+        }
     }
 
     private byte[] readBytes(InputStream inputStream) {

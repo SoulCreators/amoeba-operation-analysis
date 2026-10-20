@@ -1,5 +1,6 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.filesystem;
 
+import com.sunwoda.evb.finance.analysis.domain.model.ImportFileSnapshot;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -10,6 +11,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Optional;
 
 /**
  * 受控目录文件适配器。生产环境可由对象存储适配器替换；当前实现用于内网部署和UAT。
@@ -43,6 +45,31 @@ public class FileSystemImportFileRepository implements ImportFileRepository {
         Path file = filePath(taskNo);
         if (!Files.exists(file)) throw new IOException("导入文件内容不存在: " + taskNo);
         return Files.newInputStream(file);
+    }
+
+    @Override
+    public void delete(String taskNo) {
+        validateTaskNo(taskNo);
+        try {
+            Files.deleteIfExists(filePath(taskNo));
+            Files.deleteIfExists(namePath(taskNo));
+        } catch (IOException ex) {
+            throw new IllegalStateException("导入文件删除失败: " + taskNo, ex);
+        }
+    }
+
+    @Override
+    public Optional<ImportFileSnapshot> snapshot(String taskNo) {
+        validateTaskNo(taskNo);
+        Path contentPath = filePath(taskNo);
+        if (!Files.exists(contentPath)) return Optional.empty();
+        try {
+            String fileName = Files.exists(namePath(taskNo))
+                    ? new String(Files.readAllBytes(namePath(taskNo)), "UTF-8") : "";
+            return Optional.of(new ImportFileSnapshot(fileName, Files.readAllBytes(contentPath)));
+        } catch (IOException ex) {
+            throw new IllegalStateException("导入文件快照读取失败: " + taskNo, ex);
+        }
     }
 
     private Path filePath(String taskNo) { return root.resolve(taskNo + ".bin"); }

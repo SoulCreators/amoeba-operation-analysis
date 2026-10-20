@@ -14,6 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileSystemImportRepositoryTest {
     @Test
@@ -48,6 +49,25 @@ class FileSystemImportRepositoryTest {
                 () -> issues.replace("../outside", java.util.Collections.<ImportIssue>emptyList()));
         assertThrows(IllegalArgumentException.class,
                 () -> issues.findByTaskNo("../../outside"));
+    }
+
+    @Test
+    void snapshotsAndRestoresPreviousFileBeforeDeletingIt() throws Exception {
+        Path root = Files.createTempDirectory("amoeba-import-restore-");
+        FileSystemImportFileRepository files = new FileSystemImportFileRepository(root.toString());
+        byte[] original = "old".getBytes(StandardCharsets.UTF_8);
+        files.save("TASK-RESTORE", "old.xlsx", original);
+
+        com.sunwoda.evb.finance.analysis.domain.model.ImportFileSnapshot snapshot =
+                files.snapshot("TASK-RESTORE").orElseThrow(() ->
+                        new AssertionError("expected file snapshot"));
+        files.save("TASK-RESTORE", "new.xlsx", "new".getBytes(StandardCharsets.UTF_8));
+        files.restore("TASK-RESTORE", snapshot);
+        assertArrayEquals(original, read(files.open("TASK-RESTORE")));
+        assertTrue(Files.exists(root.resolve("TASK-RESTORE.name")));
+
+        files.restore("TASK-RESTORE", null);
+        assertThrows(java.io.IOException.class, () -> files.open("TASK-RESTORE"));
     }
 
     private static byte[] read(InputStream input) throws Exception {

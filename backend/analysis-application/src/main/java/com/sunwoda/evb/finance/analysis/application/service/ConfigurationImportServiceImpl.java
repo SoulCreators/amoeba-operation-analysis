@@ -18,10 +18,12 @@ import java.io.InputStream;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationApplyResult;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
+import com.sunwoda.evb.finance.analysis.domain.model.ImportFileSnapshot;
 import org.springframework.beans.factory.annotation.Autowired;
 import java.util.UUID;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ConfigurationImportServiceImpl implements ConfigurationImportService {
@@ -69,6 +71,7 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
         if (inputStream == null) throw new IllegalArgumentException("配置文件不能为空");
         ConfigurationImportTask task = get(taskNo);
         byte[] content = readBytes(inputStream);
+        Optional<ImportFileSnapshot> previousFile = fileRepository.snapshot(taskNo);
         fileRepository.save(taskNo, task.getFileName(), content);
         task.moveTo(ImportStatus.VALIDATING);
         return repository.save(task);
@@ -81,22 +84,41 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
         if (validator == null) throw new IllegalStateException("当前环境未配置配置文件校验器");
         ConfigurationImportTask task = get(taskNo);
         byte[] content = readBytes(inputStream);
-        fileRepository.save(taskNo, task.getFileName(), content);
-        ImportValidationResult result = validator.validate(taskNo, task.getType(),
-                new java.io.ByteArrayInputStream(content));
-        if (result.getStatus() == ImportStatus.VALID && applier != null) {
-            ConfigurationApplyResult applied = applier.apply(task, new java.io.ByteArrayInputStream(content));
-            if (!applied.getIssues().isEmpty()) {
-                java.util.List<ImportIssue> issues = new java.util.ArrayList<ImportIssue>(result.getIssues());
-                issues.addAll(applied.getIssues());
-                result = new ImportValidationResult(taskNo, ImportStatus.INVALID, result.getRowCount(),
-                        result.getHeaders(), issues);
+        Optional<ImportFileSnapshot> previousFile = fileRepository.snapshot(taskNo);
+        if (previousFile == null) previousFile = Optional.empty();
+        try {
+            fileRepository.save(taskNo, task.getFileName(), content);
+            ImportValidationResult result = validator.validate(taskNo, task.getType(),
+                    new java.io.ByteArrayInputStream(content));
+            if (result.getStatus() == ImportStatus.VALID && applier != null) {
+                ConfigurationApplyResult applied = applier.apply(task, new java.io.ByteArrayInputStream(content));
+                if (!applied.getIssues().isEmpty()) {
+                    java.util.List<ImportIssue> issues = new java.util.ArrayList<ImportIssue>(result.getIssues());
+                    issues.addAll(applied.getIssues());
+                    result = new ImportValidationResult(taskNo, ImportStatus.INVALID, result.getRowCount(),
+                            result.getHeaders(), issues);
+                }
             }
+            if (issueRepository != null) issueRepository.replace(taskNo, result.getIssues());
+            task.moveTo(result.getStatus());
+            repository.save(task);
+            return result;
+        } catch (RuntimeException ex) {
+            restoreAfterFailure(taskNo, previousFile, ex);
+            throw ex;
+        } catch (Error ex) {
+            restoreAfterFailure(taskNo, previousFile, ex);
+            throw ex;
         }
-        if (issueRepository != null) issueRepository.replace(taskNo, result.getIssues());
-        task.moveTo(result.getStatus());
-        repository.save(task);
-        return result;
+    }
+
+    private void restoreAfterFailure(String taskNo, Optional<ImportFileSnapshot> previousFile,
+                                     Throwable originalFailure) {
+        try {
+            fileRepository.restore(taskNo, previousFile.orElse(null));
+        } catch (RuntimeException cleanupFailure) {
+            originalFailure.addSuppressed(cleanupFailure);
+        }
     }
 
     @Override
