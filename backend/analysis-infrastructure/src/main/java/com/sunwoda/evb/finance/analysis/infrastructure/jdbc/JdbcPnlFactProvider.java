@@ -33,10 +33,12 @@ public class JdbcPnlFactProvider implements PnlFactProvider {
                 + "SUM(variable_mfg_cost) variable_mfg_cost, SUM(fixed_mfg_cost) fixed_mfg_cost, "
                 + "SUM(budget_material_cost) budget_material_cost, SUM(budget_labor_cost) budget_labor_cost, "
                 + "SUM(budget_outsourcing_cost) budget_outsourcing_cost, SUM(budget_variable_mfg_cost) budget_variable_mfg_cost, "
-                + "SUM(budget_fixed_mfg_cost) budget_fixed_mfg_cost "
+                + "SUM(budget_fixed_mfg_cost) budget_fixed_mfg_cost, SUM(material_loss) material_loss, "
+                + "SUM(budget_material_loss) budget_material_loss "
                 + "FROM raw.pnl_fact WHERE batch_id = (SELECT id FROM meta.analysis_batch WHERE batch_no = ?) "
                 + "AND perspective = ? GROUP BY scope_code ORDER BY scope_code";
         List<PnlFact> facts = jdbc.query(sql, (rs, row) -> new PnlFact(rs.getString("scope_code"),
+                null, null, null,
                 rs.getBigDecimal("volume"), rs.getBigDecimal("revenue"), rs.getBigDecimal("sales_cost"),
                 rs.getBigDecimal("idle_expense"), rs.getBigDecimal("base_expense"), rs.getBigDecimal("rd_expense"),
                 rs.getBigDecimal("asset_impairment"), rs.getBigDecimal("credit_impairment"), rs.getBigDecimal("other_income"),
@@ -48,7 +50,9 @@ public class JdbcPnlFactProvider implements PnlFactProvider {
                 rs.getBigDecimal("variable_mfg_cost"), rs.getBigDecimal("fixed_mfg_cost"),
                 rs.getBigDecimal("budget_material_cost"), rs.getBigDecimal("budget_labor_cost"),
                 rs.getBigDecimal("budget_outsourcing_cost"), rs.getBigDecimal("budget_variable_mfg_cost"),
-                rs.getBigDecimal("budget_fixed_mfg_cost")), batch.getBatchNo(), batch.getPerspective().getCode());
+                rs.getBigDecimal("budget_fixed_mfg_cost"), null, null,
+                rs.getBigDecimal("material_loss"), rs.getBigDecimal("budget_material_loss")),
+                batch.getBatchNo(), batch.getPerspective().getCode());
         if (facts.isEmpty()) throw new IllegalStateException("标准事实表没有可计算数据: " + batch.getBatchNo());
         return facts;
     }

@@ -23,6 +23,35 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PoiPnlFactProviderTest {
     @Test
+    void retainsActualAndBudgetMaterialLossSeparately() throws Exception {
+        ImportTask actualTask = validatedTask(1L, "IMP-ACTUAL", "BASE_ACT_INC_COST");
+        ImportTask budgetTask = validatedTask(2L, "IMP-BUDGET", "BASE_BUD_INC_COST");
+        PnlFact actual = new PnlFactProviderHolder(Arrays.asList(actualTask),
+                workbookBytes("材料损耗", 12.5)).read(batch(), actualTask).get(0);
+        PnlFact budget = new PnlFactProviderHolder(Arrays.asList(budgetTask),
+                workbookBytes("预算材料损耗", 8.25)).read(batch(), budgetTask).get(0);
+
+        assertEquals(12.5, actual.getMaterialLoss().doubleValue(), 0.000001);
+        org.junit.jupiter.api.Assertions.assertNull(actual.getBudgetMaterialLoss());
+        assertEquals(8.25, budget.getBudgetMaterialLoss().doubleValue(), 0.000001);
+        org.junit.jupiter.api.Assertions.assertNull(budget.getMaterialLoss());
+        assertEquals(700, actual.getSalesCost().intValue());
+        assertEquals(700, budget.getBudgetSalesCost().intValue());
+    }
+
+    @Test
+    void distinguishesMissingMaterialLossFromExplicitZero() throws Exception {
+        ImportTask actualTask = validatedTask(3L, "IMP-ACTUAL-NULL", "BASE_ACT_INC_COST");
+        PnlFact missing = new PnlFactProviderHolder(Arrays.asList(actualTask),
+                workbookBytes("材料损耗", null)).read(batch(), actualTask).get(0);
+        PnlFact explicitZero = new PnlFactProviderHolder(Arrays.asList(actualTask),
+                workbookBytes("材料损耗", 0d)).read(batch(), actualTask).get(0);
+
+        org.junit.jupiter.api.Assertions.assertNull(missing.getMaterialLoss());
+        assertEquals(0, explicitZero.getMaterialLoss().signum());
+    }
+
+    @Test
     void loadsBaseRevenueAndCostFromValidatedImport() throws Exception {
         XSSFWorkbook workbook = new XSSFWorkbook();
         org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("实际");
@@ -69,6 +98,38 @@ class PoiPnlFactProviderTest {
         PnlFactProviderHolder(List<ImportTask> tasks, byte[] content) {
             super(new TaskRepository(tasks), new FileRepository(content));
         }
+    }
+
+    private static ImportTask validatedTask(long id, String taskNo, String datasetCode) {
+        ImportTask task = new ImportTask(id, taskNo, "B-1", datasetCode,
+                taskNo + ".xlsx", null, "tester", LocalDateTime.now());
+        task.moveTo(ImportStatus.VALIDATING, 0);
+        task.moveTo(ImportStatus.VALID, 0);
+        return task;
+    }
+
+    private static AnalysisBatch batch() {
+        return new AnalysisBatch(1L, "B-1", "2026-09", AnalysisPerspective.BASE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now());
+    }
+
+    private static byte[] workbookBytes(String materialLossHeader, Double materialLoss) throws Exception {
+        XSSFWorkbook workbook = new XSSFWorkbook();
+        org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("实际");
+        String[] headers = {"收入计算基地", "销量", "营业收入", "销售成本", "材料成本", materialLossHeader};
+        org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+        for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+        row.createCell(0).setCellValue("南昌");
+        row.createCell(1).setCellValue(100);
+        row.createCell(2).setCellValue(1000);
+        row.createCell(3).setCellValue(700);
+        row.createCell(4).setCellValue(500);
+        if (materialLoss != null) row.createCell(5).setCellValue(materialLoss);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        workbook.write(output);
+        workbook.close();
+        return output.toByteArray();
     }
 
     private static class TaskRepository implements ImportTaskRepository {

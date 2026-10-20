@@ -34,8 +34,8 @@ public class JdbcPnlFactWriter implements PnlFactWriter {
                 + "budget_credit_impairment, budget_other_income, material_cost, labor_cost, outsourcing_cost, "
                 + "variable_mfg_cost, fixed_mfg_cost, budget_material_cost, budget_labor_cost, "
                 + "budget_outsourcing_cost, budget_variable_mfg_cost, budget_fixed_mfg_cost, output_wh, "
-                + "budget_output_wh) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )";
+                + "budget_output_wh, material_loss, budget_material_loss) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )";
         for (PnlFact fact : facts) {
             jdbc.update(sql, batchId, batch.getPerspective().getCode(), task.getTaskNo(),
                     batch.getPeriod(), fact.getScopeCode(), fact.getBaseCode(), fact.getProductCode(),
@@ -49,7 +49,8 @@ public class JdbcPnlFactWriter implements PnlFactWriter {
                     fact.getVariableManufacturingCost(), fact.getFixedManufacturingCost(),
                     fact.getBudgetMaterialCost(), fact.getBudgetLaborCost(), fact.getBudgetOutsourcingCost(),
                     fact.getBudgetVariableManufacturingCost(), fact.getBudgetFixedManufacturingCost(),
-                    fact.getOutputWh(), fact.getBudgetOutputWh());
+                    fact.getOutputWh(), fact.getBudgetOutputWh(), fact.getMaterialLoss(),
+                    fact.getBudgetMaterialLoss());
         }
     }
 }

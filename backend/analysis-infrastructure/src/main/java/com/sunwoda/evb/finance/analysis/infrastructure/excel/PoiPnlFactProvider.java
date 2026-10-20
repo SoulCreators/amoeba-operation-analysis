@@ -101,6 +101,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                         accumulator.budgetRevenue = add(accumulator.budgetRevenue, number(row, columns, "营业收入", "销售收入", "收入"));
                         accumulator.budgetSalesCost = add(accumulator.budgetSalesCost, number(row, columns, "销售成本", "成本"));
                         accumulator.budgetMaterialCost = add(accumulator.budgetMaterialCost, number(row, columns, "材料成本"));
+                        accumulator.budgetMaterialLoss = addNullable(accumulator.budgetMaterialLoss,
+                                numberOrNull(row, columns, "预算材料损耗"));
                         accumulator.budgetLaborCost = add(accumulator.budgetLaborCost, number(row, columns, "直接人工", "人工成本"));
                         accumulator.budgetOutsourcingCost = add(accumulator.budgetOutsourcingCost, number(row, columns, "外协加工成本", "外协成本"));
                         accumulator.budgetVariableManufacturingCost = add(accumulator.budgetVariableManufacturingCost, number(row, columns, "制造成本-变动", "变动制费"));
@@ -112,6 +114,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                         accumulator.revenue = add(accumulator.revenue, number(row, columns, "营业收入", "销售收入", "收入"));
                         accumulator.salesCost = add(accumulator.salesCost, number(row, columns, "销售成本", "成本"));
                         accumulator.materialCost = add(accumulator.materialCost, number(row, columns, "材料成本"));
+                        accumulator.materialLoss = addNullable(accumulator.materialLoss,
+                                numberOrNull(row, columns, "材料损耗"));
                         accumulator.laborCost = add(accumulator.laborCost, number(row, columns, "直接人工", "人工成本"));
                         accumulator.outsourcingCost = add(accumulator.outsourcingCost, number(row, columns, "外协加工成本", "外协成本"));
                         accumulator.variableManufacturingCost = add(accumulator.variableManufacturingCost, number(row, columns, "制造成本-变动", "变动制费"));
@@ -253,6 +257,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
         private BigDecimal budgetOutsourcingCost = BigDecimal.ZERO;
         private BigDecimal budgetVariableManufacturingCost = BigDecimal.ZERO;
         private BigDecimal budgetFixedManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal materialLoss;
+        private BigDecimal budgetMaterialLoss;
         private BigDecimal outputWh;
         private BigDecimal budgetOutputWh;
 
@@ -272,7 +278,7 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                     outsourcingCost, variableManufacturingCost, fixedManufacturingCost,
                     budgetMaterialCost, budgetLaborCost, budgetOutsourcingCost,
                     budgetVariableManufacturingCost, budgetFixedManufacturingCost,
-                    outputWh, budgetOutputWh);
+                    outputWh, budgetOutputWh, materialLoss, budgetMaterialLoss);
         }
     }
 }

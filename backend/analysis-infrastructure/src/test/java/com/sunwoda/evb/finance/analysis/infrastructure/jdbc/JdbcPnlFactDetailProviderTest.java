@@ -42,5 +42,7 @@ class JdbcPnlFactDetailProviderTest {
         assertTrue(sql.getValue().contains("s.can_view_detail = TRUE"));
         assertTrue(sql.getValue().contains("s.scope_code = 'ALL' OR s.scope_code = f.scope_code"));
         assertTrue(sql.getValue().contains("s.enabled = TRUE"));
+        assertTrue(sql.getValue().contains("f.material_loss"));
+        assertTrue(sql.getValue().contains("f.budget_material_loss"));
     }
 }

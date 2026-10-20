@@ -29,7 +29,8 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 + "f.budget_asset_impairment, f.budget_credit_impairment, f.budget_other_income, "
                 + "f.material_cost, f.labor_cost, f.outsourcing_cost, f.variable_mfg_cost, f.fixed_mfg_cost, "
                 + "f.budget_material_cost, f.budget_labor_cost, f.budget_outsourcing_cost, "
-                + "f.budget_variable_mfg_cost, f.budget_fixed_mfg_cost, f.output_wh, f.budget_output_wh "
+                + "f.budget_variable_mfg_cost, f.budget_fixed_mfg_cost, f.output_wh, f.budget_output_wh, "
+                + "f.material_loss, f.budget_material_loss "
                 + "FROM raw.pnl_fact f "
                 + "JOIN meta.analysis_batch b ON b.id = f.batch_id "
                 + "WHERE b.batch_no = ? AND f.perspective = ? "
@@ -55,7 +56,8 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 rs.getBigDecimal("fixed_mfg_cost"), rs.getBigDecimal("budget_material_cost"),
                 rs.getBigDecimal("budget_labor_cost"), rs.getBigDecimal("budget_outsourcing_cost"),
                 rs.getBigDecimal("budget_variable_mfg_cost"), rs.getBigDecimal("budget_fixed_mfg_cost"),
-                rs.getBigDecimal("output_wh"), rs.getBigDecimal("budget_output_wh")),
+                rs.getBigDecimal("output_wh"), rs.getBigDecimal("budget_output_wh"),
+                rs.getBigDecimal("material_loss"), rs.getBigDecimal("budget_material_loss")),
                 batchNo, perspective.getCode(), userId);
     }
 }

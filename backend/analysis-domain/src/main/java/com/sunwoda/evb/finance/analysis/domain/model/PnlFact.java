@@ -36,6 +36,8 @@ public class PnlFact {
     private final BigDecimal budgetOutsourcingCost;
     private final BigDecimal budgetVariableManufacturingCost;
     private final BigDecimal budgetFixedManufacturingCost;
+    private final BigDecimal materialLoss;
+    private final BigDecimal budgetMaterialLoss;
     /** 产出电量（Wh）；为空表示来源模板未提供该口径，不能计算元/Wh。 */
     private final BigDecimal outputWh;
     private final BigDecimal budgetOutputWh;
@@ -137,6 +139,34 @@ public class PnlFact {
                    BigDecimal budgetOutsourcingCost, BigDecimal budgetVariableManufacturingCost,
                    BigDecimal budgetFixedManufacturingCost, BigDecimal outputWh,
                    BigDecimal budgetOutputWh) {
+        this(scopeCode, baseCode, productCode, lineCode, volume, revenue, salesCost, idleExpense, baseExpense,
+                rdExpense, assetImpairment, creditImpairment, otherIncome, budgetVolume, budgetRevenue,
+                budgetSalesCost, budgetIdleExpense, budgetBaseExpense, budgetRdExpense,
+                budgetAssetImpairment, budgetCreditImpairment, budgetOtherIncome, materialCost,
+                laborCost, outsourcingCost, variableManufacturingCost, fixedManufacturingCost,
+                budgetMaterialCost, budgetLaborCost, budgetOutsourcingCost,
+                budgetVariableManufacturingCost, budgetFixedManufacturingCost, outputWh, budgetOutputWh,
+                null, null);
+    }
+
+    /** 带材料损耗事实字段的构造器；字段只保留在事实层，不参与既有损益/PVM计算。 */
+    public PnlFact(String scopeCode, String baseCode, String productCode, String lineCode,
+                   BigDecimal volume, BigDecimal revenue,
+                   BigDecimal salesCost, BigDecimal idleExpense, BigDecimal baseExpense,
+                   BigDecimal rdExpense, BigDecimal assetImpairment,
+                   BigDecimal creditImpairment, BigDecimal otherIncome,
+                   BigDecimal budgetVolume, BigDecimal budgetRevenue,
+                   BigDecimal budgetSalesCost, BigDecimal budgetIdleExpense,
+                   BigDecimal budgetBaseExpense, BigDecimal budgetRdExpense,
+                   BigDecimal budgetAssetImpairment, BigDecimal budgetCreditImpairment,
+                   BigDecimal budgetOtherIncome, BigDecimal materialCost,
+                   BigDecimal laborCost, BigDecimal outsourcingCost,
+                   BigDecimal variableManufacturingCost, BigDecimal fixedManufacturingCost,
+                   BigDecimal budgetMaterialCost, BigDecimal budgetLaborCost,
+                   BigDecimal budgetOutsourcingCost, BigDecimal budgetVariableManufacturingCost,
+                   BigDecimal budgetFixedManufacturingCost, BigDecimal outputWh,
+                   BigDecimal budgetOutputWh, BigDecimal materialLoss,
+                   BigDecimal budgetMaterialLoss) {
         this.scopeCode = scopeCode;
         this.baseCode = emptyToNull(baseCode);
         this.productCode = emptyToNull(productCode);
@@ -169,6 +199,9 @@ public class PnlFact {
         this.budgetOutsourcingCost = value(budgetOutsourcingCost);
         this.budgetVariableManufacturingCost = value(budgetVariableManufacturingCost);
         this.budgetFixedManufacturingCost = value(budgetFixedManufacturingCost);
+        // 材料损耗是事实层的可选附加字段：null 表示来源未提供，0 表示来源明确提供零。
+        this.materialLoss = materialLoss;
+        this.budgetMaterialLoss = budgetMaterialLoss;
         this.outputWh = outputWh;
         this.budgetOutputWh = budgetOutputWh;
     }
@@ -205,6 +238,8 @@ public class PnlFact {
     public BigDecimal getBudgetOutsourcingCost() { return budgetOutsourcingCost; }
     public BigDecimal getBudgetVariableManufacturingCost() { return budgetVariableManufacturingCost; }
     public BigDecimal getBudgetFixedManufacturingCost() { return budgetFixedManufacturingCost; }
+    public BigDecimal getMaterialLoss() { return materialLoss; }
+    public BigDecimal getBudgetMaterialLoss() { return budgetMaterialLoss; }
     public BigDecimal getOutputWh() { return outputWh; }
     public BigDecimal getBudgetOutputWh() { return budgetOutputWh; }
 
