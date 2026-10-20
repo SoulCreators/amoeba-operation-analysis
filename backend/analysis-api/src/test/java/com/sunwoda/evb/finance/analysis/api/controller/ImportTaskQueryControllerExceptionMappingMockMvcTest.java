@@ -84,6 +84,22 @@ class ImportTaskQueryControllerExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNamePrincipalForValidationWithUnauthorizedA0002() throws Exception {
+        // 认证主体存在但 Principal.getName() 为 null 时，仍须在读取非空导入文件前拒绝请求。
+        mockMvc.perform(multipart("/api/v1/imports/{taskNo}/validate", TASK_NO)
+                        .file(new MockMultipartFile("file", "actual.csv", "text/csv",
+                                "amount,12\n".getBytes(StandardCharsets.UTF_8)))
+                        .principal(principal(null)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.message").value("未获取到认证用户"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void mapsIllegalArgumentFromValidationServiceToOkAndA0001() throws Exception {
         when(service.validate(eq(TASK_NO), any(InputStream.class)))
                 .thenThrow(new IllegalArgumentException("导入模板不匹配"));

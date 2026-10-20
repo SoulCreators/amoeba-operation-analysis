@@ -72,6 +72,23 @@ class AuthenticationBoundaryMockMvcTest {
         verifyNoInteractions(aiAnalysisService);
     }
 
+    /** Principal 对象存在但 getName() 为 null 时，AI 三类入口仍须返回 401/A0002 且不调用 Service。 */
+    @Test
+    void aiAnalysisRequestsWithNullPrincipalNameReturnHandledAuthenticationFailure() throws Exception {
+        assertAiUnauthenticated(post("/api/v1/ai/analysis/BATCH-001").principal(principal(null)));
+        assertAiUnauthenticated(get("/api/v1/ai/analysis/BATCH-001").principal(principal(null)));
+        assertAiUnauthenticated(post("/api/v1/ai/analysis/BATCH-001/publish").principal(principal(null)));
+
+        verifyNoInteractions(aiAnalysisService);
+    }
+
+    private void assertAiUnauthenticated(RequestBuilder request) throws Exception {
+        aiAnalysisMockMvc.perform(request)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
     /** 认证主体缺失或名称为空时，创建导出请求必须返回 401 且不调用导出服务。 */
     @Test
     void anonymousExportRequestReturnsHandledAuthenticationFailure() throws Exception {
