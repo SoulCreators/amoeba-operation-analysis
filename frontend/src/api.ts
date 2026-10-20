@@ -52,7 +52,8 @@ http.interceptors.request.use((config) => {
 })
 
 export interface ApiEnvelope<T> { code: string; message: string; data: T }
-export interface MetricResult { code: string; name: string; actual: number; budget: number; gap: number; aiSummary?: string }
+/** 本次修改：保留后端概览响应中的单位与上期值字段，不改变公式和页面展示口径。 */
+export interface MetricResult { code: string; name: string; actual: number; budget: number; gap: number; unit?: string | null; previous?: number | null; aiSummary?: string }
 export interface PnlResult { scopeCode: string; lines: Record<string, number> }
 export interface PvmResult { scopeCode: string; perspective: string; actualVolume: number; budgetVolume: number; volumeGap: number; actualRevenue: number; budgetRevenue: number; revenueGap: number; actualSalesCost: number; budgetSalesCost: number; costGap: number; actualGrossProfit: number; budgetGrossProfit: number; grossProfitGap: number; [key: string]: unknown }
 export interface AiDraft { batchNo: string; resultVersionNo?: string; status: string; sections: Record<string, string>; generatedBy?: string; generatedAt?: string }
@@ -104,15 +105,21 @@ export const api = {
   health: () => unwrap(http.get('/health')),
   batch: (batchNo: string) => unwrap<{ batchNo: string; period: string; perspective: Perspective; status: string }>(http.get(`/batches/${batchNo}`)),
   overview: async (period: string, perspective: Perspective, scope = 'ALL') => {
-    const rows = await unwrap<Array<{ metricCode?: string; metricName?: string; code?: string; name?: string; actual: number; budget: number; gap: number; aiSummary?: string }>>(http.get('/overview', { params: { period, perspective, scope } }))
-    return rows.map((row): MetricResult => ({
-      code: row.metricCode || row.code || '',
-      name: row.metricName || row.name || row.metricCode || row.code || '',
-      actual: Number(row.actual || 0),
-      budget: Number(row.budget || 0),
-      gap: Number(row.gap || 0),
-      aiSummary: row.aiSummary,
-    }))
+    const rows = await unwrap<Array<{ metricCode?: string; metricName?: string; code?: string; name?: string; actual: number; budget: number; gap: number; unit?: string | null; previous?: number | string | null; aiSummary?: string }>>(http.get('/overview', { params: { period, perspective, scope } }))
+    return rows.map((row): MetricResult => {
+      const metric: MetricResult = {
+        code: row.metricCode || row.code || '',
+        name: row.metricName || row.name || row.metricCode || row.code || '',
+        actual: Number(row.actual || 0),
+        budget: Number(row.budget || 0),
+        gap: Number(row.gap || 0),
+        aiSummary: row.aiSummary,
+      }
+      // 本次修改：后端返回时透传 unit、previous；缺省时不增加 undefined 属性，保持兼容旧响应。
+      if (row.unit !== undefined) metric.unit = row.unit
+      if (row.previous !== undefined) metric.previous = row.previous === null ? null : Number(row.previous)
+      return metric
+    })
   },
   result: async (batchNo: string) => {
     const payload = await unwrap<CalculationResultPayload>(http.get(`/calculations/${batchNo}`))
