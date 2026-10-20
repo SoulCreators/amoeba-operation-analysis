@@ -5,9 +5,11 @@ import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationResultRepository;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
@@ -22,6 +24,8 @@ import java.util.Optional;
 
 /** PostgreSQL结果仓储。通过db Profile启用，默认内存仓储不受影响。 */
 @Repository
+// 本次修改：db Profile 下优先注入 JDBC 结果仓储，避免与默认内存仓储产生歧义。
+@Primary
 @Profile("db")
 public class JdbcCalculationResultRepository implements CalculationResultRepository {
     private final JdbcTemplate jdbc;
@@ -30,7 +34,9 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         this.jdbc = new JdbcTemplate(dataSource);
     }
 
+    /** 本次修改：为结果快照覆盖保存建立Spring事务边界，确保删除旧数据与写入新数据原子提交。 */
     @Override
+    @Transactional
     public synchronized CalculationResult save(CalculationResult result) {
         Long batchId = jdbc.queryForObject("SELECT id FROM meta.analysis_batch WHERE batch_no = ?",
                 Long.class, result.getBatchNo());
