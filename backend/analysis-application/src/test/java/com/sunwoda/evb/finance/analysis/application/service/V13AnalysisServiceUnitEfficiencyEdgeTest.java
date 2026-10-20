@@ -22,6 +22,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class V13AnalysisServiceUnitEfficiencyEdgeTest {
     @Test
+    void sameLineUsesVariablePlusFixedManufacturingCostAndWeightedWhRatio() {
+        V13AnalysisService service = serviceWithFacts(
+                factWithWh("NANCHANG", "L01", 1000, 800, 100, 50, 80, 40),
+                factWithWh("NANCHANG", "L01", 3000, 4000, 300, 100, 200, 250));
+
+        Map<String, Object> response = service.unitEfficiency("B-EDGE-000", "U001");
+
+        assertEquals("CALCULATED_TECHNICAL", response.get("status"));
+        Map<?, ?> row = (Map<?, ?>) ((List<?>) response.get("rows")).get(0);
+        assertEquals(0, ((BigDecimal) row.get("actualManufacturingCost")).compareTo(decimal(550)));
+        assertEquals(0, ((BigDecimal) row.get("budgetManufacturingCost")).compareTo(decimal(570)));
+        assertEquals(0, ((BigDecimal) row.get("actualOutputWh")).compareTo(decimal(4000)));
+        assertEquals(0, ((BigDecimal) row.get("budgetOutputWh")).compareTo(decimal(4800)));
+        assertEquals(0, ((BigDecimal) row.get("actualPerWh")).compareTo(decimal("0.1375")));
+        assertEquals(0, ((BigDecimal) row.get("budgetPerWh")).compareTo(decimal("0.11875")));
+    }
+
+    @Test
     void sameScopeAndLineRecalculatesFromTotalCostAndTotalWh() {
         V13AnalysisService service = serviceWithFacts(
                 factWithWh("NANCHANG", "L01", 1000, 900, 100, 90),
@@ -125,11 +143,18 @@ class V13AnalysisServiceUnitEfficiencyEdgeTest {
 
     private static PnlFact factWithWh(String scope, String line, double actualWh, double budgetWh,
                                       double actualFixedMfg, double budgetFixedMfg) {
+        return factWithWh(scope, line, actualWh, budgetWh, 0, actualFixedMfg, 0, budgetFixedMfg);
+    }
+
+    private static PnlFact factWithWh(String scope, String line, double actualWh, double budgetWh,
+                                      double actualVariableMfg, double actualFixedMfg,
+                                      double budgetVariableMfg, double budgetFixedMfg) {
         BigDecimal zero = decimal(0);
         return new PnlFact(scope, "BASE-1", "PRODUCT-1", line,
                 decimal(100), decimal(1000), decimal(700), zero, zero, zero, zero, zero, zero,
                 decimal(90), decimal(950), decimal(680), zero, zero, zero, zero, zero, zero,
-                zero, zero, zero, zero, decimal(actualFixedMfg), zero, zero, zero, zero,
+                zero, zero, zero, decimal(actualVariableMfg), decimal(actualFixedMfg),
+                zero, zero, zero, decimal(budgetVariableMfg),
                 decimal(budgetFixedMfg), decimal(actualWh), decimal(budgetWh));
     }
 
