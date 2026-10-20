@@ -22,6 +22,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -34,7 +39,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>本次修改只新增数据库契约测试，覆盖过期前启动、到期启动阻断、
  * 队列和运行中任务完成阻断，以及过期后的状态查询和下载稳定性；
- * 不修改生产代码、迁移、权限、Worker 或财务公式。</p>
+ * 并补充并发迟到完成回归；不修改生产代码、迁移、权限、Worker 或财务公式。</p>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcExportTaskRepositoryExpiryPostgresContractTest {
@@ -182,6 +187,61 @@ class JdbcExportTaskRepositoryExpiryPostgresContractTest {
         assertEquals(0, storage.openCount);
     }
 
+    @Test
+    void concurrentExpiryAndLateCompletionCannotPublishSucceededOrPersistFile()
+            throws Exception {
+        RecordingFileStorage storage = new RecordingFileStorage();
+        JdbcExportTaskRepository expiryRepository = new JdbcExportTaskRepository(dataSource);
+        JdbcExportTaskRepository completionRepository =
+                new JdbcExportTaskRepository(dataSource, storage);
+        ExportJob job = createQueued("CONCURRENT-LATE-COMPLETE");
+        setLifecycle(job.getJobId(), ExportJobStatus.QUEUED,
+                LocalDateTime.now().minusMinutes(1));
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<ExportJobStatus> expiry = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return expiryRepository.status(job.getJobId(), job.getUserId())
+                        .orElseThrow(() -> new AssertionError("并发过期任务应可被所属用户查询"))
+                        .getStatus();
+            });
+            Future<String> lateCompletion = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                try {
+                    completionRepository.complete(job.getJobId(), "late.csv", "text/csv",
+                            new byte[] {9, 8, 7});
+                    return "COMPLETED";
+                } catch (IllegalStateException expected) {
+                    return expected.getMessage();
+                }
+            });
+
+            assertTrue(ready.await(5, TimeUnit.SECONDS),
+                    "两个并发参与者都应进入门闩后再开始");
+            start.countDown();
+
+            assertEquals(ExportJobStatus.EXPIRED,
+                    expiry.get(10, TimeUnit.SECONDS));
+            assertFalse("COMPLETED".equals(lateCompletion.get(10, TimeUnit.SECONDS)),
+                    "迟到完成不得发布 SUCCEEDED");
+        } finally {
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
+                    "并发回归线程应在测试结束前退出");
+        }
+
+        assertEquals(ExportJobStatus.EXPIRED, databaseStatus(job.getJobId()));
+        assertFalse(completionRepository.download(job.getJobId(), job.getUserId()).isPresent(),
+                "过期任务即使存在迟到完成调用也不得下载");
+        assertEquals(0, storage.saveCount, "过期任务不得保存导出文件");
+        assertEquals(0, storage.openCount, "过期任务不得打开导出文件");
+    }
+
     private ExportJob createQueued(String suffix) {
         String userId = runPrefix + "-USER-" + suffix;
         String requestKey = runPrefix + "-REQUEST-" + suffix;
@@ -237,11 +297,13 @@ class JdbcExportTaskRepositoryExpiryPostgresContractTest {
     }
 
     private static final class RecordingFileStorage implements ExportFileStoragePort {
+        private int saveCount;
         private int openCount;
 
         @Override
         public void save(String fileKey, String userId, String fileName,
                          String contentType, byte[] content) {
+            saveCount++;
         }
 
         @Override
