@@ -138,9 +138,13 @@ class ConfigurationImportControllerMultipartContractTest {
         assertUnauthenticated(validationRequest(null, bytes("type,code\nFX_RATE,CNY\n")));
         assertUnauthenticated(validationRequest(principal(""), bytes("type,code\nFX_RATE,CNY\n")));
         assertUnauthenticated(validationRequest(principal("   "), bytes("type,code\nFX_RATE,CNY\n")));
+        // 本次修改补充 validation 请求的认证主体用户名为 null 时仍返回 401/A0002 的回归场景。
+        assertUnauthenticated(validationRequest(principal(null), bytes("type,code\nFX_RATE,CNY\n")));
         assertUnauthenticated(uploadRequest(null, bytes("type,code\nFX_RATE,CNY\n")));
         assertUnauthenticated(uploadRequest(principal(""), bytes("type,code\nFX_RATE,CNY\n")));
         assertUnauthenticated(uploadRequest(principal("   "), bytes("type,code\nFX_RATE,CNY\n")));
+        // 本次修改补充 upload 请求的认证主体用户名为 null 时仍返回 401/A0002 的回归场景。
+        assertUnauthenticated(uploadRequest(principal(null), bytes("type,code\nFX_RATE,CNY\n")));
 
         verifyNoInteractions(service);
     }

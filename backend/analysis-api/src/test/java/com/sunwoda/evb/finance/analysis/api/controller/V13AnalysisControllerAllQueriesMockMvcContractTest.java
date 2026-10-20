@@ -206,6 +206,36 @@ class V13AnalysisControllerAllQueriesMockMvcContractTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false));
 
+        // 认证主体存在但用户名为 null 时，七类查询仍必须在认证门禁处返回 401。
+        mockMvc.perform(get("/api/v1/v13/overview/{batchNo}", BATCH_NO)
+                        .principal(() -> null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+        mockMvc.perform(get("/api/v1/v13/matrix/{batchNo}", BATCH_NO)
+                        .principal(() -> null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+        mockMvc.perform(get("/api/v1/v13/unit-efficiency/{batchNo}", BATCH_NO)
+                        .principal(() -> null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+        mockMvc.perform(get("/api/v1/v13/forecast/{batchNo}", BATCH_NO)
+                        .principal(() -> null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+        mockMvc.perform(get("/api/v1/v13/risk/{batchNo}", BATCH_NO)
+                        .principal(() -> null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+        mockMvc.perform(get("/api/v1/v13/waterfall/{batchNo}", BATCH_NO)
+                        .principal(() -> null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+        mockMvc.perform(get("/api/v1/v13/topics/{batchNo}/{topicCode}", BATCH_NO, "INVENTORY")
+                        .principal(() -> null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false));
+
         // 七类查询均在 Controller 认证门禁处结束，不进入任何业务 Service。
         org.mockito.Mockito.verifyNoInteractions(service);
     }

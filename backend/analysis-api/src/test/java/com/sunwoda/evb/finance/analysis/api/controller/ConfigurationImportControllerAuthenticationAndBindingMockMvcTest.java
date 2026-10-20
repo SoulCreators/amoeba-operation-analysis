@@ -41,6 +41,8 @@ class ConfigurationImportControllerAuthenticationAndBindingMockMvcTest {
         assertUnauthenticated(createRequest(null));
         assertUnauthenticated(createRequest(principal("")));
         assertUnauthenticated(createRequest(principal("   ")));
+        // 本次修改补充认证主体存在但 Principal.getName() 返回 null 时仍拒绝请求的回归场景。
+        assertUnauthenticated(createRequest(principal(null)));
 
         verifyNoInteractions(service);
     }
@@ -50,6 +52,8 @@ class ConfigurationImportControllerAuthenticationAndBindingMockMvcTest {
         assertUnauthenticated(getRequest(null));
         assertUnauthenticated(getRequest(principal("")));
         assertUnauthenticated(getRequest(principal("   ")));
+        // 本次修改补充认证主体存在但 Principal.getName() 返回 null 时仍拒绝请求的回归场景。
+        assertUnauthenticated(getRequest(principal(null)));
 
         verifyNoInteractions(service);
     }
@@ -59,6 +63,8 @@ class ConfigurationImportControllerAuthenticationAndBindingMockMvcTest {
         assertUnauthenticated(issuesRequest(null));
         assertUnauthenticated(issuesRequest(principal("")));
         assertUnauthenticated(issuesRequest(principal("   ")));
+        // 本次修改补充认证主体存在但 Principal.getName() 返回 null 时仍拒绝请求的回归场景。
+        assertUnauthenticated(issuesRequest(principal(null)));
 
         verifyNoInteractions(service);
     }
@@ -68,6 +74,8 @@ class ConfigurationImportControllerAuthenticationAndBindingMockMvcTest {
         assertUnauthenticated(statusRequest(null));
         assertUnauthenticated(statusRequest(principal("")));
         assertUnauthenticated(statusRequest(principal("   ")));
+        // 本次修改补充认证主体存在但 Principal.getName() 返回 null 时仍拒绝请求的回归场景。
+        assertUnauthenticated(statusRequest(principal(null)));
 
         verifyNoInteractions(service);
     }
