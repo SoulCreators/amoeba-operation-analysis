@@ -1,6 +1,38 @@
 import axios from 'axios'
 
 export type Perspective = 'BASE' | 'PRODUCT_LINE' | 'BUSINESS_UNIT'
+export type ExportFormat = 'CSV' | 'XLSX'
+export type ExportResultStatus = 'CALCULATED' | 'CONFIRMED' | 'PUBLISHED'
+export type ExportTaskStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED'
+
+export interface CreateExportRequest {
+  requestKey: string
+  batchNo: string
+  resultVersion: string
+  perspective: Perspective
+  format: ExportFormat
+  resultStatus: ExportResultStatus
+  requestedScopes?: string[]
+}
+
+export interface ExportTaskResponse {
+  taskId: string
+  status: ExportTaskStatus
+  fileName?: string
+  contentType?: string
+  createdAt?: string
+  updatedAt?: string
+  finishedAt?: string
+  expiresAt?: string
+  errorMessage?: string
+}
+
+export interface ExportDownloadResponse {
+  fileName: string
+  contentType: string
+  contentLength: number
+  content: string
+}
 
 const DEFAULT_LOCAL_USER = 'local-finance'
 function normalizeUserId(value?: string | null) {
@@ -119,4 +151,7 @@ export const api = {
   v13Risk: (batchNo: string) => unwrap<V13AnalysisPayload>(http.get(`/v13/risk/${batchNo}`)),
   v13Waterfall: (batchNo: string) => unwrap<V13AnalysisPayload>(http.get(`/v13/waterfall/${batchNo}`)),
   v13Topic: (batchNo: string, topicCode: string) => unwrap<V13AnalysisPayload>(http.get(`/v13/topics/${batchNo}/${topicCode}`)),
+  createExport: (payload: CreateExportRequest) => unwrap<ExportTaskResponse>(http.post('/exports', payload)),
+  exportStatus: (taskId: string) => unwrap<ExportTaskResponse>(http.get(`/exports/${taskId}`)),
+  downloadExport: (taskId: string) => unwrap<ExportDownloadResponse>(http.get(`/exports/${taskId}/download`)),
 }

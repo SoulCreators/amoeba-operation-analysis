@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { api, type AiDraft, type BatchReadiness, type ConfigurationImportIssue, type ConfigurationImportTask, type ConfigurationImportValidationResult, type DataQualityReport, type DatasetDefinition, type ImportIssue, type MappingEntry, type MetricDefinition, type MetricResult, type Perspective, type PnlResult, type PvmResult, type V13AnalysisPayload } from './api'
+import { api, type AiDraft, type BatchReadiness, type ConfigurationImportIssue, type ConfigurationImportTask, type ConfigurationImportValidationResult, type DataQualityReport, type DatasetDefinition, type ExportDownloadResponse, type ExportResultStatus, type ExportTaskResponse, type ExportTaskStatus, type ImportIssue, type MappingEntry, type MetricDefinition, type MetricResult, type Perspective, type PnlResult, type PvmResult, type V13AnalysisPayload } from './api'
 
 type View = 'overview' | 'result' | 'tree' | 'import' | 'issues' | 'pvm' | 'permission' | 'ai' | 'configImport' | 'mapping' | 'metrics' | 'users' | 'menus' | 'audit' | 'gross' | 'matrix' | 'unit' | 'forecast' | 'risk' | 'topics'
 type Scenario = 'ACT_BGT' | 'ACT_FC' | 'FC_BGT'
 type BatchImportIssue = ImportIssue & { datasetCode: string; datasetName: string; taskNo: string }
+type ExportTask = ExportTaskResponse
+type ExportDownload = ExportDownloadResponse
 const DEFAULT_LOCAL_USER = 'local-finance'
 function normalizeUserId(value?: string | null) { const userId = value?.trim(); return !userId || userId === 'demo-finance' ? DEFAULT_LOCAL_USER : userId }
 const localUser = normalizeUserId(localStorage.getItem('amoeba.user')); localStorage.setItem('amoeba.user', localUser)
 const view = ref<View>('overview'); const period = ref('2026-08'); const periodMode = ref('ytd'); const perspective = ref<Perspective>('BASE'); const scope = ref('ALL'); const batchNo = ref(new URLSearchParams(window.location.search).get('batch') || 'BATCH-202608-BASE-001'); const currentUser = ref(localUser); const currentRole = ref('总部财经'); const currentScope = ref('全部基地'); const source = ref<'api' | 'empty'>('empty'); const loading = ref(false); const error = ref(''); const toastMessage = ref(''); const scenario = ref<Scenario>('ACT_BGT'); const fcVersion = ref('待导入正式预测版本'); const matrixMetric = ref('REVENUE'); const grossPeriod = ref('累计'); const activeTopic = ref('inventory'); const selectedMetric = ref('营业利润')
-const metrics = ref<MetricResult[]>([]); const results = ref<PnlResult[]>([]); const pvmRows = ref<PvmResult[]>([]); const treeRows = ref<MetricResult[]>([]); const aiDraft = ref<AiDraft | null>(null); const readiness = ref<BatchReadiness | null>(null); const quality = ref<DataQualityReport | null>(null); const datasets = ref<DatasetDefinition[]>([]); const uploadDataset = ref(''); const selectedFile = ref<File | null>(null); const importMessage = ref(''); const calculationStatus = ref(''); const calculationBusy = ref(false); const issueRows = ref<BatchImportIssue[]>([]); const issuesLoading = ref(false); const configMetrics = ref<MetricDefinition[]>([]); const mappingRows = ref<MappingEntry[]>([]); const mappingType = ref('SALES_PROJECT'); const mappingForm = ref({ type: 'SALES_PROJECT', matchKey: '', mappedValue: '', enabled: true }); const metricForm = ref({ metricCode: '', metricName: '', applicablePerspective: 'ALL', unit: 'CNY', formulaExpression: '', displayOrder: 100, enabled: true, aiSummaryTemplate: '' }); const configMessage = ref(''); const configImportType = ref('SALES_PROJECT_MAPPING'); const configImportFile = ref<File | null>(null); const configImportMessage = ref(''); const roleScope = ref('全部基地')
+const metrics = ref<MetricResult[]>([]); const results = ref<PnlResult[]>([]); const pvmRows = ref<PvmResult[]>([]); const treeRows = ref<MetricResult[]>([]); const aiDraft = ref<AiDraft | null>(null); const readiness = ref<BatchReadiness | null>(null); const quality = ref<DataQualityReport | null>(null); const datasets = ref<DatasetDefinition[]>([]); const uploadDataset = ref(''); const selectedFile = ref<File | null>(null); const importMessage = ref(''); const calculationStatus = ref(''); const resultVersion = ref(''); const calculationBusy = ref(false); const exportBusy = ref(false); const issueRows = ref<BatchImportIssue[]>([]); const issuesLoading = ref(false); const configMetrics = ref<MetricDefinition[]>([]); const mappingRows = ref<MappingEntry[]>([]); const mappingType = ref('SALES_PROJECT'); const mappingForm = ref({ type: 'SALES_PROJECT', matchKey: '', mappedValue: '', enabled: true }); const metricForm = ref({ metricCode: '', metricName: '', applicablePerspective: 'ALL', unit: 'CNY', formulaExpression: '', displayOrder: 100, enabled: true, aiSummaryTemplate: '' }); const configMessage = ref(''); const configImportType = ref('SALES_PROJECT_MAPPING'); const configImportFile = ref<File | null>(null); const configImportMessage = ref(''); const roleScope = ref('全部基地')
 const configImportTask = ref<ConfigurationImportTask | null>(null); const configTaskQueryNo = ref(''); const configIssueRows = ref<ConfigurationImportIssue[]>([]); const configImportResult = ref<ConfigurationImportValidationResult | null>(null); const configImportBusy = ref(false)
 const v13Overview = ref<V13AnalysisPayload | null>(null); const v13Matrix = ref<V13AnalysisPayload | null>(null); const v13Unit = ref<V13AnalysisPayload | null>(null); const v13Forecast = ref<V13AnalysisPayload | null>(null); const v13Risk = ref<V13AnalysisPayload | null>(null); const v13Waterfall = ref<V13AnalysisPayload | null>(null); const v13TopicPayloads = ref<Record<string, V13AnalysisPayload>>({})
 const forecastRows = ref<Record<string, unknown>[]>([]); const waterfallFactors = ref<Record<string, unknown>[]>([])
@@ -84,6 +86,108 @@ function resetV13State() {
 }
 function scenarioPair(actual: number, budget: number, fc = budget + (actual - budget) * 0.72) { return scenario.value === 'ACT_FC' ? [actual, fc] : scenario.value === 'FC_BGT' ? [fc, budget] : [actual, budget] }; function scenarioGap(actual: number, budget: number, fc?: number) { const [current, base] = scenarioPair(actual, budget, fc); return { current, base, gap: current - base, rate: base ? (current - base) / Math.abs(base) : null } }; function format(code: string, value: number) { if (code.includes('RATE')) return `${(value * 100).toFixed(2)}%`; return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value) }; function matrixPair(row: MatrixRow) { const values = matrixMetric.value === 'GROSS' ? row.gross : matrixMetric.value === 'PROFIT' ? row.profit : row.revenue; return scenarioPair(values[0], values[1], values[2]) }; function matrixTotal() { return matrixRows.value.reduce((r, row) => { const p = matrixPair(row); r.current += p[0]; r.base += p[1]; return r }, { current: 0, base: 0 }) }
 function setUser() { const normalizedUser = normalizeUserId(currentUser.value); localStorage.setItem('amoeba.user', normalizedUser); currentUser.value = normalizedUser; showToast('用户范围已切换') }; function showToast(message: string) { toastMessage.value = message; window.setTimeout(() => { if (toastMessage.value === message) toastMessage.value = '' }, 2600) }; function go(next: View) { view.value = next; error.value = ''; if (next === 'overview' || next === 'import' || next === 'issues' || next === 'configImport' || next === 'mapping' || next === 'metrics' || next === 'result' || next === 'pvm' || next === 'tree' || next === 'ai') void load() }
+
+function exportStatus(status: string | undefined): ExportTaskStatus | null {
+  const normalized = status?.toUpperCase()
+  return normalized === 'QUEUED' || normalized === 'RUNNING' || normalized === 'SUCCEEDED' || normalized === 'FAILED' || normalized === 'EXPIRED'
+    ? normalized
+    : null
+}
+
+function exportRequestKey(name: string) {
+  return ['FE-EXPORT-001', name, batchNo.value, resultVersion.value, perspective.value, scope.value || 'ALL'].join(':')
+}
+
+async function pollExportTask(task: ExportTask) {
+  let currentTask = task
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const status = exportStatus(currentTask.status)
+    if (status !== 'QUEUED' && status !== 'RUNNING') return currentTask
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+    currentTask = await api.exportStatus(task.taskId)
+  }
+  return currentTask
+}
+
+function decodeExportContent(content: ExportDownload['content']) {
+  if (typeof content !== 'string' || !content) return null
+  try {
+    const binary = window.atob(content)
+    if (!binary.length) return null
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+    return bytes
+  } catch {
+    return null
+  }
+}
+
+function triggerExportDownload(file: ExportDownload, bytes: Uint8Array) {
+  const blob = new Blob([bytes], { type: file.contentType || 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = file.fileName || `${batchNo.value}-${resultVersion.value}.csv`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function exportStatusMessage(name: string, task: ExportTask, suffix = '') {
+  const status = exportStatus(task.status) || task.status || 'UNKNOWN'
+  const taskLabel = `taskId=${task.taskId}，status=${status}`
+  if (status === 'QUEUED') return `${name}导出任务已创建：${taskLabel}（排队中，暂未下载）${suffix}`
+  if (status === 'RUNNING') return `${name}导出任务已创建：${taskLabel}（生成中，暂未下载）${suffix}`
+  if (status === 'FAILED') return `${name}导出任务失败：${taskLabel}${task.errorMessage ? `，${task.errorMessage}` : ''}${suffix}`
+  if (status === 'EXPIRED') return `${name}导出任务已过期：${taskLabel}，未下载${suffix}`
+  return `${name}导出任务：${taskLabel}${suffix}`
+}
+
+async function exportView(name: string) {
+  if (exportBusy.value) return
+  exportBusy.value = true
+  try {
+    const result = await api.result(batchNo.value)
+    resultVersion.value = result.versionNo || ''
+    calculationStatus.value = result.status
+    const resultStatus = String(result.status || '').toUpperCase()
+    if (!resultVersion.value || !['CALCULATED', 'CONFIRMED', 'PUBLISHED'].includes(resultStatus)) {
+      throw new Error('当前批次没有可导出的结果版本或结果状态')
+    }
+    const requestedScopes = scope.value && scope.value !== 'ALL' ? [scope.value] : []
+    const created = await api.createExport({
+      requestKey: exportRequestKey(name),
+      batchNo: batchNo.value,
+      resultVersion: resultVersion.value,
+      perspective: perspective.value,
+      format: 'CSV',
+      resultStatus: resultStatus as ExportResultStatus,
+      requestedScopes,
+    })
+    if (!created?.taskId) throw new Error('服务端未返回导出 taskId')
+    showToast(exportStatusMessage(name, created))
+    const task = await pollExportTask(created)
+    const status = exportStatus(task.status)
+    if (status !== 'SUCCEEDED') {
+      showToast(exportStatusMessage(name, task, status === 'QUEUED' || status === 'RUNNING' ? '，仍在处理中，未下载' : ''))
+      return
+    }
+    const file = await api.downloadExport(task.taskId)
+    const bytes = decodeExportContent(file?.content)
+    if (!bytes || !bytes.length || (file.contentLength !== undefined && Number(file.contentLength) <= 0)) {
+      showToast(exportStatusMessage(name, task, '，下载接口未返回有效文件内容，未触发下载'))
+      return
+    }
+    triggerExportDownload(file, bytes)
+    showToast(exportStatusMessage(name, task, '，文件已下载'))
+  } catch (e) {
+    showToast(`${name}导出失败：${e instanceof Error ? e.message : '请求失败'}，未触发下载`)
+  } finally {
+    exportBusy.value = false
+  }
+}
+
 async function ensureBatch() {
   try {
     await api.batch(batchNo.value)
@@ -316,7 +420,7 @@ async function disableMapping(row: MappingEntry) { try { await api.disableMappin
 async function uploadConfig() { if (!configImportFile.value) { configImportMessage.value = '请选择基础配置文件。'; return }; await runConfigImport() }
 
 function refreshAnalysis() { void load(); void loadV13() }
-function changeRole() { currentScope.value = currentRole.value === '总部财经' ? '全部基地' : currentRole.value === '基地运营' ? '泰国基地' : '南昌基地'; roleScope.value = currentScope.value; showToast(`已切换为${currentRole.value}`) }; function printRisk() { document.body.classList.add('risk-print'); window.print(); window.setTimeout(() => document.body.classList.remove('risk-print'), 500) }; function exportView(name: string) { showToast(`${name}导出任务已创建，当前仅导出真实接口返回内容`) }; function showMetric(name: string) { selectedMetric.value = name }; function pickFile(e: Event) { selectedFile.value = (e.target as HTMLInputElement).files?.[0] || null }; function pickConfigFile(e: Event) { configImportFile.value = (e.target as HTMLInputElement).files?.[0] || null }; onMounted(load)
+function changeRole() { currentScope.value = currentRole.value === '总部财经' ? '全部基地' : currentRole.value === '基地运营' ? '泰国基地' : '南昌基地'; roleScope.value = currentScope.value; showToast(`已切换为${currentRole.value}`) }; function printRisk() { document.body.classList.add('risk-print'); window.print(); window.setTimeout(() => document.body.classList.remove('risk-print'), 500) }; function showMetric(name: string) { selectedMetric.value = name }; function pickFile(e: Event) { selectedFile.value = (e.target as HTMLInputElement).files?.[0] || null }; function pickConfigFile(e: Event) { configImportFile.value = (e.target as HTMLInputElement).files?.[0] || null }; onMounted(load)
 function configStatusLabel(status?: string) {
   return ({ CREATED: '已创建', VALIDATING: '校验中', VALID: '校验并应用通过', INVALID: '校验/应用失败', CANCELLED: '已取消' } as Record<string, string>)[status || ''] || status || '未知'
 }
