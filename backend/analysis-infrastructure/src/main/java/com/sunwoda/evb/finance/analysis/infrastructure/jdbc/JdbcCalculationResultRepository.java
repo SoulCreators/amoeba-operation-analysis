@@ -64,6 +64,47 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
                         rs.getString("version_no"), localDateTime(rs.getTimestamp("calculated_at")), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
                         rs.getString("published_by"), localDateTime(rs.getTimestamp("published_at")),
                         rs.getString("scope_code"), rs.getLong("id")), batchNo);
+        return assemble(batchNo, headers);
+    }
+
+    @Override
+    public Optional<CalculationResult> findByBatchNoForUser(String batchNo, String userId) {
+        List<Header> headers = jdbc.query("SELECT p.perspective, p.result_status, p.version_no, p.confirmed_by, "
+                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
+                        + "FROM calc.pnl_result p JOIN meta.analysis_batch b ON b.id = p.batch_id "
+                        + "WHERE b.batch_no = ? AND EXISTS (SELECT 1 FROM iam.user_scope s "
+                        + "WHERE s.user_id = ? AND s.perspective = p.perspective AND s.enabled = TRUE "
+                        + "AND (s.scope_code = 'ALL' OR s.scope_code = p.scope_code)) "
+                        + "ORDER BY p.id", (rs, row) -> new Header(
+                        AnalysisPerspective.fromCode(rs.getString("perspective")),
+                        CalculationResultStatus.valueOf(rs.getString("result_status")),
+                        rs.getString("version_no"), localDateTime(rs.getTimestamp("calculated_at")), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
+                        rs.getString("published_by"), localDateTime(rs.getTimestamp("published_at")),
+                        rs.getString("scope_code"), rs.getLong("id")), batchNo, userId);
+
+        if (!headers.isEmpty()) return assemble(batchNo, headers);
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<CalculationResult> findMetadataByBatchNo(String batchNo) {
+        List<Header> metadata = jdbc.query("SELECT p.perspective, p.result_status, p.version_no, p.confirmed_by, "
+                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
+                        + "FROM calc.pnl_result p JOIN meta.analysis_batch b ON b.id = p.batch_id "
+                        + "WHERE b.batch_no = ? ORDER BY p.id LIMIT 1", (rs, row) -> new Header(
+                        AnalysisPerspective.fromCode(rs.getString("perspective")),
+                        CalculationResultStatus.valueOf(rs.getString("result_status")),
+                        rs.getString("version_no"), localDateTime(rs.getTimestamp("calculated_at")), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
+                        rs.getString("published_by"), localDateTime(rs.getTimestamp("published_at")),
+                        rs.getString("scope_code"), rs.getLong("id")), batchNo);
+        if (metadata.isEmpty()) return Optional.empty();
+        Header first = metadata.get(0);
+        return Optional.of(new CalculationResult(batchNo, first.perspective, new ArrayList<PnlResult>(),
+                first.versionNo, first.status, first.confirmedBy, first.publishedBy, first.calculatedAt,
+                first.confirmedAt, first.publishedAt));
+    }
+
+    private Optional<CalculationResult> assemble(String batchNo, List<Header> headers) {
         if (headers.isEmpty()) return Optional.empty();
         List<PnlResult> results = new ArrayList<PnlResult>();
         for (Header header : headers) {

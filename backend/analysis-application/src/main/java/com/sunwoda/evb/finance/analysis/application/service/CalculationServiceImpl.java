@@ -109,8 +109,17 @@ public class CalculationServiceImpl implements CalculationService {
     @Override
     public synchronized CalculationResult getForUser(String batchNo, String userId) {
         if (userId == null || userId.trim().isEmpty()) throw new IllegalArgumentException("用户工号不能为空");
-        CalculationResult result = get(batchNo);
         String normalizedUser = userId.trim();
+        CalculationResult result;
+        if (resultRepository == null) {
+            result = results.get(batchNo);
+        } else {
+            result = resultRepository.findByBatchNoForUser(batchNo, normalizedUser).orElse(null);
+            if (result == null) {
+                result = resultRepository.findMetadataByBatchNo(batchNo).orElse(null);
+            }
+        }
+        if (result == null) throw new IllegalArgumentException("批次尚未完成计算: " + batchNo);
         if (!permissionService.canViewResult(normalizedUser, result.getPerspective(), result.getStatus())) {
             if (result.getStatus() != CalculationResultStatus.PUBLISHED) {
                 throw new IllegalStateException("当前结果尚未发布，仅财经角色可查看草稿");
