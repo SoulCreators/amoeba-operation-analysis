@@ -127,6 +127,33 @@ class CalculationServiceCurrentOrchestrationContractTest {
     }
 
     @Test
+    void confirmKeepsBatchConfirmedWhenResultRepositoryFailsAndRethrowsOriginalError() {
+        AnalysisBatch batch = batch("CALC-ORCH-CONFIRM-RESULT-FAILED", BatchStatus.CALCULATED);
+        CalculationResult current = result(batch.getBatchNo(), CalculationResultStatus.CALCULATED);
+        AnalysisBatchRepository batches = mock(AnalysisBatchRepository.class);
+        CalculationResultRepository results = mock(CalculationResultRepository.class);
+        when(batches.findByBatchNo(batch.getBatchNo())).thenReturn(Optional.of(batch));
+        when(results.findByBatchNo(batch.getBatchNo())).thenReturn(Optional.of(current));
+        IllegalStateException original = new IllegalStateException("确认结果保存失败");
+        org.mockito.Mockito.doThrow(original).when(results).save(any(CalculationResult.class));
+        List<BatchStatus> savedStatuses = new ArrayList<BatchStatus>();
+        doAnswer(invocation -> {
+            // 本次修改：锁定 confirm 结果保存失败时的当前状态落点和原始异常传播。
+            savedStatuses.add(batch.getStatus());
+            return batch;
+        }).when(batches).save(batch);
+
+        CalculationServiceImpl service = service(batches, results, facts -> Collections.emptyList());
+
+        IllegalStateException actual = assertThrows(IllegalStateException.class,
+                () -> service.confirm(batch.getBatchNo(), "finance-confirm"));
+
+        assertEquals(original, actual);
+        assertEquals(Collections.singletonList(BatchStatus.CONFIRMED), savedStatuses);
+        verify(results).save(any(CalculationResult.class));
+    }
+
+    @Test
     void publishSavesBatchBeforePublishedResult() {
         AnalysisBatch batch = batch("CALC-ORCH-PUBLISH", BatchStatus.CONFIRMED);
         CalculationResult current = result(batch.getBatchNo(), CalculationResultStatus.CONFIRMED);
@@ -144,6 +171,33 @@ class CalculationServiceCurrentOrchestrationContractTest {
         InOrder order = inOrder(batches, results);
         order.verify(batches).save(batch);
         order.verify(results).save(any(CalculationResult.class));
+    }
+
+    @Test
+    void publishKeepsBatchPublishedWhenResultRepositoryFailsAndRethrowsOriginalError() {
+        AnalysisBatch batch = batch("CALC-ORCH-PUBLISH-RESULT-FAILED", BatchStatus.CONFIRMED);
+        CalculationResult current = result(batch.getBatchNo(), CalculationResultStatus.CONFIRMED);
+        AnalysisBatchRepository batches = mock(AnalysisBatchRepository.class);
+        CalculationResultRepository results = mock(CalculationResultRepository.class);
+        when(batches.findByBatchNo(batch.getBatchNo())).thenReturn(Optional.of(batch));
+        when(results.findByBatchNo(batch.getBatchNo())).thenReturn(Optional.of(current));
+        IllegalStateException original = new IllegalStateException("发布结果保存失败");
+        org.mockito.Mockito.doThrow(original).when(results).save(any(CalculationResult.class));
+        List<BatchStatus> savedStatuses = new ArrayList<BatchStatus>();
+        doAnswer(invocation -> {
+            // 本次修改：锁定 publish 结果保存失败时的当前状态落点和原始异常传播。
+            savedStatuses.add(batch.getStatus());
+            return batch;
+        }).when(batches).save(batch);
+
+        CalculationServiceImpl service = service(batches, results, facts -> Collections.emptyList());
+
+        IllegalStateException actual = assertThrows(IllegalStateException.class,
+                () -> service.publish(batch.getBatchNo(), "finance-publish"));
+
+        assertEquals(original, actual);
+        assertEquals(Collections.singletonList(BatchStatus.PUBLISHED), savedStatuses);
+        verify(results).save(any(CalculationResult.class));
     }
 
     private CalculationServiceImpl service(AnalysisBatchRepository batches,
