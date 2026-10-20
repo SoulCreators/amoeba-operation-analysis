@@ -25,11 +25,12 @@ public class JdbcFcVersionProvider implements FcVersionProvider {
 
     @Override
     public Optional<FcVersion> findForBatch(String batchNo, AnalysisPerspective perspective, String versionCode) {
+        // 本次修复显式声明可空版本号为 VARCHAR，避免 PostgreSQL 无法推断 ? IS NULL 的参数类型；查询语义保持不变。
         String sql = "SELECT v.version_code, v.perspective, v.base_period, v.coverage_start, v.coverage_end, "
                 + "v.status, v.uploaded_by, v.uploaded_at, v.official, v.published_by, v.published_at "
                 + "FROM calc.fc_version v JOIN meta.analysis_batch b ON b.period = v.base_period "
                 + "WHERE b.batch_no = ? AND v.perspective = ? "
-                + "AND ((? IS NULL AND v.official = TRUE) OR v.version_code = ?) "
+                + "AND ((CAST(? AS VARCHAR) IS NULL AND v.official = TRUE) OR v.version_code = ?) "
                 + "ORDER BY v.official DESC, v.updated_at DESC LIMIT 1";
         List<FcVersion> values = jdbc.query(sql, (rs, row) -> new FcVersion(
                 rs.getString("version_code"), AnalysisPerspective.fromCode(rs.getString("perspective")),
