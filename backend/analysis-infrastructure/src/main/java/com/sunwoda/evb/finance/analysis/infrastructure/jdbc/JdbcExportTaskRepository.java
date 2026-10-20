@@ -293,37 +293,78 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
         String normalizedType = defaultContentType(contentType);
         requireContent(content);
         LocalDateTime now = LocalDateTime.now();
+        ExportJob savedJob = null;
 
         if (fileStorage != null) {
-            ExportJob existing = findById(key);
-            if (existing == null) {
+            savedJob = findById(key);
+            if (savedJob == null) {
                 throw new IllegalArgumentException("导出任务不存在: " + key);
             }
-            if (existing.getStatus() != ExportJobStatus.QUEUED
-                    && existing.getStatus() != ExportJobStatus.RUNNING) {
+            if (savedJob.getStatus() != ExportJobStatus.QUEUED
+                    && savedJob.getStatus() != ExportJobStatus.RUNNING) {
                 throw new IllegalStateException("导出任务不可完成: " + key);
             }
-            if (existing.isExpired(now)) {
+            if (savedJob.isExpired(now)) {
                 throw new IllegalStateException("导出任务已过期: " + key);
             }
 
-            // Persist bytes before publishing SUCCEEDED.  If the database
-            // transition is rejected, the file remains unreachable because
-            // download requires the persisted successful task state.
-            fileStorage.save(fileKey(existing), existing.getUserId(), normalizedName,
+            // 本次修改保持“先保存文件、后更新状态”的顺序；状态更新失败时由下方补偿删除。
+            fileStorage.save(fileKey(savedJob), savedJob.getUserId(), normalizedName,
                     normalizedType, content);
         }
 
-        if (jdbc.update(COMPLETE_SQL, normalizedName, normalizedType, timestamp(now),
-                timestamp(now), timestamp(now.plusHours(24)), key, timestamp(now)) > 0) {
-            return;
+        try {
+            if (jdbc.update(COMPLETE_SQL, normalizedName, normalizedType, timestamp(now),
+                    timestamp(now), timestamp(now.plusHours(24)), key, timestamp(now)) > 0) {
+                return;
+            }
+        } catch (RuntimeException stateUpdateFailure) {
+            // JDBC 更新抛错时结果可能未知，先确认没有并发成功状态，再补偿已保存文件。
+            compensateSavedFileAfterStateUpdateFailure(key, savedJob, stateUpdateFailure);
+            throw stateUpdateFailure;
         }
 
         ExportJob existing = findById(key);
-        if (existing == null) {
-            throw new IllegalArgumentException("导出任务不存在: " + key);
+        RuntimeException transitionFailure = existing == null
+                ? new IllegalArgumentException("导出任务不存在: " + key)
+                : new IllegalStateException("导出任务不可完成: " + key);
+        // 条件更新返回 0 代表本次状态转换未生效；若没有并发成功结果，删除刚保存的文件。
+        if (savedJob != null && (existing == null
+                || existing.getStatus() != ExportJobStatus.SUCCEEDED)) {
+            try {
+                compensateSavedFile(savedJob);
+            } catch (RuntimeException compensationFailure) {
+                // 保留条件更新失败作为主异常，并附带删除失败，避免丢失状态转换结论。
+                transitionFailure.addSuppressed(compensationFailure);
+            }
         }
-        throw new IllegalStateException("导出任务不可完成: " + key);
+        throw transitionFailure;
+    }
+
+    /**
+     * 状态更新失败后的文件补偿：并发执行已经成功时保留稳定文件键对应的有效文件。
+     */
+    private void compensateSavedFileAfterStateUpdateFailure(String jobId,
+                                                             ExportJob savedJob,
+                                                             RuntimeException stateUpdateFailure) {
+        if (savedJob == null) {
+            return;
+        }
+        try {
+            ExportJob current = findById(jobId);
+            if (current != null && current.getStatus() == ExportJobStatus.SUCCEEDED) {
+                return;
+            }
+            compensateSavedFile(savedJob);
+        } catch (RuntimeException compensationFailure) {
+            // 保留原始状态更新异常，并把补偿失败附加出来，避免掩盖真正的失败原因。
+            stateUpdateFailure.addSuppressed(compensationFailure);
+        }
+    }
+
+    /** 文件已保存但状态未成功时，按任务所属用户和稳定文件键执行幂等删除。 */
+    private void compensateSavedFile(ExportJob savedJob) {
+        fileStorage.delete(fileKey(savedJob), savedJob.getUserId());
     }
 
     @Override
