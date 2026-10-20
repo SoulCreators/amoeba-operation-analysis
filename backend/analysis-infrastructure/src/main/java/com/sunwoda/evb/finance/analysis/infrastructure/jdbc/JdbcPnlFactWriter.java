@@ -35,7 +35,12 @@ public class JdbcPnlFactWriter implements PnlFactWriter {
                 + "variable_mfg_cost, fixed_mfg_cost, budget_material_cost, budget_labor_cost, "
                 + "budget_outsourcing_cost, budget_variable_mfg_cost, budget_fixed_mfg_cost, output_wh, "
                 + "budget_output_wh, material_loss, budget_material_loss) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )";
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
+                + "?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                + "?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                + "?, ?, ?, ?, ?, "
+                + "?, ?, ?, ?, ?, "
+                + "?, ?, ?, ?)";
         for (PnlFact fact : facts) {
             jdbc.update(sql, batchId, batch.getPerspective().getCode(), task.getTaskNo(),
                     batch.getPeriod(), fact.getScopeCode(), fact.getBaseCode(), fact.getProductCode(),
