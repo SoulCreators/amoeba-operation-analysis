@@ -8,6 +8,21 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # 本次修改：为后端契约测试提供一次性 PostgreSQL，不使用任何生产凭据。
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: amoeba_analysis
+          POSTGRES_USER: amoeba_ci
+          POSTGRES_PASSWORD: amoeba_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amoeba_ci -d amoeba_analysis"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 8
@@ -16,8 +31,70 @@ jobs:
           distribution: temurin
           java-version: '8'
           cache: maven
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Apply database migrations
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGDATABASE: amoeba_analysis
+          PGUSER: amoeba_ci
+          PGPASSWORD: amoeba_ci_password
+        run: |
+          # 本次修改：按编号顺序执行临时 CI 数据库迁移，失败立即阻断流水线。
+          for migration in $(find database/migration -maxdepth 1 -type f -name 'V*.sql' | sort -V); do
+            echo "Applying ${migration}"
+            psql -v ON_ERROR_STOP=1 -f "${migration}"
+          done
+      - name: Verify database schema
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGDATABASE: amoeba_analysis
+          PGUSER: amoeba_ci
+          PGPASSWORD: amoeba_ci_password
+        run: |
+          # 本次修改：执行全部数据库结构与原子性校验脚本，避免只跑应用测试形成假绿。
+          for verification in $(find database/verification -maxdepth 1 -type f -name '*.sql' | sort); do
+            echo "Verifying ${verification}"
+            psql -v ON_ERROR_STOP=1 -f "${verification}"
+          done
       - name: Build backend
+        env:
+          AMOEBA_DB_URL: jdbc:postgresql://127.0.0.1:5432/amoeba_analysis
+          AMOEBA_DB_USERNAME: amoeba_ci
+          AMOEBA_DB_PASSWORD: amoeba_ci_password
+          AMOEBA_MIGRATION_AUTO_APPLY: 'false'
         run: mvn -B verify
+      - name: Reject skipped PostgreSQL contract tests
+        run: |
+          # 本次修改：PostgreSQL 契约缺失连接、迁移或 schema 时必须失败，不允许假绿跳过。
+          python3 - <<'PY'
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          reports = glob.glob('backend/**/target/surefire-reports/TEST-*.xml', recursive=True)
+          if not reports:
+              print('No Surefire XML reports found', file=sys.stderr)
+              sys.exit(1)
+
+          skipped = []
+          for path in reports:
+              suite = ET.parse(path).getroot()
+              name = suite.attrib.get('name', '')
+              if not any(marker in name for marker in ('Postgres', 'PostgreSQL', 'GOV006')):
+                  continue
+              count = int(suite.attrib.get('skipped', '0'))
+              if count:
+                  skipped.append((name, count, path))
+
+          if skipped:
+              for name, count, path in skipped:
+                  print(f'Skipped PostgreSQL contract tests: {name} ({count}) in {path}', file=sys.stderr)
+              sys.exit(1)
+          print('No PostgreSQL contract tests were skipped.')
+          PY
 
   frontend:
     runs-on: ubuntu-latest
