@@ -57,7 +57,8 @@ public class JdbcMetricDefinitionRepository implements MetricDefinitionRepositor
     public List<MetricDefinition> list(String perspective, boolean includeDisabled) {
         String sql = "SELECT id, metric_code, metric_name, applicable_perspective, unit, formula_expression, "
                 + "display_order, enabled, ai_summary_template, updated_by, updated_at FROM cfg.metric_definition "
-                + "WHERE (? IS NULL OR applicable_perspective = 'ALL' OR applicable_perspective = ?) "
+                + "WHERE (CAST(? AS VARCHAR) IS NULL OR applicable_perspective = 'ALL' "
+                + "OR applicable_perspective = ?) "
                 + "AND (? OR enabled = TRUE) ORDER BY display_order, metric_code";
         return jdbc.query(sql, (rs, row) -> metric(rs), perspective, perspective, includeDisabled);
     }
