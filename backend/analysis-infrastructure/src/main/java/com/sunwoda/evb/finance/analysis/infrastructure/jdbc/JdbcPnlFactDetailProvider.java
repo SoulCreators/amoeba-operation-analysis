@@ -22,6 +22,13 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
 
     @Override
     public List<PnlFact> findForUser(String batchNo, AnalysisPerspective perspective, String userId) {
+        // 本次修复：批次号和用户标识拒绝 null/空白并统一去除首尾空格，传入 SQL 的是清理后的值。
+        String requiredBatchNo = required(batchNo, "batchNo");
+        if (perspective == null) {
+            throw new IllegalArgumentException("perspective must not be null");
+        }
+        String requiredUserId = required(userId, "userId");
+
         String sql = "SELECT f.scope_code, f.base_code, f.product_code, f.line_code, "
                 + "f.volume, f.revenue, f.sales_cost, f.idle_expense, f.base_expense, f.rd_expense, "
                 + "f.asset_impairment, f.credit_impairment, f.other_income, f.budget_volume, f.budget_revenue, "
@@ -58,6 +65,13 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 rs.getBigDecimal("budget_variable_mfg_cost"), rs.getBigDecimal("budget_fixed_mfg_cost"),
                 rs.getBigDecimal("output_wh"), rs.getBigDecimal("budget_output_wh"),
                 rs.getBigDecimal("material_loss"), rs.getBigDecimal("budget_material_loss")),
-                batchNo, perspective.getCode(), userId);
+                requiredBatchNo, perspective.getCode(), requiredUserId);
+    }
+
+    private static String required(String value, String fieldName) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 }
