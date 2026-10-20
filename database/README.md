@@ -10,6 +10,13 @@ psql -v ON_ERROR_STOP=1 -f database/migration/V018__create_export_task.sql
 
 数据库迁移必须使用递增编号，不允许修改已执行的迁移文件。每次结构变化必须同步补充校验脚本和回滚说明。
 
+## V024 配置导入问题
+
+`V024__create_configuration_import_issue.sql` 为 `flow.configuration_import_task`
+建立独立的问题表和外键，不能复用月度事实导入的 `flow.import_issue`。
+结构校验使用 `database/verification/check_configuration_import_issue.sql`；手工回滚使用
+`database/rollback/V024__create_configuration_import_issue.sql`，执行前应完成备份。
+
 ## V018 导出任务元数据
 
 `V018__create_export_task.sql` 新增 `flow.export_task`，覆盖当前

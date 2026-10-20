@@ -4,11 +4,12 @@ import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.repository.ConfigurationImportTaskRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ConfigurationImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
-import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.application.port.ConfigurationTemplateValidator;
 import com.sunwoda.evb.finance.analysis.application.port.ConfigurationImportApplier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.io.ByteArrayOutputStream;
@@ -29,7 +30,7 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
     @Autowired(required = false)
     private ConfigurationTemplateValidator validator;
     @Autowired(required = false)
-    private ImportIssueRepository issueRepository;
+    private ConfigurationImportIssueRepository issueRepository;
     @Autowired(required = false)
     private ConfigurationImportApplier applier;
 
@@ -74,6 +75,7 @@ public class ConfigurationImportServiceImpl implements ConfigurationImportServic
     }
 
     @Override
+    @Transactional
     public ImportValidationResult validate(String taskNo, InputStream inputStream) {
         if (inputStream == null) throw new IllegalArgumentException("配置文件不能为空");
         if (validator == null) throw new IllegalStateException("当前环境未配置配置文件校验器");

@@ -1,6 +1,7 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.filesystem;
 
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
+import com.sunwoda.evb.finance.analysis.domain.repository.ConfigurationImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -19,7 +20,7 @@ import java.util.List;
 /** 将导入问题以UTF-8、Base64字段格式落在受控目录，避免问题记录随进程重启丢失。 */
 @Repository
 @Profile("filesystem")
-public class FileSystemImportIssueRepository implements ImportIssueRepository {
+public class FileSystemImportIssueRepository implements ImportIssueRepository, ConfigurationImportIssueRepository {
     private final Path root;
 
     public FileSystemImportIssueRepository(

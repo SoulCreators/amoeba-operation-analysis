@@ -10,6 +10,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.MetricDefinition;
 import com.sunwoda.evb.finance.analysis.domain.repository.ConfigurationImportTaskRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ConfigurationImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportIssueRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.MetricDefinitionRepository;
@@ -247,7 +248,7 @@ class ConfigurationImportServiceColumnOrderIntegrationTest {
         }
     }
 
-    private static final class FakeIssueRepository implements ImportIssueRepository {
+    private static final class FakeIssueRepository implements ImportIssueRepository, ConfigurationImportIssueRepository {
         private final Map<String, List<ImportIssue>> data =
                 new HashMap<String, List<ImportIssue>>();
         private int replaceCalls;
