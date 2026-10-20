@@ -1,8 +1,10 @@
 package com.sunwoda.evb.finance.amoeba.worker;
 
+import com.sunwoda.evb.finance.analysis.application.port.AuditEventPort;
 import com.sunwoda.evb.finance.analysis.application.port.ExportFileStoragePort;
 import com.sunwoda.evb.finance.analysis.application.port.ExportCleanupPort;
 import com.sunwoda.evb.finance.analysis.infrastructure.filesystem.FileSystemExportFileStorageAdapter;
+import com.sunwoda.evb.finance.analysis.infrastructure.jdbc.JdbcAuditEventRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -24,9 +26,12 @@ class AnalysisWorkerApplicationContextTest {
         try (ConfigurableApplicationContext context = start()) {
             assertEquals("memory", context.getEnvironment().getProperty("spring.profiles.default"));
             assertFalse(context.getEnvironment().acceptsProfiles("db"));
-                assertFalse(context.getEnvironment().acceptsProfiles("filesystem"));
-                assertFalse(context.getBeansOfType(DataSource.class).size() > 0);
-                assertFalse(context.getBeansOfType(ExportCleanupWorker.class).size() > 0);
+            assertFalse(context.getEnvironment().acceptsProfiles("filesystem"));
+            assertFalse(context.getBeansOfType(DataSource.class).size() > 0);
+            assertFalse(context.getBeansOfType(ExportCleanupWorker.class).size() > 0);
+            // 本次补充默认 memory profile 不启用审计端口及其 JDBC 技术实现的断言。
+            assertFalse(context.getBeansOfType(AuditEventPort.class).size() > 0);
+            assertFalse(context.getBeansOfType(JdbcAuditEventRepository.class).size() > 0);
             assertFalse(context.getBeansOfType(FileSystemExportFileStorageAdapter.class).size() > 0);
         }
     }
@@ -48,6 +53,10 @@ class AnalysisWorkerApplicationContextTest {
                 assertEquals(storageRoot.toString(),
                         context.getEnvironment().getProperty("analysis.storage.root"));
                 assertNotNull(context.getBean(DataSource.class));
+                // 本次补充 db profile 下审计端口与 JDBC 审计仓储均完成技术接线的断言。
+                assertNotNull(context.getBean(AuditEventPort.class));
+                assertTrue(context.getBeansOfType(AuditEventPort.class).keySet().stream()
+                        .anyMatch(type -> type.equals(JdbcAuditEventRepository.class.getName())));
                 assertTrue(context.getBeansOfType(ExportCleanupPort.class).size() > 0);
                 assertTrue(context.getBeansOfType(ExportFileStoragePort.class).size() > 0);
                 assertNotNull(context.getBean(ExportCleanupWorker.class));

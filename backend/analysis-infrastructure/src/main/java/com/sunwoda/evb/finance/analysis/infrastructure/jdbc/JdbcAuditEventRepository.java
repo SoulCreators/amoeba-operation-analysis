@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 
 import com.sunwoda.evb.finance.analysis.application.model.AuditEvent;
 import com.sunwoda.evb.finance.analysis.application.port.AuditEventPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -21,6 +22,8 @@ public class JdbcAuditEventRepository implements AuditEventPort {
 
     private final JdbcTemplate jdbc;
 
+    // 本次修改：显式标记 DataSource 构造函数，保证 Worker 通过 @Import 接线时可被 Spring 正确实例化。
+    @Autowired
     public JdbcAuditEventRepository(DataSource dataSource) {
         this(new JdbcTemplate(dataSource));
     }
