@@ -34,6 +34,8 @@ class ImportTaskQueryControllerAuthenticationBoundaryTest {
 
     private void assertRejected(Invocation invocation) {
         assertRejected(() -> invocation.invoke(null));
+        // Principal 存在但名称为 null 时，仍应在认证门禁处拒绝并保持 Service 零调用。
+        assertRejected(() -> invocation.invoke(() -> null));
         assertRejected(() -> invocation.invoke(() -> ""));
         assertRejected(() -> invocation.invoke(() -> "   "));
     }

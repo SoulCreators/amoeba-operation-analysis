@@ -33,6 +33,8 @@ class ConfigurationImportControllerAuthenticationBoundaryTest {
 
     private void assertRejected(Invocation invocation) {
         assertRejected(() -> invocation.invoke(null));
+        // Principal 对象存在但 getName() 为 null 时，同样必须在 Service 调用前拒绝。
+        assertRejected(() -> invocation.invoke(() -> null));
         assertRejected(() -> invocation.invoke(() -> ""));
         assertRejected(() -> invocation.invoke(() -> "   "));
     }
