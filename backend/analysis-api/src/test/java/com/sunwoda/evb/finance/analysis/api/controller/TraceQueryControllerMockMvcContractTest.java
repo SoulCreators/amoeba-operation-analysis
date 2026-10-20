@@ -65,6 +65,8 @@ class TraceQueryControllerMockMvcContractTest {
     @Test
     void anonymousOrBlankPrincipalIsRejectedBeforeServiceInvocation() throws Exception {
         assertUnauthenticated(traceRequest(null));
+        // 补充认证主体存在但名称为 null 的 HTTP 门禁回归，确保追溯 Service 不被调用。
+        assertUnauthenticated(traceRequest(principal(null)));
         assertUnauthenticated(traceRequest(principal("")));
         assertUnauthenticated(traceRequest(principal("   ")));
 

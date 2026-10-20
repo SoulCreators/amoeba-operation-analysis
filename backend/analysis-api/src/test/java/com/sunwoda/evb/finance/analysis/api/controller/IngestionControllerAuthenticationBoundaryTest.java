@@ -174,6 +174,8 @@ class IngestionControllerAuthenticationBoundaryTest {
 
     private void assertRejectsForInvalidIdentity(Consumer<Principal> invocation, Object service) {
         assertRejects(() -> invocation.accept(null), service);
+        // Principal 对象存在但 getName() 为 null 时，也必须在 Service 调用前拒绝请求。
+        assertRejects(() -> invocation.accept(() -> null), service);
         assertRejects(() -> invocation.accept(() -> ""), service);
         assertRejects(() -> invocation.accept(() -> "   "), service);
     }
