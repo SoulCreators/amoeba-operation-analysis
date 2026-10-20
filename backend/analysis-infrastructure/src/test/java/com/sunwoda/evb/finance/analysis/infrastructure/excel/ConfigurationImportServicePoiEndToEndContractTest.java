@@ -5,6 +5,8 @@ import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
+import com.sunwoda.evb.finance.analysis.domain.model.MappingEntry;
+import com.sunwoda.evb.finance.analysis.domain.model.MappingType;
 import com.sunwoda.evb.finance.analysis.domain.model.MetricDefinition;
 import com.sunwoda.evb.finance.analysis.infrastructure.memory.InMemoryConfigurationImportTaskRepository;
 import com.sunwoda.evb.finance.analysis.infrastructure.memory.InMemoryImportFileRepository;
@@ -63,10 +65,47 @@ class ConfigurationImportServicePoiEndToEndContractTest {
         assertTrue(definition.isEnabled());
     }
 
+    @Test
+    void realExcelBytesFlowThroughValidationServiceAndSalesMappingApplication() throws Exception {
+        InMemoryConfigurationImportTaskRepository tasks =
+                new InMemoryConfigurationImportTaskRepository();
+        InMemoryImportFileRepository files = new InMemoryImportFileRepository();
+        InMemoryImportIssueRepository issues = new InMemoryImportIssueRepository();
+        InMemoryMappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        ConfigurationImportServiceImpl service = new ConfigurationImportServiceImpl(tasks, files);
+        wire(service, new PoiConfigurationTemplateValidator(), issues,
+                new PoiConfigurationImportApplier(new InMemoryMetricDefinitionRepository(), mappings));
+
+        ConfigurationImportTask task = service.create(ConfigurationImportType.SALES_PROJECT_MAPPING,
+                "sales-project.xlsx", "checksum-poi-002", "U002");
+        byte[] workbook = workbookBytes("21_销售项目映射",
+                new String[] {"是否有效", "备注", "事业部", "客户项目", "电芯型号", "产品线",
+                        "客户简称", "B品标识"},
+                new String[] {"否", "销售备注", "事业部A", "项目A", "106Ah", "产品线A",
+                        "客户A", "否"});
+
+        ImportValidationResult result = service.validate(task.getTaskNo(),
+                new ByteArrayInputStream(workbook));
+
+        assertEquals(ImportStatus.VALID, result.getStatus());
+        assertEquals(1, result.getRowCount());
+        assertTrue(result.getIssues().isEmpty());
+        MappingEntry entry = mappings.find(MappingType.SALES_PROJECT,
+                "客户A|项目A|106Ah").orElse(null);
+        assertTrue(entry != null);
+        assertEquals("产品线A|事业部A|否|销售备注||", entry.getMappedValue());
+        assertEquals(false, entry.isEnabled());
+    }
+
     private static byte[] workbookBytes(String[] headers, String[] values) throws Exception {
+        return workbookBytes("指标", headers, values);
+    }
+
+    private static byte[] workbookBytes(String sheetName, String[] headers, String[] values)
+            throws Exception {
         XSSFWorkbook workbook = new XSSFWorkbook();
         try {
-            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("指标");
+            org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet(sheetName);
             org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
             org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
             for (int i = 0; i < headers.length; i++) {
