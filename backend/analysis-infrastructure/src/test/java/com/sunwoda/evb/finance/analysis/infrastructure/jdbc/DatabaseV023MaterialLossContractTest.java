@@ -15,6 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DatabaseV023MaterialLossContractTest {
     private static final String MIGRATION =
             "database/migration/V023__add_material_loss_fact_columns.sql";
+    private static final String ROLLBACK =
+            "database/rollback/V023__add_material_loss_fact_columns.sql";
     private static final String VERIFICATION =
             "database/verification/check_pnl_material_loss.sql";
 
@@ -31,6 +33,19 @@ class DatabaseV023MaterialLossContractTest {
                 "V023 must not change formal result tables");
         assertFalse(migration.toLowerCase().contains("pvm"),
                 "V023 must not change formal PVM results");
+    }
+
+    @Test
+    void rollbackDropsOnlyMaterialLossColumnsWithoutCascadeOrDml() throws IOException {
+        String rollback = read(repositoryRoot().resolve(ROLLBACK));
+
+        assertTrue(rollback.contains("ALTER TABLE raw.pnl_fact"));
+        assertTrue(rollback.contains("DROP COLUMN IF EXISTS material_loss"));
+        assertTrue(rollback.contains("DROP COLUMN IF EXISTS budget_material_loss"));
+        assertFalse(rollback.toLowerCase().contains("cascade"),
+                "V023 rollback must not use CASCADE");
+        assertFalse(rollback.matches("(?is).*\\b(INSERT|UPDATE|DELETE)\\b.*"),
+                "V023 rollback must not modify or delete row data");
     }
 
     @Test
