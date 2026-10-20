@@ -68,6 +68,8 @@ class BatchReadinessControllerMockMvcContractTest {
     @Test
     void anonymousOrBlankPrincipalReturns401AndDoesNotCallService() throws Exception {
         assertUnauthenticated(readinessRequest(null));
+        // 本次认证边界补充：Principal 对象存在但 getName() 返回 null 时仍应返回 401/A0002。
+        assertUnauthenticated(readinessRequest(principal(null)));
         assertUnauthenticated(readinessRequest(principal("")));
         assertUnauthenticated(readinessRequest(principal("   ")));
 

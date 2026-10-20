@@ -62,6 +62,19 @@ class DatasetControllerExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNameDatasetQueryWithUnauthorizedA0002() throws Exception {
+        // 认证主体存在但 Principal.getName() 为 null 时，仍须在进入数据集目录前拒绝请求。
+        mockMvc.perform(datasetRequest(principal(null), "BASE"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.message").value("未获取到认证用户"));
+
+        verifyNoInteractions(catalog);
+    }
+
+    @Test
     void mapsIllegalPerspectiveToOkAndA0001() throws Exception {
         mockMvc.perform(datasetRequest(principal(USER_ID), "UNKNOWN"))
                 .andExpect(status().isOk())

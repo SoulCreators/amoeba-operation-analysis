@@ -131,6 +131,11 @@ class CalculationControllerMockMvcContractTest {
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/confirm", principal("")));
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/publish", principal("")));
 
+        // 本次认证边界补充 Principal 对象存在但 getName() 返回 null 的 HTTP 请求，三类命令均应拒绝且不触发 Service。
+        assertUnauthenticated(calculateRequest(principal(null)));
+        assertUnauthenticated(lifecycleRequest("/api/v1/calculations/confirm", principal(null)));
+        assertUnauthenticated(lifecycleRequest("/api/v1/calculations/publish", principal(null)));
+
         verifyNoInteractions(service);
     }
 

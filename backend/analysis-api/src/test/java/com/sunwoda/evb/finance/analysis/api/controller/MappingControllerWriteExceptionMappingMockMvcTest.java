@@ -65,6 +65,34 @@ class MappingControllerWriteExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNameUpsertWithUnauthorizedA0002() throws Exception {
+        // upsert 请求的 Principal 存在但 getName() 为 null 时，仍须在进入写入 Service 前拒绝。
+        mockMvc.perform(upsertRequest(principal(null), "{\"type\":\"SALES_PROJECT\","
+                        + "\"matchKey\":\"项目A\",\"mappedValue\":\"产品线一\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.message").value("未获取到认证用户"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void rejectsNullNameDisableWithUnauthorizedA0002() throws Exception {
+        // disable 请求同样拒绝 getName() 为 null 的认证主体，保持既有 401/A0002 契约。
+        mockMvc.perform(disableRequest(principal(null), "{\"type\":\"INVENTORY\","
+                        + "\"matchKey\":\"SKU-001\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.message").value("未获取到认证用户"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void mapsIllegalUpsertTypeToOkAndA0001WithoutCallingService() throws Exception {
         mockMvc.perform(upsertRequest(principal(USER_ID), "{\"type\":\"UNKNOWN\","
                         + "\"matchKey\":\"项目A\",\"mappedValue\":\"产品线一\"}"))

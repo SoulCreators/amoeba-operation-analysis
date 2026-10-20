@@ -62,6 +62,19 @@ class MetricControllerExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNameMetricQueryWithUnauthorizedA0002() throws Exception {
+        // 认证主体存在但 Principal.getName() 为 null 时，仍须在进入指标服务前拒绝请求。
+        mockMvc.perform(metricRequest(principal(null)).param("perspective", "BASE"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.message").value("未获取到认证用户"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void mapsIllegalArgumentFromMetricServiceToOkAndA0001() throws Exception {
         when(service.list("BASE", false))
                 .thenThrow(new IllegalArgumentException("指标查询参数无效"));

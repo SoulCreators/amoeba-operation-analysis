@@ -102,12 +102,18 @@ class ImportTaskQueryControllerMockMvcContractTest {
     @Test
     void anonymousOrBlankPrincipalReturns401ForQueryAndStatusEndpoints() throws Exception {
         assertUnauthenticated(queryRequest(null));
+        // 本次认证边界补充：查询请求的 Principal 存在但 getName() 返回 null 时仍应返回 401/A0002。
+        assertUnauthenticated(queryRequest(principal(null)));
         assertUnauthenticated(queryRequest(principal("")));
         assertUnauthenticated(queryRequest(principal("   ")));
         assertUnauthenticated(issuesRequest(null));
+        // 本次认证边界补充：问题明细请求的 Principal 存在但 getName() 返回 null 时仍应返回 401/A0002。
+        assertUnauthenticated(issuesRequest(principal(null)));
         assertUnauthenticated(issuesRequest(principal("")));
         assertUnauthenticated(issuesRequest(principal("   ")));
         assertUnauthenticated(statusRequest(null));
+        // 本次认证边界补充：状态变更请求的 Principal 存在但 getName() 返回 null 时仍应返回 401/A0002。
+        assertUnauthenticated(statusRequest(principal(null)));
         assertUnauthenticated(statusRequest(principal("")));
         assertUnauthenticated(statusRequest(principal("   ")));
 

@@ -64,6 +64,9 @@ class PvmControllerMockMvcContractTest {
         assertUnauthenticated(get("/api/v1/pvm/" + BATCH_NO).principal(() -> ""));
         assertUnauthenticated(get("/api/v1/pvm/" + BATCH_NO).principal(() -> "   "));
 
+        // 本次认证边界补充 Principal 对象存在但 getName() 返回 null 的 HTTP 请求，仍应返回 401/A0002 且不触发 Service。
+        assertUnauthenticated(get("/api/v1/pvm/" + BATCH_NO).principal(() -> null));
+
         verifyNoInteractions(service);
     }
 

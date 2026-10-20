@@ -62,6 +62,19 @@ class MappingControllerExceptionMappingMockMvcTest {
     }
 
     @Test
+    void rejectsNullNameMappingQueryWithUnauthorizedA0002() throws Exception {
+        // 认证主体存在但 Principal.getName() 为 null 时，仍须在进入映射查询 Service 前拒绝请求。
+        mockMvc.perform(mappingRequest(principal(null)).param("type", "SALES_PROJECT"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.message").value("未获取到认证用户"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void mapsIllegalTypeToOkAndA0001() throws Exception {
         mockMvc.perform(mappingRequest(principal(USER_ID)).param("type", "UNKNOWN"))
                 .andExpect(status().isOk())
