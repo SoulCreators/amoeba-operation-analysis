@@ -82,6 +82,31 @@ class CalculationServiceCurrentOrchestrationContractTest {
     }
 
     @Test
+    void calculateSavesFailedAfterResultRepositoryFailureAndRethrowsOriginalError() {
+        AnalysisBatch batch = batch("CALC-ORCH-RESULT-FAILED", BatchStatus.READY_FOR_CALCULATION);
+        AnalysisBatchRepository batches = mock(AnalysisBatchRepository.class);
+        CalculationResultRepository results = mock(CalculationResultRepository.class);
+        when(batches.findByBatchNo(batch.getBatchNo())).thenReturn(Optional.of(batch));
+        IllegalStateException original = new IllegalStateException("结果保存失败");
+        org.mockito.Mockito.doThrow(original).when(results).save(any(CalculationResult.class));
+        List<BatchStatus> savedStatuses = new ArrayList<BatchStatus>();
+        doAnswer(invocation -> {
+            // 本次修改：补齐结果仓储失败后的现状证据，锁定 FAILED 写入和原始异常继续抛出。
+            savedStatuses.add(batch.getStatus());
+            return batch;
+        }).when(batches).save(batch);
+
+        CalculationServiceImpl service = service(batches, results, facts -> Collections.emptyList());
+
+        IllegalStateException actual = assertThrows(IllegalStateException.class,
+                () -> service.calculate(batch.getBatchNo()));
+
+        assertEquals(original, actual);
+        assertEquals(java.util.Arrays.asList(BatchStatus.CALCULATING, BatchStatus.FAILED), savedStatuses);
+        verify(results).save(any(CalculationResult.class));
+    }
+
+    @Test
     void confirmSavesBatchBeforeConfirmedResult() {
         AnalysisBatch batch = batch("CALC-ORCH-CONFIRM", BatchStatus.CALCULATED);
         CalculationResult current = result(batch.getBatchNo(), CalculationResultStatus.CALCULATED);
