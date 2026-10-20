@@ -171,6 +171,90 @@ class PoiConfigurationImportApplierTest {
         assertTrue(conflict.getIssues().stream().anyMatch(issue -> "DUPLICATE_KEY".equals(issue.getIssueCode())));
     }
 
+    @Test
+    void rejectsMissingMetricFieldWithRowLocationAndDoesNotPartiallyApply() throws Exception {
+        MetricDefinitionRepository metrics = new InMemoryMetricDefinitionRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                metrics, new InMemoryMappingEntryRepository());
+
+        ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.METRIC_DEFINITION),
+                multiRowWorkbook("指标",
+                        new String[]{"指标编码", "指标名称", "计算公式", "适用视角", "单位", "展示顺序", "是否有效", "AI简析模板"},
+                        new String[]{"VALID_METRIC", "有效指标", "SUM(X)", "通用", "CNY", "10", "是", "模板"},
+                        new String[]{"MISSING_FORMULA", "缺公式指标", "", "通用", "CNY", "20", "是", "模板"}));
+
+        assertEquals(0, result.getAppliedCount());
+        assertEquals(1, result.getIssues().size());
+        assertEquals(3, result.getIssues().get(0).getRowNo());
+        assertEquals("FIELD_MISSING", result.getIssues().get(0).getIssueCode());
+        assertTrue(!metrics.findByCode("VALID_METRIC").isPresent());
+    }
+
+    @Test
+    void rejectsMissingExchangeRateWithFieldAndRowLocation() throws Exception {
+        MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), mappings);
+
+        ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.FX_RATE),
+                realWorkbook("数据录入",
+                        new String[]{"期间", "基地", "币种", "汇率", "换算方向", "是否有效", "备注"},
+                        new String[]{"2026-08", "泰国", "THB", "", "原币×汇率=本位币", "是", ""}));
+
+        assertEquals(0, result.getAppliedCount());
+        assertEquals(1, result.getIssues().size());
+        assertEquals(2, result.getIssues().get(0).getRowNo());
+        assertEquals("汇率", result.getIssues().get(0).getFieldName());
+        assertEquals("FIELD_MISSING", result.getIssues().get(0).getIssueCode());
+        assertTrue(!mappings.find(MappingType.FX_RATE, "2026-08|泰国|THB").isPresent());
+    }
+
+    @Test
+    void rejectsConflictingExchangeRateRowsWithDuplicateKeyLocation() throws Exception {
+        MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), mappings);
+
+        ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.FX_RATE),
+                multiRowWorkbook("数据录入",
+                        new String[]{"期间", "基地", "币种", "汇率", "换算方向", "是否有效", "备注"},
+                        new String[]{"2026-08", "匈牙利", "EUR", "7.85", "原币×汇率=本位币", "是", ""},
+                        new String[]{"2026-08", "匈牙利", "EUR", "7.90", "原币×汇率=本位币", "是", ""}));
+
+        assertEquals(0, result.getAppliedCount());
+        assertEquals(1, result.getIssues().size());
+        assertEquals(3, result.getIssues().get(0).getRowNo());
+        assertEquals("匹配键", result.getIssues().get(0).getFieldName());
+        assertEquals("DUPLICATE_KEY", result.getIssues().get(0).getIssueCode());
+        assertEquals("2026-08|匈牙利|EUR", result.getIssues().get(0).getRawValue());
+        assertTrue(!mappings.find(MappingType.FX_RATE, "2026-08|匈牙利|EUR").isPresent());
+    }
+
+    @Test
+    void keepsNumericRatioAndExchangeRateCellsInExistingMappingTextOrder() throws Exception {
+        MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), mappings);
+
+        ConfigurationApplyResult allocation = applier.apply(task(ConfigurationImportType.EXPENSE_ALLOCATION),
+                numericWorkbook("数据录入",
+                        new String[]{"期间", "费用项目", "来源基地", "目标基地", "分摊比例", "是否有效", "备注"},
+                        new Object[]{"2026-08", "总部管理费用", "总部", "义乌", 0.6d, "是", ""}));
+        ConfigurationApplyResult fx = applier.apply(task(ConfigurationImportType.FX_RATE),
+                numericWorkbook("数据录入",
+                        new String[]{"期间", "基地", "币种", "汇率", "换算方向", "是否有效", "备注"},
+                        new Object[]{"2026-08", "匈牙利", "EUR", 7.85d, "原币×汇率=本位币", "是", ""}));
+
+        assertEquals(1, allocation.getAppliedCount());
+        assertTrue(allocation.getIssues().isEmpty());
+        assertEquals("0.6|", mappings.find(MappingType.EXPENSE_RULE,
+                "2026-08|总部管理费用|总部|义乌").get().getMappedValue());
+        assertEquals(1, fx.getAppliedCount());
+        assertTrue(fx.getIssues().isEmpty());
+        assertEquals("7.85|原币×汇率=本位币|", mappings.find(MappingType.FX_RATE,
+                "2026-08|匈牙利|EUR").get().getMappedValue());
+    }
+
     private void assertRealMapping(PoiConfigurationImportApplier applier,
                                    MappingEntryRepository mappings,
                                    ConfigurationImportType importType,
@@ -244,6 +328,26 @@ class PoiConfigurationImportApplierTest {
             header.createCell(i).setCellValue(headers[i]);
             first.createCell(i).setCellValue(firstValues[i]);
             second.createCell(i).setCellValue(secondValues[i]);
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        workbook.write(output);
+        workbook.close();
+        return new ByteArrayInputStream(output.toByteArray());
+    }
+
+    private ByteArrayInputStream numericWorkbook(String sheetName, String[] headers,
+                                                  Object[] values) throws Exception {
+        XSSFWorkbook workbook = new XSSFWorkbook();
+        org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet(sheetName);
+        org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+        org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+        for (int i = 0; i < headers.length; i++) {
+            header.createCell(i).setCellValue(headers[i]);
+            if (values[i] instanceof Number) {
+                row.createCell(i).setCellValue(((Number) values[i]).doubleValue());
+            } else {
+                row.createCell(i).setCellValue((String) values[i]);
+            }
         }
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         workbook.write(output);
