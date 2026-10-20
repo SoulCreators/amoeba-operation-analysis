@@ -267,6 +267,25 @@ public class JdbcExportTaskRepository implements ExportTaskPort {
         throw new IllegalStateException("导出任务不可开始: " + key);
     }
 
+    /** 本次复用条件更新 SQL 实现数据库原子领取，区分已被其他 Worker 领取的任务。 */
+    @Override
+    public boolean tryMarkRunning(String jobId) {
+        String key = required(jobId, "jobId");
+        LocalDateTime now = LocalDateTime.now();
+        if (jdbc.update(MARK_RUNNING_SQL, timestamp(now), key, timestamp(now)) > 0) {
+            return true;
+        }
+
+        ExportJob existing = findById(key);
+        if (existing == null) {
+            throw new IllegalArgumentException("导出任务不存在: " + key);
+        }
+        if (existing.getStatus() == ExportJobStatus.RUNNING) {
+            return false;
+        }
+        throw new IllegalStateException("导出任务不可开始: " + key);
+    }
+
     @Override
     public void complete(String jobId, String fileName, String contentType, byte[] content) {
         String key = required(jobId, "jobId");

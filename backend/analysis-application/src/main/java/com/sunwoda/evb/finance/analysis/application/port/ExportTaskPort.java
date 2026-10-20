@@ -37,6 +37,15 @@ public interface ExportTaskPort {
 
     void markRunning(String jobId);
 
+    /**
+     * 尝试原子领取导出任务；默认委托旧的 markRunning，兼容尚未实现原子领取的端口，
+     * 但这类旧端口只能返回成功，不能提供多 Worker 抢占判定能力。
+     */
+    default boolean tryMarkRunning(String jobId) {
+        markRunning(jobId);
+        return true;
+    }
+
     void complete(String jobId, String fileName, String contentType, byte[] content);
 
     void fail(String jobId, String errorMessage);

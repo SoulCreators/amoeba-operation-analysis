@@ -116,6 +116,22 @@ public class InMemoryExportTaskAdapter implements ExportTaskPort, ExportFileStor
         jobs.put(jobId, job.running(LocalDateTime.now()));
     }
 
+    /** 本次补齐内存端口的原子领取语义，避免 RUNNING 任务被第二个 Worker 重复渲染。 */
+    @Override
+    public synchronized boolean tryMarkRunning(String jobId) {
+        String key = required(jobId, "jobId");
+        ExportJob job = requireJob(key);
+        if (job.getStatus() == ExportJobStatus.RUNNING) return false;
+        if (job.getStatus() != ExportJobStatus.QUEUED) {
+            throw new IllegalStateException("导出任务不可开始: " + key);
+        }
+        if (job.isExpired(LocalDateTime.now())) {
+            throw new IllegalStateException("导出任务已过期: " + key);
+        }
+        jobs.put(key, job.running(LocalDateTime.now()));
+        return true;
+    }
+
     @Override
     public synchronized void complete(String jobId, String fileName,
                                       String contentType, byte[] content) {
