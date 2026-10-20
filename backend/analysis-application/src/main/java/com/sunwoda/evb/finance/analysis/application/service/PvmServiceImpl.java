@@ -15,6 +15,10 @@ import java.util.Map;
 
 @Service
 public class PvmServiceImpl implements PvmService {
+    private static final String BASE_LOGIC_CODE = "BASE_VOLUME_PRICE_COST";
+    private static final String PRODUCT_LINE_LOGIC_CODE = "PRODUCT_LINE_VOLUME_PRICE_COST";
+    private static final String BUSINESS_UNIT_LOGIC_CODE = "BUSINESS_UNIT_VOLUME_PRICE_COST";
+
     private final CalculationService calculationService;
 
     public PvmServiceImpl(CalculationService calculationService) {
@@ -24,8 +28,7 @@ public class PvmServiceImpl implements PvmService {
     @Override
     public List<PvmResult> analyze(String batchNo, String userId) {
         CalculationResult calculation = calculationService.getForUser(batchNo, userId);
-        String logicCode = calculation.getPerspective() == AnalysisPerspective.BASE
-                ? "BASE_VOLUME_PRICE_COST" : "PLBU_VOLUME_PRICE_COST";
+        String logicCode = logicCodeFor(calculation.getPerspective());
         List<PvmResult> result = new ArrayList<PvmResult>();
         for (PnlResult pnl : calculation.getResults()) {
             Map<String, BigDecimal> v = pnl.getLines();
@@ -78,6 +81,19 @@ public class PvmServiceImpl implements PvmService {
             result.add(new PvmResult(pnl.getScopeCode(), logicCode, values));
         }
         return result;
+    }
+
+    private String logicCodeFor(AnalysisPerspective perspective) {
+        if (perspective == AnalysisPerspective.BASE) {
+            return BASE_LOGIC_CODE;
+        }
+        if (perspective == AnalysisPerspective.PRODUCT_LINE) {
+            return PRODUCT_LINE_LOGIC_CODE;
+        }
+        if (perspective == AnalysisPerspective.BUSINESS_UNIT) {
+            return BUSINESS_UNIT_LOGIC_CODE;
+        }
+        throw new IllegalArgumentException("不支持的 PVM 分析视角: " + perspective);
     }
 
     private BigDecimal value(Map<String, BigDecimal> values, String key) {

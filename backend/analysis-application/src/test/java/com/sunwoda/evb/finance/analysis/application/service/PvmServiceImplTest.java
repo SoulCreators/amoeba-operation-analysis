@@ -42,6 +42,23 @@ class PvmServiceImplTest {
     }
 
     @Test
+    void usesIndependentLogicCodesForProductLineAndBusinessUnitPerspectives() {
+        Map<String, BigDecimal> lines = new LinkedHashMap<String, BigDecimal>();
+        lines.put("BUDGET_VOLUME", decimal(100));
+        lines.put("VOLUME", decimal(110));
+        lines.put("BUDGET_REVENUE", decimal(1000));
+        lines.put("REVENUE", decimal(1210));
+        lines.put("BUDGET_SALES_COST", decimal(700));
+        lines.put("SALES_COST", decimal(770));
+        lines.put("GAP_GROSS_PROFIT", decimal(140));
+
+        assertEquals("PRODUCT_LINE_VOLUME_PRICE_COST",
+                analyze(AnalysisPerspective.PRODUCT_LINE, lines).get(0).getLogicCode());
+        assertEquals("BUSINESS_UNIT_VOLUME_PRICE_COST",
+                analyze(AnalysisPerspective.BUSINESS_UNIT, lines).get(0).getLogicCode());
+    }
+
+    @Test
     void revenuePvmVolumeAndPriceImpactsReconcileToRevenueGap() {
         Map<String, BigDecimal> lines = new LinkedHashMap<String, BigDecimal>();
         lines.put("BUDGET_VOLUME", decimal(100));
@@ -108,7 +125,11 @@ class PvmServiceImplTest {
     }
 
     private static List<PvmResult> analyze(Map<String, BigDecimal> lines) {
-        CalculationResult calculation = new CalculationResult("B-PVM-REGRESSION", AnalysisPerspective.BASE,
+        return analyze(AnalysisPerspective.BASE, lines);
+    }
+
+    private static List<PvmResult> analyze(AnalysisPerspective perspective, Map<String, BigDecimal> lines) {
+        CalculationResult calculation = new CalculationResult("B-PVM-REGRESSION", perspective,
                 Arrays.asList(new PnlResult("南昌", lines)));
         return new PvmServiceImpl(new StubCalculationService(calculation)).analyze("B-PVM-REGRESSION", "U001");
     }
