@@ -16,6 +16,10 @@ public interface PermissionService {
     boolean canExport(String userId, AnalysisPerspective perspective, String scopeCode);
     boolean canEditConfig(String userId, AnalysisPerspective perspective, String scopeCode);
     boolean canViewDraft(String userId, AnalysisPerspective perspective);
+    // 本次新增：向 API HTTP 只读门禁暴露已启用 ADMIN 判定，默认拒绝以兼容旧实现。
+    default boolean isEnabledAdmin(String userId) {
+        return false;
+    }
     // 本次新增：提供历史结果读取判定，避免调用方通过发布权限反推历史权限。
     // 本次新增：默认拒绝，保证旧的测试替身和其他实现不会意外获得历史读取权。
     default boolean canViewHistory(String userId, AnalysisPerspective perspective) {

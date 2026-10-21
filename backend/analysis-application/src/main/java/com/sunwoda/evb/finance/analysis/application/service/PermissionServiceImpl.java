@@ -67,6 +67,12 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     @Override
+    public boolean isEnabledAdmin(String userId) {
+        // 本次新增：HTTP 写门禁复用同一已启用 ADMIN 判定，不信任客户端角色字段。
+        return hasAdminRole(userId);
+    }
+
+    @Override
     public boolean canViewHistory(String userId, AnalysisPerspective perspective) {
         // 本次新增：总部财经与 ADMIN 均可读取历史；ADMIN 仍只获得读取能力。
         return perspective != null && (hasAdminRole(userId) || hasFinanceRole(userId, perspective));

@@ -66,6 +66,8 @@ class AdminReadOnlyPermissionRegressionTest {
     void adminAllScopeGrantDoesNotImplyConfigurationOrAiPublishActions() {
         PermissionService permissions = permissions(adminGrant());
 
+        // 本次新增：HTTP 只读门禁必须复用已启用 ADMIN 判定，而不是信任客户端角色。
+        assertTrue(permissions.isEnabledAdmin(ADMIN_USER));
         // 本次新增：锁定 ADMIN 全量只读授权不能转化为配置写权限。
         assertFalse(permissions.canEditConfig(ADMIN_USER, AnalysisPerspective.BASE, "NANCHANG"));
         // 本次新增：锁定 AI 草稿发布仍是独立写动作，不能由只读权限推导。
