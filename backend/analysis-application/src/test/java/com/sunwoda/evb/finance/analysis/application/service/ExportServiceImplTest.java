@@ -145,6 +145,29 @@ class ExportServiceImplTest {
     }
 
     @Test
+    void legacySnapshotlessCompletedDownloadRemainsAvailable() {
+        RecordingTaskPort port = new RecordingTaskPort();
+        ExportService service = new ExportServiceImpl(policyFor("U001"), port);
+        port.statusJob = succeededJob();
+        // 本次修改：明确模拟历史任务没有 ExportTaskSnapshot，验证本人、已成功且未过期的兼容下载仍可用。
+        port.downloadSnapshot = null;
+        port.downloadResult = Optional.of(new ExportFile("legacy-result.xlsx",
+                ExportFormat.XLSX.getContentType(), new byte[] {3, 4}));
+
+        Optional<ExportFile> result = service.download("U001", "EXP-001");
+
+        assertEquals("U001", port.statusJob.getUserId());
+        assertEquals(ExportJobStatus.SUCCEEDED, port.statusJob.getStatus());
+        assertFalse(port.statusJob.isExpired(LocalDateTime.now()));
+        // 本次修改：回归断言快照端口确实返回 Optional.empty()，而不是误测带快照路径。
+        assertTrue(port.snapshotLookupCalled);
+        assertTrue(port.snapshotReturnedEmpty);
+        assertTrue(result.isPresent());
+        assertTrue(port.downloadCalled);
+        assertEquals("legacy-result.xlsx", result.get().getFileName());
+    }
+
+    @Test
     void requestValidatesRequiredExportFields() {
         assertThrows(IllegalArgumentException.class,
                 () -> new ExportRequest(" ", "B-001", "R1",
@@ -238,6 +261,8 @@ class ExportServiceImplTest {
         private String lastJobId;
         private ExportJob statusJob;
         private ExportTaskSnapshot downloadSnapshot;
+        private boolean snapshotLookupCalled;
+        private boolean snapshotReturnedEmpty;
         private boolean downloadCalled;
         private Optional<ExportFile> downloadResult = Optional.empty();
 
@@ -275,8 +300,11 @@ class ExportServiceImplTest {
 
         @Override
         public Optional<ExportTaskSnapshot> snapshot(String jobId) {
-            return downloadSnapshot == null
+            snapshotLookupCalled = true;
+            Optional<ExportTaskSnapshot> result = downloadSnapshot == null
                     ? Optional.<ExportTaskSnapshot>empty() : Optional.of(downloadSnapshot);
+            snapshotReturnedEmpty = !result.isPresent();
+            return result;
         }
 
         @Override
