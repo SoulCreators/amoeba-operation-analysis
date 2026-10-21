@@ -5,6 +5,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource;
 import com.sunwoda.evb.finance.analysis.domain.repository.PnlFactSourceWriter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ParameterizedPreparedStatementSetter;
@@ -43,6 +44,8 @@ public class JdbcPnlFactSourceWriter implements PnlFactSourceWriter {
 
     private final JdbcTemplate jdbc;
 
+    // 本次修复：明确指定生产 DataSource 构造器，避免存在测试构造器时 Spring 退回寻找无参构造器。
+    @Autowired
     public JdbcPnlFactSourceWriter(DataSource dataSource) {
         this(new JdbcTemplate(dataSource));
     }

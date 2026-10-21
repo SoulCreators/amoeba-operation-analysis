@@ -17,7 +17,8 @@ import java.util.Optional;
  */
 @Repository
 @Profile("db")
-public final class DbExportTaskUnavailableAdapter implements ExportTaskPort {
+// 本次修复：移除 final 以允许 Spring AOP 在 db Profile 下创建接口适配代理，仍保持调用时失败关闭边界。
+public class DbExportTaskUnavailableAdapter implements ExportTaskPort {
     private static final String MESSAGE =
             "db profile enabled but no production ExportTaskPort implementation is configured";
 

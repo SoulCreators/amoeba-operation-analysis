@@ -1,3 +1,4 @@
+# 本次修复：profile 专属文件由 SPRING_PROFILES_ACTIVE=db 选择，不再使用已被 Spring Boot 2.4+ 禁止的 spring.profiles.include。
 spring:
   datasource:
     # 由部署环境注入，禁止把真实账号密码提交到仓库。
@@ -5,5 +6,3 @@ spring:
     username: ${AMOEBA_DB_USERNAME:}
     password: ${AMOEBA_DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
-  profiles:
-    include: db

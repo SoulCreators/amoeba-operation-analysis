@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactTraceQuery;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -41,6 +42,8 @@ public class JdbcPnlFactSourceProvider implements PnlFactTraceQuery {
 
     private final JdbcTemplate jdbc;
 
+    // 本次修复：明确生产 DataSource 构造器，避免测试 JdbcTemplate 构造器导致 Spring 误找无参构造器。
+    @Autowired
     public JdbcPnlFactSourceProvider(DataSource dataSource) {
         this(new JdbcTemplate(dataSource));
     }

@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 import com.sunwoda.evb.finance.analysis.application.port.ManualRevisionIdempotencyPort;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationVersion;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationVersionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -45,6 +46,8 @@ public class JdbcManualRevisionIdempotencyAdapter implements ManualRevisionIdemp
     private final JdbcTemplate jdbc;
     private final CalculationVersionRepository versionRepository;
 
+    // 本次修复：明确生产 DataSource 构造器，避免测试 JdbcTemplate 构造器导致 Spring 误找无参构造器。
+    @Autowired
     public JdbcManualRevisionIdempotencyAdapter(DataSource dataSource,
                                                 CalculationVersionRepository versionRepository) {
         if (dataSource == null) {
