@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -42,6 +43,7 @@ class JdbcCalculationLifecycleEventDeliveryRepositoryPostgresContractTest {
         try {
             jdbc.execute("SELECT 1 FROM flow.calculation_event_outbox LIMIT 0");
             jdbc.execute("SELECT 1 FROM flow.calculation_event_outbox_claim LIMIT 0");
+            jdbc.execute("SELECT 1 FROM flow.calculation_event_delivery_attempt LIMIT 0");
         } catch (RuntimeException failure) {
             assumeTrue(false, "BLOCKED: V032 Outbox claim schema is not available: " + failure.getMessage());
         }
@@ -65,6 +67,7 @@ class JdbcCalculationLifecycleEventDeliveryRepositoryPostgresContractTest {
             return;
         }
         jdbc.update("DELETE FROM flow.calculation_event_outbox_claim WHERE event_id = ?", eventId);
+        jdbc.update("DELETE FROM flow.calculation_event_delivery_attempt WHERE event_id = ?", eventId);
         jdbc.update("DELETE FROM flow.calculation_event_outbox WHERE event_id = ?", eventId);
     }
 
@@ -86,6 +89,12 @@ class JdbcCalculationLifecycleEventDeliveryRepositoryPostgresContractTest {
         assertEquals(1, jdbc.queryForObject(
                 "SELECT COUNT(*) FROM flow.calculation_event_outbox_claim WHERE event_id = ?",
                 Integer.class, eventId).intValue());
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
+        assertEquals("BEGIN", jdbc.queryForObject(
+                "SELECT attempt_phase FROM flow.calculation_event_delivery_attempt "
+                        + "WHERE event_id = ? ORDER BY id LIMIT 1", String.class, eventId));
 
         assertFalse(repository.markDelivered(eventId, "stale-token", now));
         assertTrue(repository.markDelivered(eventId, claim.getClaimToken(), now));
@@ -95,6 +104,16 @@ class JdbcCalculationLifecycleEventDeliveryRepositoryPostgresContractTest {
         assertEquals(0, jdbc.queryForObject(
                 "SELECT COUNT(*) FROM flow.calculation_event_outbox_claim WHERE event_id = ?",
                 Integer.class, eventId).intValue());
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
+        assertEquals("DELIVERED", jdbc.queryForObject(
+                "SELECT delivery_status FROM flow.calculation_event_delivery_attempt "
+                        + "WHERE event_id = ? AND attempt_phase = 'END'", String.class, eventId));
+        assertTrue(jdbc.queryForObject(
+                "SELECT started_at <= ended_at AND ended_at <= lease_until "
+                        + "FROM flow.calculation_event_delivery_attempt "
+                        + "WHERE event_id = ? AND attempt_phase = 'END'", Boolean.class, eventId));
     }
 
     @Test
@@ -107,6 +126,16 @@ class JdbcCalculationLifecycleEventDeliveryRepositoryPostgresContractTest {
         LocalDateTime retryAt = now.plusMinutes(1);
         assertTrue(repository.markFailed(eventId, first.getClaimToken(), CalculationEventDeliveryStatus.FAILED,
                 "第一次投递失败", retryAt));
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
+        assertEquals("第一次投递失败", jdbc.queryForObject(
+                "SELECT error_message FROM flow.calculation_event_delivery_attempt "
+                        + "WHERE event_id = ? AND attempt_phase = 'END'", String.class, eventId));
+        assertTrue(jdbc.queryForObject(
+                "SELECT ended_at < ? FROM flow.calculation_event_delivery_attempt "
+                        + "WHERE event_id = ? AND attempt_phase = 'END'", Boolean.class,
+                java.sql.Timestamp.valueOf(retryAt), eventId));
         assertTrue(repository.claimReadyForDelivery(now, 1, Duration.ofMinutes(5)).isEmpty());
 
         CalculationLifecycleEventDeliveryClaim retry = repository.claimReadyForDelivery(
@@ -114,6 +143,9 @@ class JdbcCalculationLifecycleEventDeliveryRepositoryPostgresContractTest {
         assertEquals(2, retry.getEvent().getAttemptNo());
         assertTrue(repository.markFailed(eventId, retry.getClaimToken(),
                 CalculationEventDeliveryStatus.MANUAL_REQUIRED, "超过自动重试上限", retryAt));
+        assertEquals(4, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
         assertTrue(repository.claimReadyForDelivery(retryAt.plusDays(1), 1, Duration.ofMinutes(5)).isEmpty());
         assertEquals("MANUAL_REQUIRED", jdbc.queryForObject(
                 "SELECT delivery_status FROM flow.calculation_event_outbox WHERE event_id = ?",
@@ -132,8 +164,41 @@ class JdbcCalculationLifecycleEventDeliveryRepositoryPostgresContractTest {
                 now.plusMinutes(6), 1, Duration.ofMinutes(5)).get(0);
         assertNotEquals(first.getClaimToken(), takeover.getClaimToken());
         assertEquals(2, takeover.getEvent().getAttemptNo());
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
+        assertFalse(firstRepository.markFailed(eventId, first.getClaimToken(),
+                CalculationEventDeliveryStatus.FAILED, "旧令牌失败", now.plusMinutes(7)));
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
         assertFalse(firstRepository.markDelivered(eventId, first.getClaimToken(), now.plusMinutes(6)));
         assertTrue(secondRepository.markDelivered(eventId, takeover.getClaimToken(), now.plusMinutes(6)));
+        assertEquals(3, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
+    }
+
+    @Test
+    void resultWriteRollsBackWhenAttemptHistoryCannotBeClosed() {
+        JdbcCalculationLifecycleEventDeliveryRepository repository = repository();
+        LocalDateTime now = LocalDateTime.now();
+        CalculationLifecycleEventDeliveryClaim claim = repository.claimReadyForDelivery(
+                now, 1, Duration.ofMinutes(5)).get(0);
+        jdbc.update("DELETE FROM flow.calculation_event_delivery_attempt "
+                        + "WHERE event_id = ? AND attempt_phase = 'BEGIN'", eventId);
+
+        assertThrows(IllegalStateException.class,
+                () -> repository.markDelivered(eventId, claim.getClaimToken(), now));
+        assertEquals("IN_PROGRESS", jdbc.queryForObject(
+                "SELECT delivery_status FROM flow.calculation_event_outbox WHERE event_id = ?",
+                String.class, eventId));
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_outbox_claim WHERE event_id = ?",
+                Integer.class, eventId).intValue());
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM flow.calculation_event_delivery_attempt WHERE event_id = ?",
+                Integer.class, eventId).intValue());
     }
 
     private JdbcCalculationLifecycleEventDeliveryRepository repository() {
