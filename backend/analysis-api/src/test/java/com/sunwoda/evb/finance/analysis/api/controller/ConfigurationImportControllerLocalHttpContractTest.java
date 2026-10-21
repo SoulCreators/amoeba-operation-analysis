@@ -3,11 +3,17 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunwoda.evb.finance.analysis.api.AnalysisApiApplication;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationVersionScopeResolver;
+import com.sunwoda.evb.finance.analysis.application.port.ManualRevisionIdempotencyPort;
+import com.sunwoda.evb.finance.analysis.application.service.ManualCalculationRevisionService;
 import com.sunwoda.evb.finance.analysis.application.service.ConfigurationImportService;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportValidationResult;
+import com.sunwoda.evb.finance.analysis.domain.repository.CalculationLifecycleEventRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.CalculationVersionRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.ManualCalculationRevisionRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,6 +73,24 @@ class ConfigurationImportControllerLocalHttpContractTest {
 
     @MockBean
     private ConfigurationImportService service;
+
+    @MockBean
+    private CalculationVersionRepository calculationVersionRepository;
+
+    @MockBean
+    private ManualCalculationRevisionService manualCalculationRevisionService;
+
+    @MockBean
+    private ManualRevisionIdempotencyPort manualRevisionIdempotencyPort;
+
+    @MockBean
+    private ManualCalculationRevisionRepository manualCalculationRevisionRepository;
+
+    @MockBean
+    private CalculationLifecycleEventRepository calculationLifecycleEventRepository;
+
+    @MockBean
+    private CalculationVersionScopeResolver calculationVersionScopeResolver;
 
     @Test
     void localProfileHealthEndpointIsReachableThroughRandomPortHttpServer() throws Exception {

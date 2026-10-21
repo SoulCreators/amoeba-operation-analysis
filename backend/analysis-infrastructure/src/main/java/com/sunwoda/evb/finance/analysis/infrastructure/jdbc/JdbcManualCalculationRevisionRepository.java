@@ -84,7 +84,38 @@ public class JdbcManualCalculationRevisionRepository implements ManualCalculatio
                 revision.getRevisionId(), revision.getSourceCalculationVersionId(),
                 revision.getTargetCalculationVersionId(), revision.getRevisedBy(), revision.getRevisionReason(),
                 timestamp(revision.getRevisedAt()), revision.getTraceId());
+
+        // 本次新增：人工修订复制来源版本的结果头和结果行，目标版本只追加新主键，绝不改写来源明细。
+        copyResultDetails(source.versionId, targetVersion);
         return targetVersion;
+    }
+
+    /**
+     * 本次新增：复制结果范围及其明细时同时写入目标 calculation_version_id，保证同批次多版本可独立读取。
+     * 结果行版本列由后续数据库迁移提供；未具备该列的旧数据库应在合约测试中显式暴露为数据库缺口。
+     */
+    private void copyResultDetails(String sourceVersionId, CalculationVersion targetVersion) {
+        jdbc.update("INSERT INTO calc.pnl_result ("
+                        + "batch_id, perspective, scope_code, result_status, version_no, calculated_at, "
+                        + "confirmed_by, confirmed_at, published_by, published_at, calculation_version_id) "
+                        + "SELECT batch_id, perspective, scope_code, ?, ?, ?, ?, ?, ?, ?, ? "
+                        + "FROM calc.pnl_result WHERE calculation_version_id = ?",
+                targetVersion.getStatus().name(), targetVersion.getVersionNo(),
+                timestamp(targetVersion.getCalculatedAt()), targetVersion.getConfirmedBy(),
+                timestamp(targetVersion.getConfirmedAt()), targetVersion.getPublishedBy(),
+                timestamp(targetVersion.getPublishedAt()), targetVersion.getCalculationVersionId(),
+                sourceVersionId);
+
+        jdbc.update("INSERT INTO calc.pnl_result_line "
+                        + "(result_id, line_code, line_value, calculation_version_id) "
+                        + "SELECT target_result.id, source_line.line_code, source_line.line_value, ? "
+                        + "FROM calc.pnl_result source_result "
+                        + "JOIN calc.pnl_result_line source_line ON source_line.result_id = source_result.id "
+                        + "JOIN calc.pnl_result target_result ON target_result.calculation_version_id = ? "
+                        + "AND target_result.perspective = source_result.perspective "
+                        + "AND target_result.scope_code = source_result.scope_code "
+                        + "WHERE source_result.calculation_version_id = ?",
+                targetVersion.getCalculationVersionId(), targetVersion.getCalculationVersionId(), sourceVersionId);
     }
 
     @Override
