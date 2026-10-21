@@ -79,9 +79,10 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
                         + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
                         + "FROM calc.pnl_result p JOIN meta.analysis_batch b ON b.id = p.batch_id "
                         + "WHERE b.batch_no = ? AND EXISTS (SELECT 1 FROM iam.user_scope s "
-                        + "WHERE s.user_id = ? AND s.perspective = p.perspective AND s.enabled = TRUE "
-                        // 本次修改：ADMIN 仅在同一 perspective 下绕过 scope_code，仍受 enabled 门禁约束。
-                        + "AND (s.role_code = 'ADMIN' OR s.scope_code = 'ALL' OR s.scope_code = p.scope_code)) "
+                        + "WHERE s.user_id = ? AND s.enabled = TRUE "
+                        // 本次修改：已启用 ADMIN 跨视角读取全部结果范围，普通角色仍按视角和 scope 过滤。
+                        + "AND (UPPER(s.role_code) = 'ADMIN' OR "
+                        + "(s.perspective = p.perspective AND (s.scope_code = 'ALL' OR s.scope_code = p.scope_code)))) "
                         + "ORDER BY p.id", (rs, row) -> new Header(
                         AnalysisPerspective.fromCode(rs.getString("perspective")),
                         CalculationResultStatus.valueOf(rs.getString("result_status")),

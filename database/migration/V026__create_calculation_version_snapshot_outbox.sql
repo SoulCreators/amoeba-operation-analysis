@@ -110,6 +110,9 @@ $$;
 ALTER TABLE calc.pnl_result
     DROP CONSTRAINT IF EXISTS uk_pnl_result;
 
+-- 本次修改：移除 V009 的批次/版本唯一索引，避免同一版本下多个视角结果无法落库。
+DROP INDEX IF EXISTS calc.uk_pnl_result_version;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uk_pnl_result_legacy_scope
     ON calc.pnl_result(batch_id, perspective, scope_code)
     WHERE calculation_version_id IS NULL;

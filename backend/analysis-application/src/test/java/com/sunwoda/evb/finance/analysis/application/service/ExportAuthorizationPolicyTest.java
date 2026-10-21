@@ -158,6 +158,25 @@ class ExportAuthorizationPolicyTest {
     }
 
     @Test
+    void adminCanExportDraftForAllScopesAndRequestedSubset() {
+        ExportPermissionPolicy policy = new ExportPermissionPolicy(permissions(
+                grant("U-ADMIN", "ADMIN", "BASE-ONLY", false, false)));
+
+        // 本次修改：ADMIN 的只读 ALL 权限允许草稿全量导出，并保留请求范围的最小裁剪。
+        ExportPermission all = policy.authorize("U-ADMIN", AnalysisPerspective.PRODUCT_LINE,
+                CalculationResultStatus.CALCULATED);
+        assertTrue(all.isAllowed());
+        assertEquals(Collections.singleton("ALL"), all.getSummaryScopes());
+        assertEquals(Collections.singleton("ALL"), all.getDetailScopes());
+
+        ExportPermission subset = policy.authorize("U-ADMIN", AnalysisPerspective.PRODUCT_LINE,
+                CalculationResultStatus.CONFIRMED, setOf("PL-A", "PL-B"));
+        assertTrue(subset.isAllowed());
+        assertEquals(setOf("PL-A", "PL-B"), subset.getSummaryScopes());
+        assertEquals(setOf("PL-A", "PL-B"), subset.getDetailScopes());
+    }
+
+    @Test
     void requestedSummaryAndDetailScopesAreClippedToTheUsersGrant() {
         PermissionService permissions = permissions(
                 grant("U001", "FINANCE", "NANCHANG", true, true),

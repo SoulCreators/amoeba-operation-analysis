@@ -42,10 +42,11 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 + "JOIN meta.analysis_batch b ON b.id = f.batch_id "
                 + "WHERE b.batch_no = ? AND f.perspective = ? "
                 + "AND EXISTS (SELECT 1 FROM iam.user_scope s "
-                + "WHERE s.user_id = ? AND s.perspective = f.perspective AND s.enabled = TRUE "
-                + "AND s.can_view_detail = TRUE "
-                // 本次修改：ADMIN 只扩大同视角 scope 读取范围，保留明细权限布尔门禁。
-                + "AND (s.role_code = 'ADMIN' OR s.scope_code = 'ALL' OR s.scope_code = f.scope_code)) "
+                + "WHERE s.user_id = ? AND s.enabled = TRUE "
+                // 本次修改：ADMIN 已被 Owner 授权查看全部信息，跨视角并绕过普通明细布尔门禁；普通角色保持原规则。
+                + "AND (UPPER(s.role_code) = 'ADMIN' OR "
+                + "(s.perspective = f.perspective AND s.can_view_detail = TRUE "
+                + "AND (s.scope_code = 'ALL' OR s.scope_code = f.scope_code)))) "
                 + "ORDER BY f.scope_code, f.base_code, f.product_code, f.line_code, f.id";
         return jdbc.query(sql, (rs, row) -> new PnlFact(
                 rs.getString("scope_code"), rs.getString("base_code"),

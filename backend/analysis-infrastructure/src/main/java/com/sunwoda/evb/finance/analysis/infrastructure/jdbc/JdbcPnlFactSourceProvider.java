@@ -32,11 +32,11 @@ public class JdbcPnlFactSourceProvider implements PnlFactTraceQuery {
                     + "AND t.source_task_no = ? "
                     + "AND EXISTS (SELECT 1 FROM iam.user_scope s "
                     + "WHERE s.user_id = ? "
-                    + "AND s.perspective = t.perspective "
                     + "AND s.enabled = TRUE "
-                    + "AND s.can_view_detail = TRUE "
-                    // 本次修改：ADMIN 只扩大同视角 scope 读取范围，保留明细权限布尔门禁。
-                    + "AND (s.role_code = 'ADMIN' OR s.scope_code = 'ALL' OR s.scope_code = t.scope_code)) "
+                    // 本次修改：ADMIN 已被 Owner 授权查看全部追溯信息，跨视角并绕过普通明细门禁；普通角色保持原规则。
+                    + "AND (UPPER(s.role_code) = 'ADMIN' OR "
+                    + "(s.perspective = t.perspective AND s.can_view_detail = TRUE "
+                    + "AND (s.scope_code = 'ALL' OR s.scope_code = t.scope_code)))) "
                     + "ORDER BY t.source_sheet_name, t.source_row_no, t.id";
 
     private final JdbcTemplate jdbc;

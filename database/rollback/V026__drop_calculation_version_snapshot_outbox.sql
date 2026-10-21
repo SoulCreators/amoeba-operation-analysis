@@ -27,6 +27,10 @@ BEGIN
 END
 $$;
 
+-- 本次修改：回滚时恢复 V009 的批次/版本唯一索引，保持旧版本迁移语义。
+CREATE UNIQUE INDEX IF NOT EXISTS uk_pnl_result_version
+    ON calc.pnl_result(batch_id, version_no);
+
 DROP INDEX IF EXISTS calc.uk_calculation_version_current;
 DROP INDEX IF EXISTS calc.idx_calculation_version_lookup;
 DROP INDEX IF EXISTS calc.idx_calculation_version_job;

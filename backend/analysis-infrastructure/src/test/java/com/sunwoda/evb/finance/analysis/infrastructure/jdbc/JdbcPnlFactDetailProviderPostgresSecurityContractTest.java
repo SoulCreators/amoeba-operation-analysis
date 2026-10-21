@@ -276,10 +276,10 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         List<PnlFact> adminRows = provider.findForUser(
                 targetBatchNo, AnalysisPerspective.BASE, adminUser);
         assertEquals(Arrays.asList(scopeA, scopeB, scopeC, scopeD), scopes(adminRows));
-        // 本次修改：ADMIN 不得绕过 can_view_detail 和 enabled 布尔门禁。
-        assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
-                adminNoDetailUser).isEmpty(),
-                "ADMIN with can_view_detail=false must not expose detail rows");
+        // 本次修改：Owner 已确认 ADMIN 可查看全部信息，不能因普通明细布尔值而丢失事实明细读取。
+        assertEquals(Arrays.asList(scopeA, scopeB, scopeC, scopeD),
+                scopes(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
+                        adminNoDetailUser)));
         assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
                 disabledAdminUser).isEmpty(),
                 "disabled ADMIN grant must not expose detail rows");

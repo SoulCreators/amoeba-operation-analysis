@@ -54,12 +54,13 @@ public final class ExportPermissionPolicy {
         }
 
         String normalizedUser = userId.trim();
-        if (resultStatus != CalculationResultStatus.PUBLISHED
-                && !permissionService.canViewDraft(normalizedUser, perspective)) {
+        // 本次修改：导出只消费结果读取权限；ADMIN 的草稿读取权可用于只读导出，但不派生任何写权限。
+        if (!canReadResult(normalizedUser, perspective, resultStatus)) {
             return ExportPermission.denied("unpublished result is restricted to finance preview");
         }
 
-        Set<String> exportScopes = permissionService.exportScopes(normalizedUser, perspective);
+        // 本次修改：统一规范化 ADMIN 返回的 ALL 与普通用户范围，保证后续请求范围裁剪一致。
+        Set<String> exportScopes = normalize(permissionService.exportScopes(normalizedUser, perspective));
         if (exportScopes == null || exportScopes.isEmpty()) {
             return ExportPermission.denied("current user has no export scope");
         }
@@ -112,6 +113,15 @@ public final class ExportPermissionPolicy {
             return normalizedRequested;
         }
         return normalize(exportScopes);
+    }
+
+    private boolean canReadResult(String userId, AnalysisPerspective perspective,
+                                  CalculationResultStatus resultStatus) {
+        if (resultStatus == CalculationResultStatus.PUBLISHED) {
+            return true;
+        }
+        // 本次修改：ADMIN 的 ALL 读取范围由 PermissionServiceImpl 提供，策略层不把它扩展为发布或其他写操作。
+        return permissionService.canViewDraft(userId, perspective);
     }
 
     private Set<String> normalize(Set<String> scopes) {

@@ -76,15 +76,29 @@ class PermissionServiceImplTest {
     }
 
     @Test
-    void adminOnlyCannotReviewDraftOrPublishAiButFinanceAdminCan() {
+    void adminGetsReadOnlyAllScopeAccessButCannotPublishAi() {
         InMemoryScopes repository = new InMemoryScopes();
         repository.save(scope("U-ADMIN", "ADMIN", AnalysisPerspective.BASE, "ALL", true));
         repository.save(scope("U-FIN-ADMIN", "FINANCE_ADMIN", AnalysisPerspective.BASE, "ALL", true));
         PermissionService service = new PermissionServiceImpl(repository);
 
-        assertFalse(service.canViewDraft("U-ADMIN", AnalysisPerspective.BASE));
+        // 本次修改：ADMIN 可读取草稿，并对所有视角和范围提供只读权限。
+        assertTrue(service.canViewDraft("U-ADMIN", AnalysisPerspective.BASE));
+        assertTrue(service.canViewDraft("U-ADMIN", AnalysisPerspective.PRODUCT_LINE));
+        assertTrue(service.canViewScope("U-ADMIN", AnalysisPerspective.PRODUCT_LINE, "PL-A"));
+        assertTrue(service.canViewDetail("U-ADMIN", AnalysisPerspective.PRODUCT_LINE, "PL-A"));
+        assertTrue(service.canExport("U-ADMIN", AnalysisPerspective.PRODUCT_LINE, "PL-A"));
+        assertEquals(java.util.Collections.singleton("ALL"),
+                service.viewableScopes("U-ADMIN", AnalysisPerspective.PRODUCT_LINE));
+        assertEquals(java.util.Collections.singleton("ALL"),
+                service.detailScopes("U-ADMIN", AnalysisPerspective.PRODUCT_LINE));
+        assertEquals(java.util.Collections.singleton("ALL"),
+                service.exportScopes("U-ADMIN", AnalysisPerspective.PRODUCT_LINE));
+
+        // 本次修改：只读 ADMIN 不因查看草稿而获得 AI 发布或配置编辑权限。
         assertFalse(service.canPublishAi("U-ADMIN", AnalysisPerspective.BASE));
-        assertFalse(service.canViewResult("U-ADMIN", AnalysisPerspective.BASE,
+        assertFalse(service.canEditConfig("U-ADMIN", AnalysisPerspective.BASE, "NANCHANG"));
+        assertTrue(service.canViewResult("U-ADMIN", AnalysisPerspective.BASE,
                 CalculationResultStatus.CALCULATED));
 
         assertTrue(service.canViewDraft("U-FIN-ADMIN", AnalysisPerspective.BASE));

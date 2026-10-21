@@ -6,7 +6,6 @@ import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlFactSource;
 import com.sunwoda.evb.finance.analysis.domain.model.UserScope;
 import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -73,7 +72,6 @@ class AdminReadOnlyPermissionRegressionTest {
         assertFalse(permissions.canPublishAi(ADMIN_USER, AnalysisPerspective.BASE));
     }
 
-    @Disabled("待生产权限策略将 ADMIN 纳入未发布结果读取；当前仅记录测试缺口，不修改生产代码")
     @Test
     void adminRoleCanReadUnpublishedResultWithoutBeingFinanceRole() {
         PermissionService permissions = permissions(adminGrant());

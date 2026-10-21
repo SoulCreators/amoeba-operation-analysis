@@ -29,9 +29,10 @@ public class JdbcFcSnapshotProvider implements FcSnapshotProvider {
                 + "JOIN meta.analysis_batch b ON b.period = s.period "
                 + "WHERE b.batch_no = ? AND v.perspective = ? AND v.version_code = ? "
                 + "AND EXISTS (SELECT 1 FROM iam.user_scope u "
-                + "WHERE u.user_id = ? AND u.perspective = v.perspective AND u.enabled = TRUE "
-                // 本次修改：ADMIN 只扩大同视角 scope 读取范围，不新增写入或其他权限。
-                + "AND (u.role_code = 'ADMIN' OR u.scope_code = 'ALL' OR u.scope_code = s.scope_code)) "
+                + "WHERE u.user_id = ? AND u.enabled = TRUE "
+                // 本次修改：已启用 ADMIN 跨视角读取全部 FC 快照，普通角色继续按视角和 scope 过滤。
+                + "AND (UPPER(u.role_code) = 'ADMIN' OR "
+                + "(u.perspective = v.perspective AND (u.scope_code = 'ALL' OR u.scope_code = s.scope_code)))) "
                 + "ORDER BY s.scope_code, s.metric_code";
         return jdbc.query(sql, (rs, row) -> new FcSnapshot(rs.getString("period"),
                 rs.getString("scope_code"), rs.getString("metric_code"), rs.getBigDecimal("metric_value")),

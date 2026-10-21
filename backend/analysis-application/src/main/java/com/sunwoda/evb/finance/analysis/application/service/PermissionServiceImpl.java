@@ -15,6 +15,8 @@ import java.util.Set;
 
 @Service
 public class PermissionServiceImpl implements PermissionService {
+    private static final String ADMIN_ROLE = "ADMIN";
+
     private final UserScopeRepository repository;
 
     public PermissionServiceImpl(UserScopeRepository repository) {
@@ -56,12 +58,9 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     public boolean canViewDraft(String userId, AnalysisPerspective perspective) {
-        for (UserScope scope : safeList(userId, perspective)) {
-            if (!scope.isEnabled()) continue;
-            String role = scope.getRoleCode().toUpperCase(Locale.ROOT);
-            if (role.contains("FINANCE")) return true;
-        }
-        return false;
+        if (perspective == null) return false;
+        // 本次修改：ADMIN 仅获得全量读取草稿能力，保持与写操作授权完全隔离。
+        return hasAdminRole(userId) || hasFinanceRole(userId, perspective);
     }
 
     @Override
@@ -76,7 +75,8 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     public boolean canPublishAi(String userId, AnalysisPerspective perspective) {
-        return canViewDraft(userId, perspective);
+        // 本次修改：ADMIN 的草稿读取权不升级为 AI 发布写权限，仍仅沿用财经角色规则。
+        return hasFinanceRole(userId, perspective);
     }
 
     @Override
@@ -97,6 +97,9 @@ public class PermissionServiceImpl implements PermissionService {
     private boolean hasGrant(String userId, AnalysisPerspective perspective, String scopeCode,
                              PermissionAction action) {
         if (scopeCode == null || scopeCode.trim().isEmpty()) return false;
+        if (perspective == null) return false;
+        // 本次修改：ADMIN 只在查看范围、明细和导出三个读取动作上绕过范围明细授权；配置编辑仍走原始显式授权。
+        if (hasAdminRole(userId) && isAdminReadAction(action)) return true;
         for (UserScope scope : safeList(userId, perspective)) {
             if (scope.matchesScope(scopeCode) && scope.allows(action)) return true;
         }
@@ -106,10 +109,46 @@ public class PermissionServiceImpl implements PermissionService {
     private Set<String> scopesFor(String userId, AnalysisPerspective perspective,
                                   PermissionAction action) {
         Set<String> result = new LinkedHashSet<String>();
+        if (perspective == null) return result;
+        // 本次修改：用 ALL 表示 ADMIN 在当前读取视角下拥有全部范围，供结果查询和导出策略复用。
+        if (hasAdminRole(userId) && isAdminReadAction(action)) {
+            result.add("ALL");
+            return result;
+        }
         for (UserScope scope : safeList(userId, perspective)) {
             if (scope.allows(action)) result.add(normalizeScope(scope.getScopeCode()));
         }
         return result;
+    }
+
+    private boolean hasAdminRole(String userId) {
+        if (userId == null || userId.trim().isEmpty()) return false;
+        // 本次修改：管理员角色是全局只读角色，跨已登记视角识别，避免只因当前视角没有授权行而漏掉全量读取权。
+        for (AnalysisPerspective candidate : AnalysisPerspective.values()) {
+            for (UserScope scope : safeList(userId, candidate)) {
+                if (isEnabledRole(scope, ADMIN_ROLE)) return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasFinanceRole(String userId, AnalysisPerspective perspective) {
+        for (UserScope scope : safeList(userId, perspective)) {
+            if (!scope.isEnabled()) continue;
+            String role = scope.getRoleCode().toUpperCase(Locale.ROOT);
+            if (role.contains("FINANCE")) return true;
+        }
+        return false;
+    }
+
+    private boolean isEnabledRole(UserScope scope, String roleCode) {
+        return scope != null && scope.isEnabled() && roleCode.equalsIgnoreCase(scope.getRoleCode().trim());
+    }
+
+    private boolean isAdminReadAction(PermissionAction action) {
+        return action == PermissionAction.VIEW_SCOPE
+                || action == PermissionAction.VIEW_DETAIL
+                || action == PermissionAction.EXPORT;
     }
 
     private List<UserScope> safeList(String userId, AnalysisPerspective perspective) {
