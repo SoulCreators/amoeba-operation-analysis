@@ -215,13 +215,14 @@ class JdbcManualRevisionIdempotencyPostgresContractTest {
                         revisionRepository.append(source, target, revision(target));
                         return target;
                     }));
+            // 本次修正：先确认实例一已经领取并进入人工修订，再启动实例二，避免线程池调度反转测试角色。
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
             Future<CalculationVersion> second = executor.submit(() -> adapterTwo.execute(userId, requestKey,
                     sourceVersionId, "并发人工修订", () -> {
                         executions.incrementAndGet();
                         throw new AssertionError("第二实例不应进入人工修订操作");
                     }));
 
-            assertTrue(entered.await(5, TimeUnit.SECONDS));
             release.countDown();
             assertEquals(targetVersionId, first.get(10, TimeUnit.SECONDS).getCalculationVersionId());
             assertEquals(targetVersionId, second.get(10, TimeUnit.SECONDS).getCalculationVersionId());
