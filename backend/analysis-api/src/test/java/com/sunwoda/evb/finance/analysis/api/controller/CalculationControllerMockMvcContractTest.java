@@ -19,6 +19,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -90,6 +91,26 @@ class CalculationControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.data.batchNo").value(BATCH_NO));
 
         verify(service).publish(BATCH_NO, USER_ID);
+    }
+
+    @Test
+    void permissionDeniedLifecycleCommandReturnsStandard403AndDoesNotExposeSuccess() throws Exception {
+        when(service.confirm(BATCH_NO, USER_ID))
+                .thenThrow(new IllegalStateException("当前用户无结果确认权限"));
+
+        mockMvc.perform(post("/api/v1/calculations/confirm")
+                        .principal(principal(USER_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"batchNo\":\"BATCH-001\",\"operator\":\"request-operator\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.data").value(nullValue()))
+                .andExpect(jsonPath("$.message").value("当前用户无结果确认权限"));
+
+        // 本次新增：确认权限被拒绝时只返回标准 403，不能把失败包装成成功结果。
+        verify(service).confirm(BATCH_NO, USER_ID);
+        verifyNoMoreInteractions(service);
     }
 
     @Test
