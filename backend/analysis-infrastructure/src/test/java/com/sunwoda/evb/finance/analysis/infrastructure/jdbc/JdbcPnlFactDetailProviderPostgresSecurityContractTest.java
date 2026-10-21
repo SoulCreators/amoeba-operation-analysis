@@ -65,6 +65,9 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
     private String noDetailUser;
     private String exportOnlyUser;
     private String editOnlyUser;
+    private String adminUser;
+    private String adminNoDetailUser;
+    private String disabledAdminUser;
     private String productLineUser;
     private final List<String> fixtureBatchNos = new ArrayList<String>();
     private final List<String> fixtureUserIds = new ArrayList<String>();
@@ -118,6 +121,9 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         noDetailUser = "FDPG-U-NODETAIL-" + token;
         exportOnlyUser = "FDPG-U-EXPORT-" + token;
         editOnlyUser = "FDPG-U-EDIT-" + token;
+        adminUser = "FDPG-U-ADMIN-" + token;
+        adminNoDetailUser = "FDPG-U-ADMIN-NODETAIL-" + token;
+        disabledAdminUser = "FDPG-U-ADMIN-DISABLED-" + token;
         productLineUser = "FDPG-U-PL-" + token;
 
         // 本次修改：在写入前校验 V002/V003 中 varchar 上限，避免夹具自身掩盖权限契约结果。
@@ -136,6 +142,9 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         assertTrue(noDetailUser.length() <= 64);
         assertTrue(exportOnlyUser.length() <= 64);
         assertTrue(editOnlyUser.length() <= 64);
+        assertTrue(adminUser.length() <= 64);
+        assertTrue(adminNoDetailUser.length() <= 64);
+        assertTrue(disabledAdminUser.length() <= 64);
         assertTrue(productLineUser.length() <= 64);
 
         fixtureBatchNos.add(targetBatchNo);
@@ -146,6 +155,9 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         fixtureUserIds.add(noDetailUser);
         fixtureUserIds.add(exportOnlyUser);
         fixtureUserIds.add(editOnlyUser);
+        fixtureUserIds.add(adminUser);
+        fixtureUserIds.add(adminNoDetailUser);
+        fixtureUserIds.add(disabledAdminUser);
         fixtureUserIds.add(productLineUser);
 
         insertBatch(targetBatchNo, BASE);
@@ -186,6 +198,9 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         grant(exportOnlyUser, BASE, scopeA, true, false, true, false);
         // 本次修改：仅有配置编辑权限但没有明细权限的用户必须不能读取事实明细。
         grant(editOnlyUser, BASE, scopeA, true, false, false, true);
+        grant(adminUser, BASE, scopeA, true, true, false, false, "ADMIN");
+        grant(adminNoDetailUser, BASE, scopeA, true, false, false, false, "ADMIN");
+        grant(disabledAdminUser, BASE, scopeA, false, true, false, false, "ADMIN");
         grant(productLineUser, PRODUCT_LINE, "ALL", true, true, false, false);
     }
 
@@ -257,6 +272,18 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE, editOnlyUser).isEmpty(),
                 "can_edit_config=true must not substitute for can_view_detail=true");
 
+        // 本次修改：验证启用 ADMIN 可跨越具体 scope 读取同一 perspective 的全部事实明细。
+        List<PnlFact> adminRows = provider.findForUser(
+                targetBatchNo, AnalysisPerspective.BASE, adminUser);
+        assertEquals(Arrays.asList(scopeA, scopeB, scopeC, scopeD), scopes(adminRows));
+        // 本次修改：ADMIN 不得绕过 can_view_detail 和 enabled 布尔门禁。
+        assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
+                adminNoDetailUser).isEmpty(),
+                "ADMIN with can_view_detail=false must not expose detail rows");
+        assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
+                disabledAdminUser).isEmpty(),
+                "disabled ADMIN grant must not expose detail rows");
+
         // 本次修改：BASE 用户查询 PRODUCT_LINE 时不得复用 BASE 授权，独立 PRODUCT_LINE 授权才可读取该视角。
         assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.PRODUCT_LINE, allScopeUser).isEmpty(),
                 "a BASE grant must not expose PRODUCT_LINE detail rows");
@@ -297,11 +324,18 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
     private void grant(String userId, String perspective, String scopeCode,
                        boolean enabled, boolean canViewDetail,
                        boolean canExport, boolean canEditConfig) {
+        grant(userId, perspective, scopeCode, enabled, canViewDetail,
+                canExport, canEditConfig, "FACT_DETAIL_JDBC_PG_SEC_001_VIEWER");
+    }
+
+    private void grant(String userId, String perspective, String scopeCode,
+                       boolean enabled, boolean canViewDetail,
+                       boolean canExport, boolean canEditConfig, String roleCode) {
         // 本次修改：直接写入 iam.user_scope 的四类权限布尔值，确保负例来自数据库 EXISTS 条件。
         jdbc.update("INSERT INTO iam.user_scope(user_id, role_code, perspective, scope_code, "
                         + "can_view_detail, can_export, can_edit_config, enabled) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                userId, "FACT_DETAIL_JDBC_PG_SEC_001_VIEWER", perspective, scopeCode,
+                userId, roleCode, perspective, scopeCode,
                 canViewDetail, canExport, canEditConfig, enabled);
     }
 

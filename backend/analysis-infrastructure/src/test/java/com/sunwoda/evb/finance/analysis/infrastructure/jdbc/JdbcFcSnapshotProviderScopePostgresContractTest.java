@@ -42,6 +42,8 @@ class JdbcFcSnapshotProviderScopePostgresContractTest {
     private static String singleScopeUser;
     private static String crossScopeUser;
     private static String disabledScopeUser;
+    private static String adminUser;
+    private static String disabledAdminUser;
 
     @BeforeAll
     static void connectAndSeedConfiguredPostgres() {
@@ -63,6 +65,8 @@ class JdbcFcSnapshotProviderScopePostgresContractTest {
         singleScopeUser = "TEST-FC-SNAPSHOT-SINGLE-" + token;
         crossScopeUser = "TEST-FC-SNAPSHOT-CROSS-" + token;
         disabledScopeUser = "TEST-FC-SNAPSHOT-DISABLED-" + token;
+        adminUser = "TEST-FC-SNAPSHOT-ADMIN-" + token;
+        disabledAdminUser = "TEST-FC-SNAPSHOT-ADMIN-DISABLED-" + token;
 
         seedBatch();
         Long versionId = seedVersion();
@@ -77,8 +81,9 @@ class JdbcFcSnapshotProviderScopePostgresContractTest {
         jdbc.update("DELETE FROM calc.fc_snapshot WHERE fc_version_id IN "
                 + "(SELECT id FROM calc.fc_version WHERE version_code = ?)", versionCode);
         jdbc.update("DELETE FROM calc.fc_version WHERE version_code = ?", versionCode);
-        jdbc.update("DELETE FROM iam.user_scope WHERE user_id IN (?, ?, ?, ?)",
-                allUser, singleScopeUser, crossScopeUser, disabledScopeUser);
+        jdbc.update("DELETE FROM iam.user_scope WHERE user_id IN (?, ?, ?, ?, ?, ?)",
+                allUser, singleScopeUser, crossScopeUser, disabledScopeUser,
+                adminUser, disabledAdminUser);
         jdbc.update("DELETE FROM meta.analysis_batch WHERE batch_no = ?", batchNo);
     }
 
@@ -125,6 +130,27 @@ class JdbcFcSnapshotProviderScopePostgresContractTest {
                 batchNo, AnalysisPerspective.BASE, versionCode, disabledScopeUser);
 
         assertTrue(snapshots.isEmpty(), "disabled scope grant must not expose snapshots");
+    }
+
+    @Test
+    void enabledAdminRoleSeesEverySnapshotRegardlessOfStoredScope() {
+        // 本次修改：验证启用的 ADMIN 在同一 perspective 下绕过具体 scope_code 读取全部快照。
+        List<FcSnapshot> snapshots = provider.findForBatch(
+                batchNo, AnalysisPerspective.BASE, versionCode, adminUser);
+
+        assertEquals(Arrays.asList(
+                key(SCOPE_A, "METRIC-A"), key(SCOPE_A, "METRIC-B"),
+                key(SCOPE_B, "METRIC-A"), key(SCOPE_B, "METRIC-B"),
+                key(SCOPE_C, "METRIC-A")), keys(snapshots));
+    }
+
+    @Test
+    void disabledAdminRoleDoesNotExposeSnapshots() {
+        // 本次修改：验证 ADMIN 不得绕过 enabled=true 门禁，禁用授权必须返回空快照。
+        List<FcSnapshot> snapshots = provider.findForBatch(
+                batchNo, AnalysisPerspective.BASE, versionCode, disabledAdminUser);
+
+        assertTrue(snapshots.isEmpty(), "disabled ADMIN grant must not expose snapshots");
     }
 
     @Test
@@ -179,13 +205,19 @@ class JdbcFcSnapshotProviderScopePostgresContractTest {
         grant(crossScopeUser, SCOPE_A, true);
         grant(crossScopeUser, SCOPE_B, true);
         grant(disabledScopeUser, SCOPE_C, false);
+        grant(adminUser, "ADMIN", SCOPE_A, true);
+        grant(disabledAdminUser, "ADMIN", SCOPE_A, false);
     }
 
     private static void grant(String userId, String scopeCode, boolean enabled) {
+        grant(userId, "TEST_FC_SNAPSHOT_VIEWER", scopeCode, enabled);
+    }
+
+    private static void grant(String userId, String roleCode, String scopeCode, boolean enabled) {
         jdbc.update("INSERT INTO iam.user_scope(user_id, role_code, perspective, scope_code, "
                         + "can_view_detail, can_export, can_edit_config, enabled) "
-                        + "VALUES (?, 'TEST_FC_SNAPSHOT_VIEWER', ?, ?, FALSE, FALSE, FALSE, ?)",
-                userId, PERSPECTIVE, scopeCode, enabled);
+                        + "VALUES (?, ?, ?, ?, FALSE, FALSE, FALSE, ?)",
+                userId, roleCode, PERSPECTIVE, scopeCode, enabled);
     }
 
     private static List<String> keys(List<FcSnapshot> snapshots) {

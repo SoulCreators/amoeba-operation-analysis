@@ -48,6 +48,9 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
     private String allScopeUser;
     private String disabledUser;
     private String noDetailUser;
+    private String adminUser;
+    private String adminNoDetailUser;
+    private String disabledAdminUser;
     private final List<String> fixtureTaskNos = new ArrayList<String>();
     private final List<String> fixtureBatchNos = new ArrayList<String>();
     private final List<String> fixtureUserIds = new ArrayList<String>();
@@ -138,6 +141,18 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
                 targetTaskNo, noDetailUser).isEmpty(),
                 "can_view_detail=false grant must not expose trace rows");
 
+        // 本次修改：验证启用 ADMIN 可跨越具体 scope 读取同一 perspective 的全部来源行。
+        List<PnlFactSource> adminRows = provider.findForUser(
+                targetBatchNo, AnalysisPerspective.BASE, targetTaskNo, adminUser);
+        assertEquals(Arrays.asList(key(scopeA, 2), key(scopeB, 3), key(scopeC, 4)), keys(adminRows));
+        // 本次修改：ADMIN 不得绕过 can_view_detail 和 enabled 布尔门禁。
+        assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
+                targetTaskNo, adminNoDetailUser).isEmpty(),
+                "ADMIN with can_view_detail=false must not expose trace rows");
+        assertTrue(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
+                targetTaskNo, disabledAdminUser).isEmpty(),
+                "disabled ADMIN grant must not expose trace rows");
+
         // 本次修改：目标任务之外的同批次任务、其他视角和其他批次数据均写入真实表，验证不会串读。
         assertEquals(Arrays.asList(key(scopeA, 10)),
                 keys(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
@@ -176,6 +191,9 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
         allScopeUser = "TJPS-U-ALL-" + token;
         disabledUser = "TJPS-U-DISABLED-" + token;
         noDetailUser = "TJPS-U-NODETAIL-" + token;
+        adminUser = "TJPS-U-ADMIN-" + token;
+        adminNoDetailUser = "TJPS-U-ADMIN-NODETAIL-" + token;
+        disabledAdminUser = "TJPS-U-ADMIN-DISABLED-" + token;
 
         // 本次修改：缩短授权主体、批次和任务标识前缀，确保拼接 UUID 后符合迁移中的 varchar(64)。
         targetBatchNo = "TJPS-B-" + token;
@@ -192,6 +210,9 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
         fixtureUserIds.add(allScopeUser);
         fixtureUserIds.add(disabledUser);
         fixtureUserIds.add(noDetailUser);
+        fixtureUserIds.add(adminUser);
+        fixtureUserIds.add(adminNoDetailUser);
+        fixtureUserIds.add(disabledAdminUser);
 
         insertBatch(targetBatchNo, BASE);
         insertBatch(otherBatchNo, BASE);
@@ -214,6 +235,9 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
         grant(allScopeUser, BASE, "ALL", true, true);
         grant(disabledUser, BASE, scopeA, false, true);
         grant(noDetailUser, BASE, scopeA, true, false);
+        grant(adminUser, BASE, scopeA, true, true, "ADMIN");
+        grant(adminNoDetailUser, BASE, scopeA, true, false, "ADMIN");
+        grant(disabledAdminUser, BASE, scopeA, false, true, "ADMIN");
         grant(perspectiveUser(), PRODUCT_LINE, "ALL", true, true);
     }
 
@@ -278,11 +302,17 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
 
     private void grant(String userId, String perspective, String scopeCode,
                        boolean enabled, boolean canViewDetail) {
+        grant(userId, perspective, scopeCode, enabled, canViewDetail,
+                "TRACE_JDBC_PG_SEC_001_VIEWER");
+    }
+
+    private void grant(String userId, String perspective, String scopeCode,
+                       boolean enabled, boolean canViewDetail, String roleCode) {
         // 本次修改：分别构造精确 scope、ALL、disabled 和无明细权限授权，直接覆盖生产 EXISTS 条件。
         jdbc.update("INSERT INTO iam.user_scope(user_id, role_code, perspective, scope_code, "
                         + "can_view_detail, can_export, can_edit_config, enabled) "
                         + "VALUES (?, ?, ?, ?, ?, FALSE, FALSE, ?)",
-                userId, "TRACE_JDBC_PG_SEC_001_VIEWER", perspective, scopeCode,
+                userId, roleCode, perspective, scopeCode,
                 canViewDetail, enabled);
         if (!fixtureUserIds.contains(userId)) {
             fixtureUserIds.add(userId);

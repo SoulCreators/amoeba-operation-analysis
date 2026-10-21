@@ -44,7 +44,8 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 + "AND EXISTS (SELECT 1 FROM iam.user_scope s "
                 + "WHERE s.user_id = ? AND s.perspective = f.perspective AND s.enabled = TRUE "
                 + "AND s.can_view_detail = TRUE "
-                + "AND (s.scope_code = 'ALL' OR s.scope_code = f.scope_code)) "
+                // 本次修改：ADMIN 只扩大同视角 scope 读取范围，保留明细权限布尔门禁。
+                + "AND (s.role_code = 'ADMIN' OR s.scope_code = 'ALL' OR s.scope_code = f.scope_code)) "
                 + "ORDER BY f.scope_code, f.base_code, f.product_code, f.line_code, f.id";
         return jdbc.query(sql, (rs, row) -> new PnlFact(
                 rs.getString("scope_code"), rs.getString("base_code"),

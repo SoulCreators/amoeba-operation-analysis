@@ -53,6 +53,8 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
     private static String allUser;
     private static String crossScopeUser;
     private static String disabledScopeUser;
+    private static String adminUser;
+    private static String disabledAdminUser;
 
     @BeforeAll
     static void connectAndSeedPostgres() {
@@ -80,6 +82,9 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
         allUser = USER_PREFIX + token + "-ALL";
         crossScopeUser = USER_PREFIX + token + "-CROSS";
         disabledScopeUser = USER_PREFIX + token + "-DISABLED";
+        // 本次修改：缩短 ADMIN 夹具用户标识，确保拼接随机 token 后不超过 user_scope.user_id 的 varchar(64)。
+        adminUser = USER_PREFIX + token + "-ADM";
+        disabledAdminUser = USER_PREFIX + token + "-ADM-D";
         seedFixture();
     }
 
@@ -138,6 +143,26 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
 
         assertTrue(!result.isPresent() || result.get().getResults().isEmpty(),
                 "a user with only a disabled scope grant must not receive result rows");
+    }
+
+    @Test
+    void enabledAdminRoleSeesEveryResultRegardlessOfStoredScope() {
+        // 本次修改：验证启用的 ADMIN 在同一 perspective 下绕过具体 scope_code 读取全部结果。
+        CalculationResult result = scopedRead(adminUser);
+
+        assertEquals(Arrays.asList("SCOPE-A", "SCOPE-B", "SCOPE-C"), scopes(result));
+        assertEquals(0, new BigDecimal("303.25").compareTo(result.getResults().stream()
+                .map(pnl -> pnl.getLines().get("REVENUE"))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)));
+    }
+
+    @Test
+    void disabledAdminRoleDoesNotExposeAnyResult() {
+        // 本次修改：验证 ADMIN 不得绕过 enabled=true 门禁，禁用授权必须返回空结果。
+        Optional<CalculationResult> result = invokeScopedRead(disabledAdminUser);
+
+        assertTrue(!result.isPresent() || result.get().getResults().isEmpty(),
+                "disabled ADMIN grant must not receive result rows");
     }
 
     @Test
@@ -213,6 +238,8 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
         grant(crossScopeUser, "SCOPE-A", true);
         grant(crossScopeUser, "SCOPE-C", true);
         grant(disabledScopeUser, "SCOPE-B", false);
+        grant(adminUser, "ADMIN", "SCOPE-A", true);
+        grant(disabledAdminUser, "ADMIN", "SCOPE-A", false);
     }
 
     private static Long insertResult(Long batchId, String scopeCode, LocalDateTime now) {
@@ -230,9 +257,13 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
     }
 
     private static void grant(String userId, String scopeCode, boolean enabled) {
+        grant(userId, "TEST_RESULT_VIEWER", scopeCode, enabled);
+    }
+
+    private static void grant(String userId, String roleCode, String scopeCode, boolean enabled) {
         jdbc.update("INSERT INTO iam.user_scope(user_id, role_code, perspective, scope_code, "
                         + "can_view_detail, can_export, can_edit_config, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                userId, "TEST_RESULT_VIEWER", PERSPECTIVE, scopeCode, true, false, false, enabled);
+                userId, roleCode, PERSPECTIVE, scopeCode, true, false, false, enabled);
     }
 
     private static String versionFor(String scopeCode) {
