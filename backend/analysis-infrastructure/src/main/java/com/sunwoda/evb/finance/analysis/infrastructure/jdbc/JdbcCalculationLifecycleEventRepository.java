@@ -55,18 +55,19 @@ public class JdbcCalculationLifecycleEventRepository implements CalculationLifec
                         + "event_id, aggregate_type, aggregate_id, event_type, calculation_version_id, trace_id, "
                         + "payload_json, delivery_status, attempt_no, next_attempt_at, last_error, occurred_at, "
                         + "delivered_at) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?) "
-                        + "ON CONFLICT (event_id) DO UPDATE SET aggregate_type = EXCLUDED.aggregate_type, "
-                        + "aggregate_id = EXCLUDED.aggregate_id, event_type = EXCLUDED.event_type, "
-                        + "calculation_version_id = EXCLUDED.calculation_version_id, trace_id = EXCLUDED.trace_id, "
-                        + "payload_json = EXCLUDED.payload_json, delivery_status = EXCLUDED.delivery_status, "
-                        + "attempt_no = EXCLUDED.attempt_no, next_attempt_at = EXCLUDED.next_attempt_at, "
-                        + "last_error = EXCLUDED.last_error, occurred_at = EXCLUDED.occurred_at, "
-                        + "delivered_at = EXCLUDED.delivered_at",
+                        + "ON CONFLICT (event_id) DO NOTHING",
                 event.getEventId(), event.getAggregateType(), event.getAggregateId(), event.getEventType(),
                 event.getCalculationVersionId(), event.getTraceId(), event.getPayloadJson(),
                 event.getDeliveryStatus().name(), event.getAttemptNo(), timestamp(event.getNextAttemptAt()),
                 event.getLastError(), timestamp(event.getOccurredAt()), timestamp(event.getDeliveredAt()));
-        return event;
+        // 本次修复：重复 event_id 只返回已存在事件，禁止旧生产者把 DELIVERED 或 MANUAL_REQUIRED
+        // 重置为 PENDING；正文和聚合身份变化也必须显式报冲突，避免静默覆盖历史。
+        CalculationLifecycleEvent existing = findByEventId(event.getEventId()).orElse(event);
+        if (!sameIdentity(existing, event)
+                || !payloadEquivalent(existing.getEventId(), event.getPayloadJson())) {
+            throw new IllegalStateException("Outbox event_id 已存在但正文或聚合身份不一致: " + event.getEventId());
+        }
+        return existing;
     }
 
     @Override
@@ -131,5 +132,23 @@ public class JdbcCalculationLifecycleEventRepository implements CalculationLifec
             throw new IllegalArgumentException(fieldName + " 不能为空");
         }
         return value.trim();
+    }
+
+    private boolean payloadEquivalent(String eventId, String payloadJson) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT payload_json = ?::jsonb FROM flow.calculation_event_outbox WHERE event_id = ?",
+                Boolean.class, payloadJson, eventId));
+    }
+
+    private static boolean sameIdentity(CalculationLifecycleEvent left, CalculationLifecycleEvent right) {
+        return safeEquals(left.getAggregateType(), right.getAggregateType())
+                && safeEquals(left.getAggregateId(), right.getAggregateId())
+                && safeEquals(left.getEventType(), right.getEventType())
+                && safeEquals(left.getCalculationVersionId(), right.getCalculationVersionId())
+                && safeEquals(left.getTraceId(), right.getTraceId());
+    }
+
+    private static boolean safeEquals(String left, String right) {
+        return left == null ? right == null : left.equals(right);
     }
 }
