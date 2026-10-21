@@ -24,11 +24,12 @@ import java.util.UUID;
  * <p>本次修改：提供授权后追加新 calculation_version 的最小入口；旧版本只通过仓储契约
  * 转为已替代指针，修订关系和 MANUAL_REVISED 生命周期事件独立落库，禁止复用旧版本主键。</p>
  *
- * <p>本次修改：在 local/db profile 下作为显式应用服务 Bean，由 Spring 必需注入版本、
- * 修订关系、生命周期事件和范围授权端口；任一生产依赖缺失时启动失败关闭。</p>
+ * <p>本次修改：仅在 db profile 下作为显式应用服务 Bean；人工修订需要生产持久化版本、
+ * 修订关系和生命周期事件，local 未接入这些端口时不创建可误用的服务。</p>
  */
 @Service
-@Profile({"local", "db"})
+// 本次修改：收敛到 db Profile，local 缺少持久化依赖时按失败关闭处理。
+@Profile("db")
 public class ManualCalculationRevisionService {
     private static final String EVENT_TYPE = "MANUAL_REVISED";
     private static final String AGGREGATE_TYPE = "CALCULATION_VERSION";

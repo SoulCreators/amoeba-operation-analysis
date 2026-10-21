@@ -30,7 +30,8 @@ import java.util.List;
  * 并在进入应用服务前再次校验人工修订权限。</p>
  */
 @RestController
-@Profile({"local", "db"})
+// 本次修改：历史版本和人工修订依赖持久化仓储，仅在 db Profile 暴露；local 不提供伪造的历史接口。
+@Profile("db")
 @RequestMapping("/api/v1/calculations")
 public class CalculationHistoryController {
     private final CalculationVersionRepository versionRepository;
