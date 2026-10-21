@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.amoeba.worker;
 
 import com.sunwoda.evb.finance.analysis.application.adapter.CalculationServiceRetryExecutor;
 import com.sunwoda.evb.finance.analysis.application.port.AuditEventPort;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryAlertPort;
 import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryExecutor;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactProvider;
 import com.sunwoda.evb.finance.analysis.application.service.CalculationService;
@@ -38,7 +39,8 @@ import java.util.Set;
  * 失败处理 Worker 的新增接线配置。
  *
  * <p>本次修复：db profile 下显式接入计算服务及其最小 JDBC 依赖，修复 Worker 只扫描自身包
- * 导致 CalculationRetryExecutor 未创建的问题；同时保留只有 db profile 才启用的边界。</p>
+ * 导致 CalculationRetryExecutor 未创建的问题；本次修改同时接入 MANUAL_REQUIRED 告警端口，
+ * 并保留只有 db profile 才启用的边界。</p>
  */
 @Configuration
 @Profile("db")
@@ -106,8 +108,10 @@ public class CalculationRetryWorkerConfiguration {
     @ConditionalOnBean(CalculationRetryExecutor.class)
     public CalculationJobRetryWorker calculationJobRetryWorker(
             CalculationRetryApplicationService retryService,
-            CalculationRetryExecutor executor) {
-        return new CalculationJobRetryWorker(retryService, executor);
+            CalculationRetryExecutor executor,
+            CalculationRetryAlertPort alert) {
+        // 本次修改：Worker 同时持有执行端口和人工接管告警端口，告警不参与状态持久化事务。
+        return new CalculationJobRetryWorker(retryService, executor, alert);
     }
 
     @Bean

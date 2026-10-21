@@ -1,6 +1,7 @@
 package com.sunwoda.evb.finance.amoeba.worker;
 
 import com.sunwoda.evb.finance.analysis.application.port.AuditEventPort;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryAlertPort;
 import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryExecutor;
 import com.sunwoda.evb.finance.analysis.application.port.ExportFileStoragePort;
 import com.sunwoda.evb.finance.analysis.application.port.ExportCleanupPort;
@@ -66,6 +67,11 @@ class AnalysisWorkerApplicationContextTest {
                 // 本次回归测试：db profile 必须完成计算服务、重试执行器和两个 Worker 的实际接线。
                 assertNotNull(context.getBean(CalculationService.class));
                 assertNotNull(context.getBean(CalculationRetryExecutor.class));
+                // 本次新增回归断言：db profile 必须接入计算重试人工接管告警适配器。
+                assertNotNull(context.getBean(CalculationRetryAlertPort.class));
+                // 本次修复：按 Bean 实例类型校验适配器，避免 Spring 默认 Bean 名称与类全限定名不一致造成误报。
+                assertTrue(context.getBeansOfType(CalculationRetryAlertPort.class).values().stream()
+                        .anyMatch(LoggingCalculationRetryAlert.class::isInstance));
                 assertNotNull(context.getBean(CalculationJobRetryWorker.class));
                 assertNotNull(context.getBean(CalculationRetryScheduledWorker.class));
             }

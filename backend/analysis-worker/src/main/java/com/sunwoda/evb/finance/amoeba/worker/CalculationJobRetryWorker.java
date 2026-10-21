@@ -1,12 +1,15 @@
 package com.sunwoda.evb.finance.amoeba.worker;
 
 import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryExecutor;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryAlertPort;
 import com.sunwoda.evb.finance.analysis.application.service.CalculationRetryApplicationService;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJob;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryCommand;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryDecision;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryAction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,19 +18,26 @@ import java.util.List;
  * 计算作业失败处理 Worker。
  *
  * <p>本次新增：首次执行和到期重试共用同一执行路径；失败先落 FAILED，再由应用服务按策略排队，
- * 人工重试/补偿只委托应用服务，不在 Worker 绕过状态机。</p>
+ * 人工重试/补偿只委托应用服务，不在 Worker 绕过状态机；本次修改补充 MANUAL_REQUIRED 告警接线。</p>
  *
  * <p>本类保持无 Spring 定时注解，触发器可按现有部署方式调用 {@link #runOnce(LocalDateTime, int)}。</p>
  */
 public final class CalculationJobRetryWorker {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CalculationJobRetryWorker.class);
+
     private final CalculationRetryApplicationService retryService;
     private final CalculationRetryExecutor executor;
+    private final CalculationRetryAlertPort alert;
 
     public CalculationJobRetryWorker(CalculationRetryApplicationService retryService,
-                                     CalculationRetryExecutor executor) {
-        if (retryService == null || executor == null) throw new IllegalArgumentException("Worker 依赖不能为空");
+                                     CalculationRetryExecutor executor,
+                                     CalculationRetryAlertPort alert) {
+        if (retryService == null || executor == null || alert == null) {
+            throw new IllegalArgumentException("Worker 依赖不能为空");
+        }
         this.retryService = retryService;
         this.executor = executor;
+        this.alert = alert;
     }
 
     /** 幂等提交入口：相同 request_key 返回原作业。 */
@@ -42,7 +52,12 @@ public final class CalculationJobRetryWorker {
             executor.execute(job.getBatchNo());
             retryService.complete(job.getJobId(), now);
         } catch (RuntimeException failure) {
-            retryService.recordFailure(job.getJobId(), message(failure), now);
+            // 本次修改：先由应用服务完成失败状态持久化，再依据返回决策决定是否告警。
+            CalculationRetryDecision decision = retryService.recordFailure(
+                    job.getJobId(), message(failure), now);
+            if (decision != null && decision.isManualRequired()) {
+                notifyManualRequired(job, decision);
+            }
         }
     }
 
@@ -63,6 +78,18 @@ public final class CalculationJobRetryWorker {
     /** 保留人工补偿入口，补偿不会把 FAILED 作业伪造成 SUCCEEDED。 */
     public CalculationRetryAction manualCompensate(CalculationRetryCommand command) {
         return retryService.manualCompensate(command);
+    }
+
+    /**
+     * 本次修改：告警失败只记录日志，不重新进入失败持久化路径，保证已落库的 MANUAL_REQUIRED 不被覆盖。
+     */
+    private void notifyManualRequired(CalculationJob job, CalculationRetryDecision decision) {
+        try {
+            alert.alert(job, decision);
+        } catch (RuntimeException alertFailure) {
+            LOGGER.error("计算重试 MANUAL_REQUIRED 告警失败: jobId={}, batchNo={}, error={}",
+                    job.getJobId(), job.getBatchNo(), message(alertFailure), alertFailure);
+        }
     }
 
     /** 供调用方观察本次失败后的自动处理结果。 */
