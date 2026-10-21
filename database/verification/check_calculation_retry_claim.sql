@@ -49,13 +49,14 @@ BEGIN
          next_retry_at, last_error)
     VALUES (v_job_id, v_request_key, 'PENDING_RETRY', 1, 1,
             CURRENT_TIMESTAMP, 'V029 claim verification');
+    -- 本次修正：V034 已要求租约凭证非空，校验数据补齐 claim_token，保持与应用领取 SQL 一致。
     INSERT INTO flow.calculation_retry_claim
-        (job_id, worker_id, claimed_until)
-    VALUES (v_job_id, 'V029-WORKER-A', CURRENT_TIMESTAMP + INTERVAL '5 minutes');
+        (job_id, worker_id, claim_token, claimed_until)
+    VALUES (v_job_id, 'V029-WORKER-A', 'V029-TOKEN-A', CURRENT_TIMESTAMP + INTERVAL '5 minutes');
 
     INSERT INTO flow.calculation_retry_claim
-        (job_id, worker_id, claimed_until)
-    VALUES (v_job_id, 'V029-WORKER-B', CURRENT_TIMESTAMP + INTERVAL '5 minutes')
+        (job_id, worker_id, claim_token, claimed_until)
+    VALUES (v_job_id, 'V029-WORKER-B', 'V029-TOKEN-B', CURRENT_TIMESTAMP + INTERVAL '5 minutes')
     ON CONFLICT (job_id) DO NOTHING;
 
     IF (SELECT worker_id FROM flow.calculation_retry_claim WHERE job_id = v_job_id)
