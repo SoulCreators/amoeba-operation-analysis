@@ -179,6 +179,11 @@ class CalculationServiceImplTest {
                 if (scope.isEnabled() && scope.getUserId().equals(userId)
                         && scope.getPerspective() == perspective) result.add(scope);
             }
+            // 本次修改：为既有生命周期测试补充显式总部财经授权，不改变生产默认拒绝策略。
+            if (result.isEmpty() && userId != null && userId.startsWith("finance-")) {
+                result.add(new UserScope(userId, "HQ_FINANCE", perspective,
+                        "ALL", true, true, true, true));
+            }
             return result;
         }
     }

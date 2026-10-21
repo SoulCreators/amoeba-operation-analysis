@@ -16,6 +16,9 @@ import java.util.Set;
 @Service
 public class PermissionServiceImpl implements PermissionService {
     private static final String ADMIN_ROLE = "ADMIN";
+    // 本次新增：HQ_FINANCE 是总部财经的明确语义，FINANCE_ADMIN 作为历史角色编码继续兼容。
+    private static final String HQ_FINANCE_ROLE = "HQ_FINANCE";
+    private static final String LEGACY_HQ_FINANCE_ROLE = "FINANCE_ADMIN";
 
     private final UserScopeRepository repository;
 
@@ -64,6 +67,12 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     @Override
+    public boolean canViewHistory(String userId, AnalysisPerspective perspective) {
+        // 本次新增：总部财经与 ADMIN 均可读取历史；ADMIN 仍只获得读取能力。
+        return perspective != null && (hasAdminRole(userId) || hasFinanceRole(userId, perspective));
+    }
+
+    @Override
     public boolean canViewResult(String userId, AnalysisPerspective perspective,
                                  CalculationResultStatus status) {
         if (status == null) return false;
@@ -77,6 +86,53 @@ public class PermissionServiceImpl implements PermissionService {
     public boolean canPublishAi(String userId, AnalysisPerspective perspective) {
         // 本次修改：ADMIN 的草稿读取权不升级为 AI 发布写权限，仍仅沿用财经角色规则。
         return hasFinanceRole(userId, perspective);
+    }
+
+    @Override
+    public boolean canCalculate(String userId, AnalysisPerspective perspective) {
+        return canPerform(userId, perspective, PermissionAction.CALCULATE);
+    }
+
+    @Override
+    public boolean canConfirm(String userId, AnalysisPerspective perspective) {
+        return canPerform(userId, perspective, PermissionAction.CONFIRM);
+    }
+
+    @Override
+    public boolean canPublish(String userId, AnalysisPerspective perspective) {
+        return canPerform(userId, perspective, PermissionAction.PUBLISH);
+    }
+
+    @Override
+    public boolean canManualRevise(String userId, AnalysisPerspective perspective) {
+        return canPerform(userId, perspective, PermissionAction.MANUAL_REVISION);
+    }
+
+    @Override
+    public boolean canCompensate(String userId, AnalysisPerspective perspective) {
+        return canPerform(userId, perspective, PermissionAction.COMPENSATE);
+    }
+
+    @Override
+    public boolean canPerform(String userId, AnalysisPerspective perspective, PermissionAction action) {
+        if (perspective == null || action == null) return false;
+        switch (action) {
+            case VIEW_DRAFT:
+                return canViewDraft(userId, perspective);
+            case VIEW_HISTORY:
+                return canViewHistory(userId, perspective);
+            case CALCULATE:
+            case CONFIRM:
+            case PUBLISH:
+            case MANUAL_REVISION:
+            case COMPENSATE:
+                // 本次新增：所有新增写动作只授予当前视角下有授权范围的总部财经角色。
+                // 本次新增：ADMIN 即使拥有全量读取范围，也不会命中总部财经写动作分支。
+                return hasHeadquartersFinanceRole(userId, perspective);
+            default:
+                // 本次新增：范围型动作继续由既有 canView*/canExport/canEditConfig 方法判定。
+                return false;
+        }
     }
 
     @Override
@@ -135,10 +191,24 @@ public class PermissionServiceImpl implements PermissionService {
     private boolean hasFinanceRole(String userId, AnalysisPerspective perspective) {
         for (UserScope scope : safeList(userId, perspective)) {
             if (!scope.isEnabled()) continue;
-            String role = scope.getRoleCode().toUpperCase(Locale.ROOT);
+            String role = normalizeRole(scope.getRoleCode());
             if (role.contains("FINANCE")) return true;
         }
         return false;
+    }
+
+    private boolean hasHeadquartersFinanceRole(String userId, AnalysisPerspective perspective) {
+        for (UserScope scope : safeList(userId, perspective)) {
+            if (!scope.isEnabled() || !scope.allows(PermissionAction.VIEW_SCOPE)) continue;
+            String role = normalizeRole(scope.getRoleCode());
+            // 本次新增：只把明确 HQ_FINANCE 和兼容的 FINANCE_ADMIN 识别为总部财经写角色。
+            if (HQ_FINANCE_ROLE.equals(role) || LEGACY_HQ_FINANCE_ROLE.equals(role)) return true;
+        }
+        return false;
+    }
+
+    private String normalizeRole(String roleCode) {
+        return roleCode == null ? "" : roleCode.trim().toUpperCase(Locale.ROOT);
     }
 
     private boolean isEnabledRole(UserScope scope, String roleCode) {

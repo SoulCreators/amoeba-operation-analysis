@@ -26,7 +26,8 @@ public class CalculationController {
     public ApiResult<CalculationResult> calculate(@RequestBody CalculateRequest request,
                                                   Principal principal) {
         String userId = requiredUser(principal);
-        service.calculate(request.getBatchNo());
+        // 本次修改：计算命令沿用认证主体作为可信操作者，避免无操作者入口绕过总部财经权限校验。
+        service.calculate(request.getBatchNo(), userId);
         return ApiResult.ok(service.getForUser(request.getBatchNo(), userId));
     }
 

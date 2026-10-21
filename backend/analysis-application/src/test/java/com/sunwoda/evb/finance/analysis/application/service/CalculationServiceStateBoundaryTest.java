@@ -136,6 +136,13 @@ class CalculationServiceStateBoundaryTest {
         @Override
         public java.util.List<com.sunwoda.evb.finance.analysis.domain.model.UserScope> findByUserAndPerspective(
                 String userId, AnalysisPerspective perspective) {
+            // 本次修改：状态边界测试的 finance-* 操作者显式具备总部财经权限。
+            if (userId != null && userId.startsWith("finance-")) {
+                return java.util.Collections.singletonList(
+                        new com.sunwoda.evb.finance.analysis.domain.model.UserScope(
+                                userId, "HQ_FINANCE", perspective, "ALL",
+                                true, true, true, true));
+            }
             return java.util.Collections.emptyList();
         }
     }

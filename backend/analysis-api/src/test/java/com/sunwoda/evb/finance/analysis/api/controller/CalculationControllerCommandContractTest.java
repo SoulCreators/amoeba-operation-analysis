@@ -41,7 +41,7 @@ class CalculationControllerCommandContractTest {
 
         ApiResult<CalculationResult> actual = controller.calculate(request, principal());
 
-        verify(service).calculate(BATCH_NO);
+        verify(service).calculate(BATCH_NO, TRUSTED_PRINCIPAL);
         verify(service).getForUser(BATCH_NO, TRUSTED_PRINCIPAL);
         assertSuccessfulResult(actual, expected);
     }

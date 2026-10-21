@@ -10,5 +10,13 @@ public enum PermissionAction {
     VIEW_SCOPE,
     VIEW_DETAIL,
     EXPORT,
-    EDIT_CONFIG
+    EDIT_CONFIG,
+    // 本次新增：把总部财经最小切片要求的草稿/历史读取和生命周期写动作显式建模。
+    VIEW_DRAFT,
+    VIEW_HISTORY,
+    CALCULATE,
+    CONFIRM,
+    PUBLISH,
+    MANUAL_REVISION,
+    COMPENSATE
 }

@@ -56,7 +56,7 @@ class CalculationControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.message").value("成功"))
                 .andExpect(jsonPath("$.data.batchNo").value(BATCH_NO));
 
-        verify(service).calculate(BATCH_NO);
+        verify(service).calculate(BATCH_NO, USER_ID);
         verify(service).getForUser(BATCH_NO, USER_ID);
     }
 
@@ -94,7 +94,7 @@ class CalculationControllerMockMvcContractTest {
 
     @Test
     void illegalArgumentFromCalculationServiceKeepsExistingApiResultContract() throws Exception {
-        when(service.calculate(BATCH_NO)).thenThrow(new IllegalArgumentException("批次不存在: BATCH-001"));
+        when(service.calculate(BATCH_NO, USER_ID)).thenThrow(new IllegalArgumentException("批次不存在: BATCH-001"));
 
         mockMvc.perform(calculateRequest(principal(USER_ID)))
                 .andExpect(status().isOk())
@@ -103,7 +103,7 @@ class CalculationControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.code").value("A0001"))
                 .andExpect(jsonPath("$.message").value("批次不存在: BATCH-001"));
 
-        verify(service).calculate(BATCH_NO);
+        verify(service).calculate(BATCH_NO, USER_ID);
         verify(service, never()).getForUser(BATCH_NO, USER_ID);
     }
 

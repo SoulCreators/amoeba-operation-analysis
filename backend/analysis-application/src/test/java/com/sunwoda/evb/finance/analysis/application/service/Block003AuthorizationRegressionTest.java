@@ -10,7 +10,6 @@ import com.sunwoda.evb.finance.analysis.domain.model.UserScope;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationResultRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -28,9 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * BLOCK-003 regression tests for write authorization at the application-service boundary.
  *
- * <p>The tests call {@link CalculationServiceImpl} directly so a controller/operator
- * parameter cannot be mistaken for authorization. The expected failures are intentional
- * until the service layer enforces the existing FINANCE/ADMIN write contract.</p>
+ * <p>本次修改：测试直接调用 {@link CalculationServiceImpl}，锁定总部财经写权限和
+ * ADMIN 只读边界，避免把控制器传入的操作者参数误当成授权本身。</p>
  */
 @Tag("BLOCK-003")
 class Block003AuthorizationRegressionTest {
@@ -61,7 +59,6 @@ class Block003AuthorizationRegressionTest {
                 .getResults().size());
     }
 
-    @Disabled("BLOCK-003 待业务 Owner 确认正式生命周期写权限矩阵后实现")
     @Test
     void nonFinanceCannotConfirmThroughApplicationService() {
         Fixture fixture = fixture(
@@ -75,7 +72,6 @@ class Block003AuthorizationRegressionTest {
         assertEquals(BatchStatus.CALCULATED, fixture.batchRepository.current().getStatus());
     }
 
-    @Disabled("BLOCK-003 待业务 Owner 确认正式生命周期写权限矩阵后实现")
     @Test
     void nonFinanceCannotPublishThroughApplicationService() {
         Fixture fixture = fixture(
@@ -89,29 +85,57 @@ class Block003AuthorizationRegressionTest {
         assertEquals(BatchStatus.CONFIRMED, fixture.batchRepository.current().getStatus());
     }
 
-    @Disabled("BLOCK-003 待业务 Owner 确认正式生命周期写权限矩阵后实现")
     @Test
-    void existingFinanceAndAdminWriteAllowancesRemainAvailable() {
+    void adminReadOnlyRoleCannotConfirmOrPublishThroughApplicationService() {
+        Fixture confirmFixture = fixture(
+                CalculationResultStatus.CALCULATED,
+                BatchStatus.CALCULATED,
+                grant("U-ADMIN", "ADMIN"));
+        Fixture publishFixture = fixture(
+                CalculationResultStatus.CONFIRMED,
+                BatchStatus.CONFIRMED,
+                grant("U-ADMIN", "ADMIN"));
+
+        // 本次新增：锁定 ADMIN 的只读语义不能在应用服务边界升级为确认或发布写权限。
+        assertThrows(IllegalStateException.class,
+                () -> confirmFixture.service().confirm(BATCH_NO, "U-ADMIN"));
+        assertThrows(IllegalStateException.class,
+                () -> publishFixture.service().publish(BATCH_NO, "U-ADMIN"));
+        assertEquals(CalculationResultStatus.CALCULATED,
+                confirmFixture.resultRepository.current().getStatus());
+        assertEquals(CalculationResultStatus.CONFIRMED,
+                publishFixture.resultRepository.current().getStatus());
+    }
+
+    @Test
+    void headquartersFinanceCanConfirmAndPublishAsTheSameActor() {
         Fixture fixture = fixture(
                 CalculationResultStatus.CALCULATED,
                 BatchStatus.CALCULATED,
-                grant("U-FINANCE", "BASE_FINANCE"),
-                grant("U-ADMIN", "ADMIN"));
+                grant("U-HQ-FINANCE", "HQ_FINANCE"));
 
-        CalculationResult confirmed = fixture.service().confirm(BATCH_NO, "U-FINANCE");
+        // 本次修改：同一总部财经操作者可以连续完成确认和发布，不要求双人分离。
+        CalculationResult confirmed = fixture.service().confirm(BATCH_NO, "U-HQ-FINANCE");
         assertEquals(CalculationResultStatus.CONFIRMED, confirmed.getStatus());
-        assertEquals("U-FINANCE", confirmed.getConfirmedBy());
+        assertEquals("U-HQ-FINANCE", confirmed.getConfirmedBy());
 
-        CalculationResult published = fixture.service().publish(BATCH_NO, "U-ADMIN");
+        CalculationResult published = fixture.service().publish(BATCH_NO, "U-HQ-FINANCE");
         assertEquals(CalculationResultStatus.PUBLISHED, published.getStatus());
-        assertEquals("U-ADMIN", published.getPublishedBy());
+        assertEquals("U-HQ-FINANCE", published.getPublishedBy());
     }
 
-    @Disabled("TEST GAP: calculate(String batchNo) has no operator/user identity; do not invent calculate authorization semantics")
     @Test
-    void calculateAuthorizationRequiresAnExplicitOperatorContract() {
-        // Deliberately disabled until CalculationService.calculate carries a trusted actor
-        // and the role required to calculate is confirmed. This is a recorded test gap.
+    void calculateAuthorizationUsesTheExplicitOperatorContract() {
+        Fixture denied = fixture(CalculationResultStatus.CALCULATED, BatchStatus.READY_FOR_CALCULATION,
+                grant("U-OPS", "BASE_OPS"));
+        assertThrows(IllegalStateException.class,
+                () -> denied.service().calculate(BATCH_NO, "U-OPS"));
+
+        Fixture allowed = fixture(CalculationResultStatus.CALCULATED, BatchStatus.READY_FOR_CALCULATION,
+                grant("U-HQ-FINANCE", "HQ_FINANCE"));
+        // 本次新增：带操作者重载是计算的应用层授权入口。
+        assertEquals(CalculationResultStatus.CALCULATED,
+                allowed.service().calculate(BATCH_NO, "U-HQ-FINANCE").getStatus());
     }
 
     private static Fixture fixture(CalculationResultStatus resultStatus,

@@ -6,6 +6,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.UserScope;
 import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationResultRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
@@ -205,7 +206,13 @@ class CalculationServiceCurrentOrchestrationContractTest {
                                             PnlFactProvider facts) {
         UserScopeRepository scopes = mock(UserScopeRepository.class);
         when(scopes.findByUserAndPerspective(any(String.class), any(AnalysisPerspective.class)))
-                .thenReturn(Collections.emptyList());
+                .thenAnswer(invocation -> {
+                    // 本次修改：为生命周期编排测试提供显式总部财经授权，避免授权检查遮蔽原有时序断言。
+                    String userId = invocation.getArgument(0);
+                    AnalysisPerspective perspective = invocation.getArgument(1);
+                    return Collections.singletonList(new UserScope(userId, "HQ_FINANCE", perspective,
+                            "ALL", true, true, true, true));
+                });
         return new CalculationServiceImpl(batches, facts, scopes, results);
     }
 

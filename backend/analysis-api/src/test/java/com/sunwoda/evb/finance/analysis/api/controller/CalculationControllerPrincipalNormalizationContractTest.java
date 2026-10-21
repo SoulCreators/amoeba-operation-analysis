@@ -50,7 +50,7 @@ class CalculationControllerPrincipalNormalizationContractTest {
         controller.confirm(lifecycleRequest, principal("  " + USER_ID + "  "));
         controller.publish(lifecycleRequest, principal("  " + USER_ID + "  "));
 
-        verify(service).calculate(BATCH_NO);
+        verify(service).calculate(BATCH_NO, USER_ID);
         verify(service).getForUser(BATCH_NO, USER_ID);
         verify(service).confirm(BATCH_NO, USER_ID);
         verify(service).publish(BATCH_NO, USER_ID);

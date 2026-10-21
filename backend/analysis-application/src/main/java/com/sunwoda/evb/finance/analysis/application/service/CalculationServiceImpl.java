@@ -57,6 +57,25 @@ public class CalculationServiceImpl implements CalculationService {
 
     @Override
     public synchronized CalculationResult calculate(String batchNo) {
+        // 本次修改：保留无操作者入口供内部任务兼容；外部应用调用应使用带 operator 的重载。
+        return calculateInternal(batchNo);
+    }
+
+    @Override
+    public synchronized CalculationResult calculate(String batchNo, String operator) {
+        if (operator == null || operator.trim().isEmpty()) {
+            throw new IllegalArgumentException("计算人不能为空");
+        }
+        AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
+        // 本次新增：计算动作必须由总部财经角色执行，ADMIN 的只读权限不在此处生效。
+        if (!permissionService.canCalculate(operator.trim(), batch.getPerspective())) {
+            throw new IllegalStateException("当前用户无结果计算权限");
+        }
+        return calculateInternal(batchNo);
+    }
+
+    private CalculationResult calculateInternal(String batchNo) {
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
         if (batch.getStatus() == BatchStatus.CONFIRMED || batch.getStatus() == BatchStatus.PUBLISHED) {
@@ -156,6 +175,10 @@ public class CalculationServiceImpl implements CalculationService {
             throw new IllegalArgumentException("确认人不能为空");
         }
         CalculationResult current = get(batchNo);
+        // 本次新增：确认人与发布人不要求不同；只校验当前操作者是否具备确认权限。
+        if (!permissionService.canConfirm(operator.trim(), current.getPerspective())) {
+            throw new IllegalStateException("当前用户无结果确认权限");
+        }
         CalculationResult confirmed = current.confirm(operator.trim());
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
@@ -171,6 +194,10 @@ public class CalculationServiceImpl implements CalculationService {
             throw new IllegalArgumentException("发布人不能为空");
         }
         CalculationResult current = get(batchNo);
+        // 本次新增：发布权限独立校验，ADMIN 不因全量读取而获得发布写权限。
+        if (!permissionService.canPublish(operator.trim(), current.getPerspective())) {
+            throw new IllegalStateException("当前用户无结果发布权限");
+        }
         pvmReconciliationValidator.validate(current);
         CalculationResult published = current.publish(operator.trim());
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
