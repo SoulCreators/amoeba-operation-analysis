@@ -60,10 +60,88 @@ class ExportServiceImplTest {
         ExportService service = new ExportServiceImpl(policyFor("U001"), port);
 
         service.status(" U001 ", " EXP-001 ");
+        // 本次修改：下载先读取归属和生命周期，再把当前认证身份传给文件端口。
+        port.statusJob = succeededJob();
+        port.downloadSnapshot = authorizedSnapshot();
         service.download(" U001 ", " EXP-001 ");
 
         assertEquals("U001", port.lastUserId);
         assertEquals("EXP-001", port.lastJobId);
+    }
+
+    @Test
+    void downloadRechecksCurrentExportScopeBeforeOpeningFile() {
+        RecordingTaskPort port = new RecordingTaskPort();
+        ExportService service = new ExportServiceImpl(policyFor("OTHER"), port);
+        port.statusJob = succeededJob();
+        port.downloadSnapshot = authorizedSnapshot();
+
+        Optional<ExportFile> result = service.download("U001", "EXP-001");
+
+        // 本次修改：当前用户已失去导出范围时，下载返回统一空结果且不得访问文件端口。
+        assertFalse(result.isPresent());
+        assertFalse(port.downloadCalled);
+    }
+
+    @Test
+    void downloadRechecksCurrentDetailScopeBeforeOpeningFile() {
+        RecordingTaskPort port = new RecordingTaskPort();
+        ExportService service = new ExportServiceImpl(policyFor("U001"), port);
+        port.statusJob = succeededJob();
+        port.downloadSnapshot = snapshotWithDetailScope();
+
+        Optional<ExportFile> result = service.download("U001", "EXP-001");
+
+        // 本次修改：当前仅保留汇总导出、已失去明细权限时，同样禁止读取含明细文件。
+        assertFalse(result.isPresent());
+        assertFalse(port.downloadCalled);
+    }
+
+    @Test
+    void downloadRequiresOwnedSucceededAndUnexpiredTask() {
+        RecordingTaskPort port = new RecordingTaskPort();
+        ExportService service = new ExportServiceImpl(policyFor("U001"), port);
+        port.statusJob = ExportJob.queued("EXP-001", "OTHER", "REQ-001",
+                "B-001-R3.xlsx", ExportFormat.XLSX.getContentType(), LocalDateTime.now());
+        port.downloadSnapshot = authorizedSnapshot();
+
+        Optional<ExportFile> result = service.download("U001", "EXP-001");
+
+        // 本次修改：任务归属不匹配时在任何授权快照和文件访问前失败关闭。
+        assertFalse(result.isPresent());
+        assertFalse(port.downloadCalled);
+    }
+
+    @Test
+    void downloadRejectsTaskThatIsNotSucceeded() {
+        RecordingTaskPort port = new RecordingTaskPort();
+        ExportService service = new ExportServiceImpl(policyFor("U001"), port);
+        port.statusJob = ExportJob.queued("EXP-001", "U001", "REQ-001",
+                "B-001-R3.xlsx", ExportFormat.XLSX.getContentType(), LocalDateTime.now());
+        port.downloadSnapshot = authorizedSnapshot();
+
+        Optional<ExportFile> result = service.download("U001", "EXP-001");
+
+        // 本次修改：任务尚未成功完成时，不允许绕过状态门禁读取文件。
+        assertFalse(result.isPresent());
+        assertFalse(port.downloadCalled);
+    }
+
+    @Test
+    void authorizedCompletedDownloadRemainsAvailable() {
+        RecordingTaskPort port = new RecordingTaskPort();
+        ExportService service = new ExportServiceImpl(policyFor("U001"), port);
+        port.statusJob = succeededJob();
+        port.downloadSnapshot = authorizedSnapshot();
+        port.downloadResult = Optional.of(new ExportFile("result.xlsx",
+                ExportFormat.XLSX.getContentType(), new byte[] {1, 2}));
+
+        Optional<ExportFile> result = service.download("U001", "EXP-001");
+
+        // 本次修改：合法的本人、已完成且仍有范围授权的下载行为保持不变。
+        assertTrue(result.isPresent());
+        assertTrue(port.downloadCalled);
+        assertEquals("result.xlsx", result.get().getFileName());
     }
 
     @Test
@@ -130,6 +208,25 @@ class ExportServiceImplTest {
                 ExportFormat.XLSX, CalculationResultStatus.PUBLISHED);
     }
 
+    private ExportJob succeededJob() {
+        ExportJob queued = ExportJob.queued("EXP-001", "U001", "REQ-001",
+                "B-001-R3.xlsx", ExportFormat.XLSX.getContentType(), LocalDateTime.now());
+        return queued.succeeded("B-001-R3.xlsx", ExportFormat.XLSX.getContentType(),
+                LocalDateTime.now());
+    }
+
+    private ExportTaskSnapshot authorizedSnapshot() {
+        return new ExportTaskSnapshot("B-001", "R3", AnalysisPerspective.BASE,
+                CalculationResultStatus.PUBLISHED, ExportFormat.XLSX,
+                Collections.singleton("NANCHANG"), Collections.<String>emptySet());
+    }
+
+    private ExportTaskSnapshot snapshotWithDetailScope() {
+        return new ExportTaskSnapshot("B-001", "R3", AnalysisPerspective.BASE,
+                CalculationResultStatus.PUBLISHED, ExportFormat.XLSX,
+                Collections.singleton("NANCHANG"), Collections.singleton("NANCHANG"));
+    }
+
     private static final class RecordingTaskPort implements ExportTaskPort {
         private boolean created;
         private String createdUserId;
@@ -139,6 +236,10 @@ class ExportServiceImplTest {
         private ExportTaskSnapshot createdSnapshot;
         private String lastUserId;
         private String lastJobId;
+        private ExportJob statusJob;
+        private ExportTaskSnapshot downloadSnapshot;
+        private boolean downloadCalled;
+        private Optional<ExportFile> downloadResult = Optional.empty();
 
         @Override
         public ExportJob create(String userId, String requestKey,
@@ -169,14 +270,21 @@ class ExportServiceImplTest {
         public Optional<ExportJob> status(String jobId, String userId) {
             lastJobId = jobId;
             lastUserId = userId;
-            return Optional.empty();
+            return statusJob == null ? Optional.<ExportJob>empty() : Optional.of(statusJob);
+        }
+
+        @Override
+        public Optional<ExportTaskSnapshot> snapshot(String jobId) {
+            return downloadSnapshot == null
+                    ? Optional.<ExportTaskSnapshot>empty() : Optional.of(downloadSnapshot);
         }
 
         @Override
         public Optional<ExportFile> download(String jobId, String userId) {
             lastJobId = jobId;
             lastUserId = userId;
-            return Optional.empty();
+            downloadCalled = true;
+            return downloadResult;
         }
 
         @Override public void markRunning(String jobId) { }
