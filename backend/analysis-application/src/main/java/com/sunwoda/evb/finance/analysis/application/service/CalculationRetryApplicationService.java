@@ -8,6 +8,9 @@ import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryDecision;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryPolicy;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
+import com.sunwoda.evb.finance.analysis.domain.model.PermissionAction;
+import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationJobRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryActionRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryRepository;
@@ -18,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 计算失败处理应用服务。
@@ -27,20 +31,65 @@ import java.util.Optional;
  */
 @Service
 public class CalculationRetryApplicationService {
+    /** 本次新增：由运行时显式提供作业涉及的业务范围，人工动作不得自行猜测范围。 */
+    @FunctionalInterface
+    public interface ScopeResolver {
+        Set<String> resolve(String batchNo);
+    }
+
     private final CalculationJobRepository jobRepository;
     private final CalculationRetryRepository retryRepository;
     private final CalculationRetryActionRepository actionRepository;
+    private final AnalysisBatchRepository batchRepository;
+    private final PermissionService permissionService;
+    private final ScopeResolver scopeResolver;
+    private final boolean manualAuthorizationConfigured;
 
+    /**
+     * 兼容无人工动作授权上下文的单元测试/非生产自动编排构造器。
+     *
+     * <p>本次修复：保留通用应用上下文的失败关闭 Bean；Worker profile 通过独立的主 Bean
+     * 注入完整授权上下文，避免 API 启动依赖 Worker 专属 ScopeResolver。</p>
+     */
     @Autowired
     public CalculationRetryApplicationService(CalculationJobRepository jobRepository,
                                               CalculationRetryRepository retryRepository,
                                               CalculationRetryActionRepository actionRepository) {
+        this(jobRepository, retryRepository, actionRepository, null, null, null, false);
+    }
+
+    /** 本次新增：人工入口必须同时注入批次视角、权限服务和 scope 解析器。 */
+    public CalculationRetryApplicationService(CalculationJobRepository jobRepository,
+                                              CalculationRetryRepository retryRepository,
+                                              CalculationRetryActionRepository actionRepository,
+                                              AnalysisBatchRepository batchRepository,
+                                              PermissionService permissionService,
+                                              ScopeResolver scopeResolver) {
+        this(jobRepository, retryRepository, actionRepository, batchRepository,
+                permissionService, scopeResolver, true);
+    }
+
+    private CalculationRetryApplicationService(CalculationJobRepository jobRepository,
+                                               CalculationRetryRepository retryRepository,
+                                               CalculationRetryActionRepository actionRepository,
+                                               AnalysisBatchRepository batchRepository,
+                                               PermissionService permissionService,
+                                               ScopeResolver scopeResolver,
+                                               boolean manualAuthorizationConfigured) {
         if (jobRepository == null || retryRepository == null || actionRepository == null) {
             throw new IllegalArgumentException("失败处理仓储不能为空");
+        }
+        if (manualAuthorizationConfigured && (batchRepository == null || permissionService == null
+                || scopeResolver == null)) {
+            throw new IllegalArgumentException("人工动作授权上下文不能为空");
         }
         this.jobRepository = jobRepository;
         this.retryRepository = retryRepository;
         this.actionRepository = actionRepository;
+        this.batchRepository = batchRepository;
+        this.permissionService = permissionService;
+        this.scopeResolver = scopeResolver;
+        this.manualAuthorizationConfigured = manualAuthorizationConfigured;
     }
 
     /**
@@ -138,7 +187,16 @@ public class CalculationRetryApplicationService {
      */
     @Transactional
     public CalculationRetryAction manualRetry(CalculationRetryCommand command) {
-        validateManual(command, CalculationRetryCommand.Type.MANUAL_RETRY);
+        // 本次修改：旧入口没有认证操作者，明确失败关闭，禁止把命令字段当成认证身份。
+        return manualRetry(command, null);
+    }
+
+    /** 本次新增：人工重试必须由认证上下文传入操作者，并与命令操作者一致。 */
+    @Transactional
+    public CalculationRetryAction manualRetry(CalculationRetryCommand command,
+                                              String authenticatedOperator) {
+        validateManual(command, CalculationRetryCommand.Type.MANUAL_RETRY,
+                authenticatedOperator, PermissionAction.CALCULATE);
         CalculationJob job = validateManualJob(command);
         CalculationRetryState state = requiredState(command.getJobId());
         state.claim(command.getOccurredAt());
@@ -154,7 +212,16 @@ public class CalculationRetryApplicationService {
     /** 人工补偿入口：只关闭失败处理状态并保留 FAILED 作业，不伪造成功结果。 */
     @Transactional
     public CalculationRetryAction manualCompensate(CalculationRetryCommand command) {
-        validateManual(command, CalculationRetryCommand.Type.MANUAL_COMPENSATE);
+        // 本次修改：旧入口没有认证操作者，明确失败关闭，禁止把命令字段当成认证身份。
+        return manualCompensate(command, null);
+    }
+
+    /** 本次新增：人工补偿必须由认证上下文传入操作者，并校验补偿动作的授权范围。 */
+    @Transactional
+    public CalculationRetryAction manualCompensate(CalculationRetryCommand command,
+                                                   String authenticatedOperator) {
+        validateManual(command, CalculationRetryCommand.Type.MANUAL_COMPENSATE,
+                authenticatedOperator, PermissionAction.COMPENSATE);
         CalculationJob job = validateManualJob(command);
         CalculationRetryState state = requiredState(command.getJobId());
         state.compensate(command.getOccurredAt());
@@ -179,9 +246,20 @@ public class CalculationRetryApplicationService {
         return job;
     }
 
-    private void validateManual(CalculationRetryCommand command, CalculationRetryCommand.Type expected) {
+    private void validateManual(CalculationRetryCommand command, CalculationRetryCommand.Type expected,
+                                String authenticatedOperator, PermissionAction action) {
         if (command == null || command.getType() != expected) {
             throw new IllegalArgumentException("人工命令类型不正确");
+        }
+        if (!manualAuthorizationConfigured) {
+            throw new IllegalStateException("人工动作必须通过带认证操作者和授权上下文的入口");
+        }
+        if (authenticatedOperator == null || authenticatedOperator.trim().isEmpty()) {
+            throw new IllegalArgumentException("认证操作者不能为空");
+        }
+        String normalizedOperator = authenticatedOperator.trim();
+        if (!normalizedOperator.equals(command.getOperator())) {
+            throw new IllegalStateException("命令操作者与认证操作者不一致");
         }
         CalculationRetryState state = requiredState(command.getJobId());
         if (state.getStatus() != CalculationRetryStatus.MANUAL_REQUIRED) {
@@ -190,6 +268,17 @@ public class CalculationRetryApplicationService {
         if (state.getLastFailedAttemptNo() == null
                 || state.getLastFailedAttemptNo().intValue() != command.getOriginalAttemptNo()) {
             throw new IllegalArgumentException("人工命令原尝试号与失败记录不一致");
+        }
+        CalculationJob job = requiredJob(command.getJobId());
+        AnalysisBatch batch = batchRepository.findByBatchNo(job.getBatchNo())
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + job.getBatchNo()));
+        Set<String> scopeCodes = scopeResolver.resolve(job.getBatchNo());
+        if (scopeCodes == null || scopeCodes.isEmpty()) {
+            throw new IllegalStateException("作业缺少可审计的授权范围");
+        }
+        // 本次修复：人工动作必须把真实批次涉及的全部 scope 交给权限服务逐项校验，不能只做视角级放行。
+        if (!permissionService.canPerform(normalizedOperator, batch.getPerspective(), action, scopeCodes)) {
+            throw new IllegalStateException("当前用户无人工处理授权范围");
         }
     }
 

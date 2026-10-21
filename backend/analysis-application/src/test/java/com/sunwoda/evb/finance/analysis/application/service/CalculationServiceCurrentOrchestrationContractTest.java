@@ -51,7 +51,7 @@ class CalculationServiceCurrentOrchestrationContractTest {
         }).when(batches).save(batch);
 
         CalculationServiceImpl service = service(batches, results, facts -> Collections.emptyList());
-        service.calculate(batch.getBatchNo());
+        service.calculate(batch.getBatchNo(), "finance-calc");
 
         assertEquals(java.util.Arrays.asList(BatchStatus.CALCULATING, BatchStatus.CALCULATED), savedStatuses);
         InOrder order = inOrder(batches, results);
@@ -76,7 +76,7 @@ class CalculationServiceCurrentOrchestrationContractTest {
         CalculationServiceImpl service = service(batches, results,
                 facts -> { throw new IllegalStateException("事实读取失败"); });
 
-        assertThrows(IllegalStateException.class, () -> service.calculate(batch.getBatchNo()));
+        assertThrows(IllegalStateException.class, () -> service.calculate(batch.getBatchNo(), "finance-calc"));
 
         assertEquals(java.util.Arrays.asList(BatchStatus.CALCULATING, BatchStatus.FAILED), savedStatuses);
         verify(results, never()).save(any(CalculationResult.class));
@@ -100,7 +100,7 @@ class CalculationServiceCurrentOrchestrationContractTest {
         CalculationServiceImpl service = service(batches, results, facts -> Collections.emptyList());
 
         IllegalStateException actual = assertThrows(IllegalStateException.class,
-                () -> service.calculate(batch.getBatchNo()));
+                () -> service.calculate(batch.getBatchNo(), "finance-calc"));
 
         assertEquals(original, actual);
         assertEquals(java.util.Arrays.asList(BatchStatus.CALCULATING, BatchStatus.FAILED), savedStatuses);

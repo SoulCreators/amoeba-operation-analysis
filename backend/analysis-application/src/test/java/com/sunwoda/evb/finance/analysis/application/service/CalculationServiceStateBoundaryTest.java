@@ -32,7 +32,7 @@ class CalculationServiceStateBoundaryTest {
                     unusedProvider(), new EmptyUserScopeRepository());
 
             IllegalStateException error = assertThrows(IllegalStateException.class,
-                    () -> service.calculate("CALC-STATE-001-" + frozenStatus));
+                    () -> service.calculate("CALC-STATE-001-" + frozenStatus, "finance-001"));
 
             assertEquals("已确认或已发布批次不可直接重算", error.getMessage());
             assertEquals(frozenStatus, repository.findByBatchNo("CALC-STATE-001-" + frozenStatus).get().getStatus());
@@ -47,7 +47,7 @@ class CalculationServiceStateBoundaryTest {
                 batch -> { throw new IllegalStateException("事实读取失败"); }, new EmptyUserScopeRepository());
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> service.calculate("CALC-STATE-001-FAILED"));
+                () -> service.calculate("CALC-STATE-001-FAILED", "finance-001"));
 
         assertEquals("事实读取失败", error.getMessage());
         assertEquals(BatchStatus.FAILED,
@@ -60,7 +60,7 @@ class CalculationServiceStateBoundaryTest {
     void confirmingAnAlreadyConfirmedResultIsRejectedWithoutChangingState() {
         CalculationServiceImpl service = serviceWithReadyBatch("CALC-STATE-001-CONFIRM");
 
-        service.calculate("CALC-STATE-001-CONFIRM");
+        service.calculate("CALC-STATE-001-CONFIRM", "finance-001");
         CalculationResult first = service.confirm("CALC-STATE-001-CONFIRM", "finance-001");
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
@@ -76,7 +76,7 @@ class CalculationServiceStateBoundaryTest {
     void publishingAnAlreadyPublishedResultIsRejectedWithoutChangingState() {
         CalculationServiceImpl service = serviceWithReadyBatch("CALC-STATE-001-PUBLISH");
 
-        service.calculate("CALC-STATE-001-PUBLISH");
+        service.calculate("CALC-STATE-001-PUBLISH", "finance-001");
         service.confirm("CALC-STATE-001-PUBLISH", "finance-001");
         CalculationResult first = service.publish("CALC-STATE-001-PUBLISH", "finance-002");
 

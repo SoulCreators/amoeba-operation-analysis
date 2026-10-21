@@ -136,6 +136,36 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     @Override
+    public boolean canPerform(String userId, AnalysisPerspective perspective,
+                              PermissionAction action, String scopeCode) {
+        if (perspective == null || action == null
+                || scopeCode == null || scopeCode.trim().isEmpty()) return false;
+        switch (action) {
+            case VIEW_SCOPE:
+                return canViewScope(userId, perspective, scopeCode);
+            case VIEW_DETAIL:
+                return canViewDetail(userId, perspective, scopeCode);
+            case EXPORT:
+                return canExport(userId, perspective, scopeCode);
+            case EDIT_CONFIG:
+                return canEditConfig(userId, perspective, scopeCode);
+            case VIEW_DRAFT:
+            case VIEW_HISTORY:
+                // 本次新增：草稿与历史的 scope 入口只负责读取，具体明细仍由读取范围裁剪。
+                return canPerform(userId, perspective, action);
+            case CALCULATE:
+            case CONFIRM:
+            case PUBLISH:
+            case MANUAL_REVISION:
+            case COMPENSATE:
+                // 本次新增：HQ_FINANCE 的最大业务权限仍受当前动作涉及的实际 scope 限制。
+                return hasHeadquartersFinanceGrant(userId, perspective, scopeCode);
+            default:
+                return false;
+        }
+    }
+
+    @Override
     public Set<String> viewableScopes(String userId, AnalysisPerspective perspective) {
         return scopesFor(userId, perspective, PermissionAction.VIEW_SCOPE);
     }
@@ -202,6 +232,19 @@ public class PermissionServiceImpl implements PermissionService {
             if (!scope.isEnabled() || !scope.allows(PermissionAction.VIEW_SCOPE)) continue;
             String role = normalizeRole(scope.getRoleCode());
             // 本次新增：只把明确 HQ_FINANCE 和兼容的 FINANCE_ADMIN 识别为总部财经写角色。
+            if (HQ_FINANCE_ROLE.equals(role) || LEGACY_HQ_FINANCE_ROLE.equals(role)) return true;
+        }
+        return false;
+    }
+
+    private boolean hasHeadquartersFinanceGrant(String userId, AnalysisPerspective perspective,
+                                                String scopeCode) {
+        String normalizedScope = normalizeScope(scopeCode);
+        for (UserScope scope : safeList(userId, perspective)) {
+            if (!scope.isEnabled() || !scope.allows(PermissionAction.VIEW_SCOPE)
+                    || !scope.matchesScope(normalizedScope)) continue;
+            String role = normalizeRole(scope.getRoleCode());
+            // 本次新增：只有总部财经角色且授权行覆盖该 scope 才能执行生命周期写动作。
             if (HQ_FINANCE_ROLE.equals(role) || LEGACY_HQ_FINANCE_ROLE.equals(role)) return true;
         }
         return false;

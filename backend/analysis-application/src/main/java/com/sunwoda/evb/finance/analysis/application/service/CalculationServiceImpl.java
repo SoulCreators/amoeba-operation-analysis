@@ -56,26 +56,14 @@ public class CalculationServiceImpl implements CalculationService {
     }
 
     @Override
-    public synchronized CalculationResult calculate(String batchNo) {
-        // 本次修改：保留无操作者入口供内部任务兼容；外部应用调用应使用带 operator 的重载。
-        return calculateInternal(batchNo);
-    }
-
-    @Override
     public synchronized CalculationResult calculate(String batchNo, String operator) {
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("计算人不能为空");
         }
-        AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
-                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
-        // 本次新增：计算动作必须由总部财经角色执行，ADMIN 的只读权限不在此处生效。
-        if (!permissionService.canCalculate(operator.trim(), batch.getPerspective())) {
-            throw new IllegalStateException("当前用户无结果计算权限");
-        }
-        return calculateInternal(batchNo);
+        return calculateInternal(batchNo, operator.trim());
     }
 
-    private CalculationResult calculateInternal(String batchNo) {
+    private CalculationResult calculateInternal(String batchNo, String operator) {
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
         if (batch.getStatus() == BatchStatus.CONFIRMED || batch.getStatus() == BatchStatus.PUBLISHED) {
@@ -85,11 +73,29 @@ public class CalculationServiceImpl implements CalculationService {
                 && batch.getStatus() != BatchStatus.CALCULATED) {
             throw new IllegalStateException("批次尚未完成校验，不能开始计算: " + batch.getStatus());
         }
+        List<PnlFact> facts;
+        try {
+            // 本次修改：先读取批次涉及的 scope，再在任何状态写入前完成范围授权校验。
+            facts = factProvider.load(batch);
+        } catch (RuntimeException ex) {
+            // 本次修改：保留事实读取失败的 FAILED 状态轨迹，同时不把授权拒绝误记为执行失败。
+            markCalculationFailed(batch);
+            throw ex;
+        }
+        java.util.Set<String> involvedScopes = new java.util.LinkedHashSet<String>();
+        for (PnlFact fact : facts) {
+            if (fact != null && fact.getScopeCode() != null && !fact.getScopeCode().trim().isEmpty()) {
+                involvedScopes.add(fact.getScopeCode().trim());
+            }
+        }
+        // 本次新增：总部财经最大权限仍只覆盖其授权 scope，ADMIN 只读身份不会命中计算写权限。
+        if (!permissionService.canCalculate(operator, batch.getPerspective(), involvedScopes)) {
+            throw new IllegalStateException("当前用户无批次涉及范围的计算权限");
+        }
         batch.moveTo(BatchStatus.CALCULATING);
         batchRepository.save(batch);
         try {
             Map<String, MutablePnl> grouped = new LinkedHashMap<String, MutablePnl>();
-            List<PnlFact> facts = factProvider.load(batch);
             for (PnlFact fact : facts) {
                 MutablePnl pnl = grouped.get(fact.getScopeCode());
                 if (pnl == null) {
@@ -114,6 +120,14 @@ public class CalculationServiceImpl implements CalculationService {
             batchRepository.save(batch);
             throw ex;
         }
+    }
+
+    private void markCalculationFailed(AnalysisBatch batch) {
+        // 本次新增：READY/CALCULATED 不能直接转 FAILED，先留下 CALCULATING 再转 FAILED。
+        batch.moveTo(BatchStatus.CALCULATING);
+        batchRepository.save(batch);
+        batch.moveTo(BatchStatus.FAILED);
+        batchRepository.save(batch);
     }
 
     @Override
@@ -176,7 +190,7 @@ public class CalculationServiceImpl implements CalculationService {
         }
         CalculationResult current = get(batchNo);
         // 本次新增：确认人与发布人不要求不同；只校验当前操作者是否具备确认权限。
-        if (!permissionService.canConfirm(operator.trim(), current.getPerspective())) {
+        if (!permissionService.canConfirm(operator.trim(), current.getPerspective(), resultScopes(current))) {
             throw new IllegalStateException("当前用户无结果确认权限");
         }
         CalculationResult confirmed = current.confirm(operator.trim());
@@ -195,7 +209,7 @@ public class CalculationServiceImpl implements CalculationService {
         }
         CalculationResult current = get(batchNo);
         // 本次新增：发布权限独立校验，ADMIN 不因全量读取而获得发布写权限。
-        if (!permissionService.canPublish(operator.trim(), current.getPerspective())) {
+        if (!permissionService.canPublish(operator.trim(), current.getPerspective(), resultScopes(current))) {
             throw new IllegalStateException("当前用户无结果发布权限");
         }
         pvmReconciliationValidator.validate(current);
@@ -211,6 +225,18 @@ public class CalculationServiceImpl implements CalculationService {
     private void saveResult(CalculationResult result) {
         if (resultRepository == null) results.put(result.getBatchNo(), result);
         else resultRepository.save(result);
+    }
+
+    private Set<String> resultScopes(CalculationResult result) {
+        Set<String> scopes = new java.util.LinkedHashSet<String>();
+        if (result == null || result.getResults() == null) return scopes;
+        for (PnlResult pnlResult : result.getResults()) {
+            if (pnlResult != null && pnlResult.getScopeCode() != null
+                    && !pnlResult.getScopeCode().trim().isEmpty()) {
+                scopes.add(pnlResult.getScopeCode().trim());
+            }
+        }
+        return scopes;
     }
 
     private static class MutablePnl {

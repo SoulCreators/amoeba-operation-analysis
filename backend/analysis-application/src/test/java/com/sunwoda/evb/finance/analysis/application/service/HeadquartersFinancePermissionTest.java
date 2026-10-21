@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -57,6 +59,20 @@ class HeadquartersFinancePermissionTest {
         assertTrue(service.canPublish("U-LEGACY", AnalysisPerspective.BASE));
         assertTrue(service.canManualRevise("U-LEGACY", AnalysisPerspective.BASE));
         assertTrue(service.canCompensate("U-LEGACY", AnalysisPerspective.BASE));
+    }
+
+    @Test
+    void headquartersFinanceWriteActionsMustCoverEveryRequestedScope() {
+        PermissionService service = service(new UserScope(
+                "U-HQ-SCOPE", "HQ_FINANCE", AnalysisPerspective.BASE,
+                "NANCHANG", true, true, false, true));
+
+        assertTrue(service.canCalculate("U-HQ-SCOPE", AnalysisPerspective.BASE, "NANCHANG"));
+        assertFalse(service.canCalculate("U-HQ-SCOPE", AnalysisPerspective.BASE, "YICHANG"));
+        assertTrue(service.canCalculate("U-HQ-SCOPE", AnalysisPerspective.BASE,
+                new LinkedHashSet<String>(Collections.singletonList("NANCHANG"))));
+        assertFalse(service.canCalculate("U-HQ-SCOPE", AnalysisPerspective.BASE,
+                new LinkedHashSet<String>(Arrays.asList("NANCHANG", "YICHANG"))));
     }
 
     @Test

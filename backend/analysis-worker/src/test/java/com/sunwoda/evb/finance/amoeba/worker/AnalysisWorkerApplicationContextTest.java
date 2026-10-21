@@ -1,8 +1,10 @@
 package com.sunwoda.evb.finance.amoeba.worker;
 
 import com.sunwoda.evb.finance.analysis.application.port.AuditEventPort;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryExecutor;
 import com.sunwoda.evb.finance.analysis.application.port.ExportFileStoragePort;
 import com.sunwoda.evb.finance.analysis.application.port.ExportCleanupPort;
+import com.sunwoda.evb.finance.analysis.application.service.CalculationService;
 import com.sunwoda.evb.finance.analysis.infrastructure.filesystem.FileSystemExportFileStorageAdapter;
 import com.sunwoda.evb.finance.analysis.infrastructure.jdbc.JdbcAuditEventRepository;
 import org.junit.jupiter.api.Test;
@@ -61,6 +63,11 @@ class AnalysisWorkerApplicationContextTest {
                 assertTrue(context.getBeansOfType(ExportFileStoragePort.class).size() > 0);
                 assertNotNull(context.getBean(ExportCleanupWorker.class));
                 assertNotNull(context.getBean(ExportFileStoragePort.class));
+                // 本次回归测试：db profile 必须完成计算服务、重试执行器和两个 Worker 的实际接线。
+                assertNotNull(context.getBean(CalculationService.class));
+                assertNotNull(context.getBean(CalculationRetryExecutor.class));
+                assertNotNull(context.getBean(CalculationJobRetryWorker.class));
+                assertNotNull(context.getBean(CalculationRetryScheduledWorker.class));
             }
         } finally {
             System.clearProperty("AMOEBA_DB_URL");

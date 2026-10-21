@@ -32,7 +32,7 @@ class CalculationServiceImplTest {
                 new PnlFact("NANCHANG", decimal(100), decimal(1000), decimal(700),
                         decimal(20), decimal(50), decimal(10), decimal(5), decimal(0), decimal(2)));
 
-        CalculationResult result = new CalculationServiceImpl(repository, provider, new FakeUserScopeRepository()).calculate("B-003");
+        CalculationResult result = new CalculationServiceImpl(repository, provider, new FakeUserScopeRepository()).calculate("B-003", "finance-001");
 
         assertEquals(1, result.getResults().size());
         assertEquals(decimal(300), result.getResults().get(0).getLines().get("GROSS_PROFIT"));
@@ -53,7 +53,7 @@ class CalculationServiceImplTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO));
 
-        CalculationResult result = new CalculationServiceImpl(repository, provider, new FakeUserScopeRepository()).calculate("B-004");
+        CalculationResult result = new CalculationServiceImpl(repository, provider, new FakeUserScopeRepository()).calculate("B-004", "finance-001");
 
         Map<String, BigDecimal> lines = result.getResults().get(0).getLines();
         assertEquals(decimal(1000), lines.get("BUDGET_REVENUE"));
@@ -73,7 +73,7 @@ class CalculationServiceImplTest {
                         BigDecimal.ZERO, BigDecimal.ZERO));
         CalculationServiceImpl service = new CalculationServiceImpl(repository, provider, new FakeUserScopeRepository());
 
-        service.calculate("B-005");
+        service.calculate("B-005", "finance-001");
         CalculationResult confirmed = service.confirm("B-005", "finance-001");
         assertEquals(CalculationResultStatus.CONFIRMED, confirmed.getStatus());
         assertEquals("finance-001", confirmed.getConfirmedBy());
@@ -83,6 +83,30 @@ class CalculationServiceImplTest {
         assertEquals(CalculationResultStatus.PUBLISHED, published.getStatus());
         assertEquals("finance-002", published.getPublishedBy());
         assertEquals(BatchStatus.PUBLISHED, repository.findByBatchNo("B-005").get().getStatus());
+    }
+
+    @Test
+    void sameAuthorizedHeadquartersFinanceUserMayConfirmAndPublishWithinScope() {
+        FakeBatchRepository repository = new FakeBatchRepository();
+        repository.save(new AnalysisBatch(1L, "B-005-SAME-OPERATOR", "2026-09", AnalysisPerspective.BASE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
+        PnlFactProvider provider = batch -> Arrays.asList(
+                new PnlFact("NANCHANG", decimal(1), decimal(10), decimal(7),
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO));
+        FakeUserScopeRepository scopes = new FakeUserScopeRepository();
+        scopes.save(new UserScope("U-HQ-SAME", "HQ_FINANCE", AnalysisPerspective.BASE,
+                "NANCHANG", true, true, true, true));
+        CalculationServiceImpl service = new CalculationServiceImpl(repository, provider, scopes);
+
+        service.calculate("B-005-SAME-OPERATOR", "U-HQ-SAME");
+        CalculationResult confirmed = service.confirm("B-005-SAME-OPERATOR", "U-HQ-SAME");
+        CalculationResult published = service.publish("B-005-SAME-OPERATOR", "U-HQ-SAME");
+
+        assertEquals("U-HQ-SAME", confirmed.getConfirmedBy());
+        assertEquals("U-HQ-SAME", published.getPublishedBy());
+        assertEquals(BatchStatus.PUBLISHED,
+                repository.findByBatchNo("B-005-SAME-OPERATOR").get().getStatus());
     }
 
     @Test
@@ -98,7 +122,7 @@ class CalculationServiceImplTest {
                         BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
         CalculationServiceImpl service = new CalculationServiceImpl(repository, provider, new FakeUserScopeRepository());
 
-        service.calculate("B-005-DIFF");
+        service.calculate("B-005-DIFF", "finance-001");
         CalculationResult confirmed = service.confirm("B-005-DIFF", "finance-001");
 
         assertEquals(CalculationResultStatus.CONFIRMED, confirmed.getStatus());
@@ -126,7 +150,7 @@ class CalculationServiceImplTest {
         scopes.save(new UserScope("U001", "BASE_FINANCE", AnalysisPerspective.BASE,
                 "南昌", true, true, true, true));
         CalculationServiceImpl service = new CalculationServiceImpl(repository, provider, scopes);
-        service.calculate("B-006");
+        service.calculate("B-006", "finance-001");
 
         CalculationResult filtered = service.getForUser("B-006", "U001");
 
@@ -144,12 +168,53 @@ class CalculationServiceImplTest {
                 new FakeUserScopeRepository());
 
         try {
-            service.calculate("B-007");
+            service.calculate("B-007", "finance-001");
         } catch (IllegalStateException expected) {
             // expected
         }
 
         assertEquals(BatchStatus.FAILED, repository.findByBatchNo("B-007").get().getStatus());
+    }
+
+    @Test
+    void calculateWithoutAuthenticatedOperatorFailsClosed() {
+        FakeBatchRepository repository = new FakeBatchRepository();
+        repository.save(new AnalysisBatch(1L, "B-008", "2026-09", AnalysisPerspective.BASE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
+        CalculationService service = new CalculationServiceImpl(repository,
+                batch -> java.util.Collections.emptyList(), new FakeUserScopeRepository());
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.calculate("B-008"));
+
+        assertEquals("计算必须提供认证操作者", error.getMessage());
+        assertEquals(BatchStatus.READY_FOR_CALCULATION,
+                repository.findByBatchNo("B-008").get().getStatus());
+    }
+
+    @Test
+    void calculationRejectsBatchContainingScopeOutsideHeadquartersFinanceGrant() {
+        FakeBatchRepository repository = new FakeBatchRepository();
+        repository.save(new AnalysisBatch(1L, "B-009", "2026-09", AnalysisPerspective.BASE,
+                BatchStatus.READY_FOR_CALCULATION, "tester", LocalDateTime.now()));
+        PnlFactProvider provider = batch -> Arrays.asList(
+                new PnlFact("NANCHANG", decimal(1), decimal(10), decimal(7),
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO),
+                new PnlFact("YICHANG", decimal(1), decimal(10), decimal(7),
+                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, BigDecimal.ZERO));
+        FakeUserScopeRepository scopes = new FakeUserScopeRepository();
+        scopes.save(new UserScope("U-HQ-SCOPE", "HQ_FINANCE", AnalysisPerspective.BASE,
+                "NANCHANG", true, true, true, true));
+        CalculationService service = new CalculationServiceImpl(repository, provider, scopes);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.calculate("B-009", "U-HQ-SCOPE"));
+
+        assertEquals("当前用户无批次涉及范围的计算权限", error.getMessage());
+        assertEquals(BatchStatus.READY_FOR_CALCULATION,
+                repository.findByBatchNo("B-009").get().getStatus());
     }
 
     private static BigDecimal decimal(double value) { return BigDecimal.valueOf(value); }

@@ -6,9 +6,15 @@ import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryAction;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryCommand;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
+import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.UserScope;
+import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationJobRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryActionRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -29,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * <p>本次新增测试：验证 request_key 幂等、自动失败链、人工重试/补偿入口和状态机门禁。</p>
  */
 class CalculationRetryApplicationServiceTest {
-    private final LocalDateTime t0 = LocalDateTime.of(2026, 10, 21, 10, 0);
+    private static final LocalDateTime t0 = LocalDateTime.of(2026, 10, 21, 10, 0);
 
     @Test
     void shouldBeIdempotentAndMoveFailureThroughThreeRetriesToManualRequired() {
@@ -71,7 +77,7 @@ class CalculationRetryApplicationServiceTest {
         CalculationRetryCommand command = CalculationRetryCommand.manualRetry(
                 "JOB-R-1", "REQ-R-1", 4, "operator-1", "修复源数据后重试", t0.plusMinutes(22));
 
-        CalculationRetryAction action = fixture.service.manualRetry(command);
+        CalculationRetryAction action = fixture.service.manualRetry(command, "operator-1");
 
         assertEquals(CalculationRetryAction.Type.MANUAL_RETRY, action.getType());
         assertEquals("operator-1", action.getOperator());
@@ -88,7 +94,7 @@ class CalculationRetryApplicationServiceTest {
         CalculationRetryCommand command = CalculationRetryCommand.manualCompensate(
                 "JOB-R-1", "REQ-R-1", 4, "operator-2", "业务确认不再重算", t0.plusMinutes(22));
 
-        CalculationRetryAction action = fixture.service.manualCompensate(command);
+        CalculationRetryAction action = fixture.service.manualCompensate(command, "operator-2");
 
         assertEquals(CalculationRetryAction.Type.MANUAL_COMPENSATE, action.getType());
         assertEquals("COMPENSATED", action.getResult());
@@ -104,12 +110,49 @@ class CalculationRetryApplicationServiceTest {
         CalculationRetryCommand command = CalculationRetryCommand.manualCompensate(
                 job.getJobId(), job.getRequestKey(), 1, "operator", "reason", t0);
 
-        assertThrows(IllegalStateException.class, () -> fixture.service.manualCompensate(command));
+        assertThrows(IllegalStateException.class,
+                () -> fixture.service.manualCompensate(command, "operator"));
         assertEquals(CalculationJobStatus.QUEUED, job.getStatus());
     }
 
+    @Test
+    void manualEntryWithoutAuthenticatedOperatorFailsClosed() {
+        Fixture fixture = manualRequiredFixture();
+        CalculationRetryCommand command = CalculationRetryCommand.manualCompensate(
+                "JOB-R-1", "REQ-R-1", 4, "operator-2", "业务确认不再重算", t0.plusMinutes(22));
+
+        assertThrows(IllegalArgumentException.class, () -> fixture.service.manualCompensate(command));
+        assertEquals(CalculationRetryStatus.MANUAL_REQUIRED, fixture.state().getStatus());
+    }
+
+    @Test
+    void manualEntryRejectsAuthenticatedOperatorMismatch() {
+        Fixture fixture = manualRequiredFixture();
+        CalculationRetryCommand command = CalculationRetryCommand.manualRetry(
+                "JOB-R-1", "REQ-R-1", 4, "operator-1", "修复源数据后重试", t0.plusMinutes(22));
+
+        assertThrows(IllegalStateException.class,
+                () -> fixture.service.manualRetry(command, "operator-2"));
+        assertEquals(CalculationRetryStatus.MANUAL_REQUIRED, fixture.state().getStatus());
+    }
+
+    @Test
+    void manualEntryRejectsScopeOutsideAuthenticatedHqFinanceGrant() {
+        Fixture fixture = manualRequiredFixture("YICHANG");
+        CalculationRetryCommand command = CalculationRetryCommand.manualRetry(
+                "JOB-R-1", "REQ-R-1", 4, "operator-1", "修复源数据后重试", t0.plusMinutes(22));
+
+        assertThrows(IllegalStateException.class,
+                () -> fixture.service.manualRetry(command, "operator-1"));
+        assertEquals(CalculationRetryStatus.MANUAL_REQUIRED, fixture.state().getStatus());
+    }
+
     private Fixture manualRequiredFixture() {
-        Fixture fixture = new Fixture();
+        return manualRequiredFixture("NANCHANG");
+    }
+
+    private Fixture manualRequiredFixture(String scopeCode) {
+        Fixture fixture = new Fixture(scopeCode);
         fixture.job = new CalculationJob("JOB-R-1", "REQ-R-1", "BATCH-R-1", t0);
         fixture.submit(fixture.job);
         for (int attempt = 1; attempt <= 4; attempt++) {
@@ -126,13 +169,31 @@ class CalculationRetryApplicationServiceTest {
         private final JobRepository jobs = new JobRepository();
         private final RetryRepository retries = new RetryRepository();
         private final ActionRepository actions = new ActionRepository();
-        private final CalculationRetryApplicationService service =
-                new CalculationRetryApplicationService(jobs, retries, actions);
+        private final BatchRepository batches = new BatchRepository();
+        private final ScopeRepository scopes = new ScopeRepository();
+        private final PermissionService permissions = new PermissionServiceImpl(scopes);
+        private final String scopeCode;
+        private final CalculationRetryApplicationService service;
         private CalculationJob job;
+
+        private Fixture() {
+            this("NANCHANG");
+        }
+
+        private Fixture(String scopeCode) {
+            this.scopeCode = scopeCode;
+            this.service = new CalculationRetryApplicationService(jobs, retries, actions, batches,
+                    permissions, batchNo -> java.util.Collections.singleton(this.scopeCode));
+        }
 
         private CalculationJob submit(CalculationJob candidate) {
             // 本次修复：夹具始终保存应用服务返回的规范作业，幂等 replay 不再丢失状态查询主键。
             CalculationJob accepted = service.submit(candidate);
+            if (!batches.findByBatchNo(accepted.getBatchNo()).isPresent()) {
+                batches.save(new AnalysisBatch(1L, accepted.getBatchNo(), "2026-10",
+                        AnalysisPerspective.BASE, BatchStatus.READY_FOR_CALCULATION,
+                        "retry-test", t0));
+            }
             if (job == null) job = accepted;
             return accepted;
         }
@@ -141,6 +202,32 @@ class CalculationRetryApplicationServiceTest {
             if (job == null) throw new AssertionError("测试夹具尚未提交规范作业");
             return retries.findByJobId(job.getJobId())
                     .orElseThrow(() -> new AssertionError("测试夹具缺少重试状态: " + job.getJobId()));
+        }
+    }
+
+    private static final class BatchRepository implements AnalysisBatchRepository {
+        private final Map<String, AnalysisBatch> batches = new HashMap<String, AnalysisBatch>();
+
+        @Override public AnalysisBatch save(AnalysisBatch batch) {
+            batches.put(batch.getBatchNo(), batch);
+            return batch;
+        }
+
+        @Override public Optional<AnalysisBatch> findByBatchNo(String batchNo) {
+            return Optional.ofNullable(batches.get(batchNo));
+        }
+    }
+
+    private static final class ScopeRepository implements UserScopeRepository {
+        @Override public UserScope save(UserScope scope) { return scope; }
+
+        @Override public List<UserScope> findByUserAndPerspective(String userId,
+                                                                   com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective perspective) {
+            if (userId != null && userId.startsWith("operator-")) {
+                return java.util.Collections.singletonList(new UserScope(userId, "HQ_FINANCE",
+                        perspective, "NANCHANG", true, true, true, true));
+            }
+            return java.util.Collections.emptyList();
         }
     }
 

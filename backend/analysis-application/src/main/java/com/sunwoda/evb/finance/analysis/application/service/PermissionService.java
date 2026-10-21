@@ -29,26 +29,82 @@ public interface PermissionService {
     default boolean canCalculate(String userId, AnalysisPerspective perspective) {
         return false;
     }
+    // 本次新增：计算动作的范围级便捷入口，要求覆盖批次实际涉及的全部 scope。
+    default boolean canCalculate(String userId, AnalysisPerspective perspective, Set<String> scopeCodes) {
+        return canPerform(userId, perspective, PermissionAction.CALCULATE, scopeCodes);
+    }
+    // 本次新增：计算动作的单 scope 便捷入口。
+    default boolean canCalculate(String userId, AnalysisPerspective perspective, String scopeCode) {
+        return canPerform(userId, perspective, PermissionAction.CALCULATE, scopeCode);
+    }
     // 本次新增：默认拒绝，避免旧实现因接口扩展而获得任何新的写权限。
     default boolean canConfirm(String userId, AnalysisPerspective perspective) {
         return false;
+    }
+    // 本次新增：确认动作的范围级便捷入口，避免只按视角判定。
+    default boolean canConfirm(String userId, AnalysisPerspective perspective, Set<String> scopeCodes) {
+        return canPerform(userId, perspective, PermissionAction.CONFIRM, scopeCodes);
+    }
+    // 本次新增：确认动作的单 scope 便捷入口。
+    default boolean canConfirm(String userId, AnalysisPerspective perspective, String scopeCode) {
+        return canPerform(userId, perspective, PermissionAction.CONFIRM, scopeCode);
     }
     // 本次新增：默认拒绝，避免旧实现因接口扩展而获得任何新的写权限。
     default boolean canPublish(String userId, AnalysisPerspective perspective) {
         return false;
     }
+    // 本次新增：发布动作的范围级便捷入口，避免只按视角判定。
+    default boolean canPublish(String userId, AnalysisPerspective perspective, Set<String> scopeCodes) {
+        return canPerform(userId, perspective, PermissionAction.PUBLISH, scopeCodes);
+    }
+    // 本次新增：发布动作的单 scope 便捷入口。
+    default boolean canPublish(String userId, AnalysisPerspective perspective, String scopeCode) {
+        return canPerform(userId, perspective, PermissionAction.PUBLISH, scopeCode);
+    }
     // 本次新增：默认拒绝，避免旧实现因接口扩展而获得任何新的写权限。
     default boolean canManualRevise(String userId, AnalysisPerspective perspective) {
         return false;
+    }
+    // 本次新增：人工修订动作的范围级便捷入口。
+    default boolean canManualRevise(String userId, AnalysisPerspective perspective, Set<String> scopeCodes) {
+        return canPerform(userId, perspective, PermissionAction.MANUAL_REVISION, scopeCodes);
+    }
+    // 本次新增：人工修订动作的单 scope 便捷入口。
+    default boolean canManualRevise(String userId, AnalysisPerspective perspective, String scopeCode) {
+        return canPerform(userId, perspective, PermissionAction.MANUAL_REVISION, scopeCode);
     }
     // 本次新增：默认拒绝，避免旧实现因接口扩展而获得任何新的写权限。
     default boolean canCompensate(String userId, AnalysisPerspective perspective) {
         return false;
     }
+    // 本次新增：人工补偿动作的范围级便捷入口。
+    default boolean canCompensate(String userId, AnalysisPerspective perspective, Set<String> scopeCodes) {
+        return canPerform(userId, perspective, PermissionAction.COMPENSATE, scopeCodes);
+    }
+    // 本次新增：人工补偿动作的单 scope 便捷入口。
+    default boolean canCompensate(String userId, AnalysisPerspective perspective, String scopeCode) {
+        return canPerform(userId, perspective, PermissionAction.COMPENSATE, scopeCode);
+    }
     // 本次新增：为调整、补偿等尚未落地的应用服务保留统一动作判定接口。
     // 本次新增：统一动作接口默认拒绝，防止旧实现被动继承新动作。
     default boolean canPerform(String userId, AnalysisPerspective perspective, PermissionAction action) {
         return false;
+    }
+    // 本次新增：把生命周期动作绑定到实际业务范围，禁止用视角级任意授权覆盖未授权 scope。
+    default boolean canPerform(String userId, AnalysisPerspective perspective,
+                               PermissionAction action, String scopeCode) {
+        return false;
+    }
+    // 本次新增：批量动作必须覆盖其涉及的全部 scope；空集合沿用视角级角色判定。
+    default boolean canPerform(String userId, AnalysisPerspective perspective,
+                               PermissionAction action, Set<String> scopeCodes) {
+        if (scopeCodes == null || scopeCodes.isEmpty()) {
+            return canPerform(userId, perspective, action);
+        }
+        for (String scopeCode : scopeCodes) {
+            if (!canPerform(userId, perspective, action, scopeCode)) return false;
+        }
+        return true;
     }
     Set<String> viewableScopes(String userId, AnalysisPerspective perspective);
     Set<String> detailScopes(String userId, AnalysisPerspective perspective);
