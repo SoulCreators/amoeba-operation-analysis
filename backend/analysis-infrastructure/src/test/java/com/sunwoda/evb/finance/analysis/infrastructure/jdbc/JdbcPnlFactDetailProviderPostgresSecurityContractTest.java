@@ -69,6 +69,7 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
     private String adminNoDetailUser;
     private String disabledAdminUser;
     private String productLineUser;
+    private String hqFinanceUser;
     private final List<String> fixtureBatchNos = new ArrayList<String>();
     private final List<String> fixtureUserIds = new ArrayList<String>();
 
@@ -125,6 +126,7 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         adminNoDetailUser = "FDPG-U-ADMIN-NODETAIL-" + token;
         disabledAdminUser = "FDPG-U-ADMIN-DISABLED-" + token;
         productLineUser = "FDPG-U-PL-" + token;
+        hqFinanceUser = "FDPG-U-HQ-FINANCE-" + token;
 
         // 本次修改：在写入前校验 V002/V003 中 varchar 上限，避免夹具自身掩盖权限契约结果。
         assertTrue(targetBatchNo.length() <= 64);
@@ -146,6 +148,7 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         assertTrue(adminNoDetailUser.length() <= 64);
         assertTrue(disabledAdminUser.length() <= 64);
         assertTrue(productLineUser.length() <= 64);
+        assertTrue(hqFinanceUser.length() <= 64);
 
         fixtureBatchNos.add(targetBatchNo);
         fixtureBatchNos.add(otherBatchNo);
@@ -159,6 +162,7 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         fixtureUserIds.add(adminNoDetailUser);
         fixtureUserIds.add(disabledAdminUser);
         fixtureUserIds.add(productLineUser);
+        fixtureUserIds.add(hqFinanceUser);
 
         insertBatch(targetBatchNo, BASE);
         insertBatch(otherBatchNo, BASE);
@@ -202,6 +206,8 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
         grant(adminNoDetailUser, BASE, scopeA, true, false, false, false, "ADMIN");
         grant(disabledAdminUser, BASE, scopeA, false, true, false, false, "ADMIN");
         grant(productLineUser, PRODUCT_LINE, "ALL", true, true, false, false);
+        // 本次修改：总部财经只在已授权 scope 内读取明细，验证最高业务权限不越过数据范围边界。
+        grant(hqFinanceUser, BASE, scopeB, true, true, true, true, "HQ_FINANCE");
     }
 
     @AfterEach
@@ -291,6 +297,16 @@ class JdbcPnlFactDetailProviderPostgresSecurityContractTest {
                 targetBatchNo, AnalysisPerspective.PRODUCT_LINE, productLineUser);
         assertEquals(Arrays.asList(scopeA), scopes(productLineRows));
         assertFact(productLineRows.get(0), scopeA, "PL-BASE-A", "PL-PRODUCT-A", "PL-LINE-A", values(300));
+    }
+
+    @Test
+    void headquartersFinanceReadsOnlyItsAuthorizedDetailScope() {
+        // 本次修改：总部财经拥有完整业务操作能力，但事实明细必须严格受已授权 scope 过滤。
+        List<PnlFact> hqFinanceRows = provider.findForUser(
+                targetBatchNo, AnalysisPerspective.BASE, hqFinanceUser);
+        assertEquals(Arrays.asList(scopeB), scopes(hqFinanceRows));
+        assertFact(hqFinanceRows.get(0), scopeB,
+                "BASE-B", "PRODUCT-B", "LINE-B", values(200));
     }
 
     private void insertBatch(String batchNo, String perspective) {
