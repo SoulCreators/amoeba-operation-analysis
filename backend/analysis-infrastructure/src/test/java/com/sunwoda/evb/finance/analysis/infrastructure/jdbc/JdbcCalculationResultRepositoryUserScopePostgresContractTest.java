@@ -55,6 +55,7 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
     private static String disabledScopeUser;
     private static String adminUser;
     private static String disabledAdminUser;
+    private static String hqFinanceUser;
 
     @BeforeAll
     static void connectAndSeedPostgres() {
@@ -85,6 +86,7 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
         // 本次修改：缩短 ADMIN 夹具用户标识，确保拼接随机 token 后不超过 user_scope.user_id 的 varchar(64)。
         adminUser = USER_PREFIX + token + "-ADM";
         disabledAdminUser = USER_PREFIX + token + "-ADM-D";
+        hqFinanceUser = USER_PREFIX + token + "-HQ";
         seedFixture();
     }
 
@@ -166,6 +168,18 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
     }
 
     @Test
+    void headquartersFinanceSeesOnlyItsAuthorizedResultScope() {
+        // 本次修改：总部财经在授权 scope 内拥有最高业务权限，但结果汇总不得越过未授权范围。
+        CalculationResult result = scopedRead(hqFinanceUser);
+
+        assertEquals(Arrays.asList("SCOPE-B"), scopes(result));
+        assertEquals(versionFor("SCOPE-B"), result.getVersionNo());
+        assertEquals(CalculationResultStatus.PUBLISHED, result.getStatus());
+        assertEquals(0, new BigDecimal("202.00").compareTo(
+                result.getResults().get(0).getLines().get("REVENUE")));
+    }
+
+    @Test
     void scopedReadMethodMustExistWithAnExplicitUserParameter() throws Exception {
         Method method = findScopedReadMethod();
 
@@ -240,6 +254,8 @@ class JdbcCalculationResultRepositoryUserScopePostgresContractTest {
         grant(disabledScopeUser, "SCOPE-B", false);
         grant(adminUser, "ADMIN", "SCOPE-A", true);
         grant(disabledAdminUser, "ADMIN", "SCOPE-A", false);
+        // 本次修改：使用总部财经角色编码授予单一结果 scope，锁定最高业务权限与数据范围边界。
+        grant(hqFinanceUser, "HQ_FINANCE", "SCOPE-B", true);
     }
 
     private static Long insertResult(Long batchId, String scopeCode, LocalDateTime now) {
