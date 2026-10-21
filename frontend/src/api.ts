@@ -95,10 +95,51 @@ export interface V13AnalysisPayload {
   [key: string]: unknown
 }
 
+// 本次修改：管理中心只消费服务端真实数据；列表兼容数组及常见分页容器，不在前端填充演示记录。
+export interface AdminDataScope {
+  perspective: Perspective | 'ALL'
+  scopeCodes: string[]
+}
+
+export interface AdminUser {
+  userId: string
+  employeeNo?: string
+  username?: string
+  displayName: string
+  email?: string
+  roleCodes: string[]
+  scopes?: AdminDataScope[]
+  enabled: boolean
+}
+
+export interface AdminRole {
+  roleCode: string
+  roleName: string
+  description?: string
+  menuCodes?: string[]
+  enabled: boolean
+}
+
+export interface AdminMenu {
+  menuCode: string
+  menuName: string
+  parentCode?: string
+  path?: string
+  displayOrder: number
+  enabled: boolean
+}
+
+type AdminListPayload<T> = T[] | { items?: T[]; content?: T[]; records?: T[] }
+
 async function unwrap<T>(request: Promise<{ data: ApiEnvelope<T> }>): Promise<T> {
   const response = await request
   if (response.data.code !== '0' && response.data.code !== 'OK') throw new Error(response.data.message || '接口调用失败')
   return response.data.data
+}
+
+function normalizeAdminList<T>(payload: AdminListPayload<T>): T[] {
+  if (Array.isArray(payload)) return payload
+  return payload.items || payload.content || payload.records || []
 }
 
 export const api = {
@@ -161,4 +202,16 @@ export const api = {
   createExport: (payload: CreateExportRequest) => unwrap<ExportTaskResponse>(http.post('/exports', payload)),
   exportStatus: (taskId: string) => unwrap<ExportTaskResponse>(http.get(`/exports/${taskId}`)),
   downloadExport: (taskId: string) => unwrap<ExportDownloadResponse>(http.get(`/exports/${taskId}/download`)),
+  // 本次修改：用户、角色和菜单的更新均按合同 PUT 集合地址，实体主键保留在请求体中。
+  adminUsers: async () => normalizeAdminList(await unwrap<AdminListPayload<AdminUser>>(http.get('/admin/users'))),
+  createAdminUser: (payload: AdminUser) => unwrap<AdminUser>(http.post('/admin/users', payload)),
+  updateAdminUser: (payload: AdminUser) => unwrap<AdminUser>(http.put('/admin/users', payload)),
+  adminRoles: async () => normalizeAdminList(await unwrap<AdminListPayload<AdminRole>>(http.get('/admin/roles'))),
+  createAdminRole: (payload: AdminRole) => unwrap<AdminRole>(http.post('/admin/roles', payload)),
+  updateAdminRole: (payload: AdminRole) => unwrap<AdminRole>(http.put('/admin/roles', payload)),
+  adminMenus: async () => normalizeAdminList(await unwrap<AdminListPayload<AdminMenu>>(http.get('/admin/menus'))),
+  createAdminMenu: (payload: AdminMenu) => unwrap<AdminMenu>(http.post('/admin/menus', payload)),
+  updateAdminMenu: (payload: AdminMenu) => unwrap<AdminMenu>(http.put('/admin/menus', payload)),
+  updateAdminUserScopes: (userId: string, scopes: AdminDataScope[]) => unwrap<AdminUser>(http.put(`/admin/users/${encodeURIComponent(userId)}/scopes`, { scopes })),
+  updateAdminRoleMenus: (roleCode: string, menuCodes: string[]) => unwrap<AdminRole>(http.put(`/admin/roles/${encodeURIComponent(roleCode)}/menus`, { menuCodes })),
 }
