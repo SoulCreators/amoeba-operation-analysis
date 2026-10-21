@@ -39,7 +39,8 @@ import java.util.Optional;
  */
 @Repository
 @Profile("filesystem")
-public final class FileSystemExportFileStorageAdapter implements ExportFileStoragePort {
+// 该适配器会被 Spring 的事务/仓储切面使用 CGLIB 代理，不能声明为 final。
+public class FileSystemExportFileStorageAdapter implements ExportFileStoragePort {
     private static final int MAGIC = 0x414D4546;
     private static final int FORMAT_VERSION = 1;
     private static final String FILE_SUFFIX = ".export";

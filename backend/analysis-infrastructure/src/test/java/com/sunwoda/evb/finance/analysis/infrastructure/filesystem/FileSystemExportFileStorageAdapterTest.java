@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
+import java.lang.reflect.Modifier;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,6 +29,13 @@ class FileSystemExportFileStorageAdapterTest {
         assertArrayEquals(new String[]{"filesystem"}, profile.value());
         assertNotNull(FileSystemExportFileStorageAdapter.class
                 .getAnnotation(Repository.class));
+    }
+
+    @Test
+    void remainsSubclassableForSpringCglibProxy() {
+        // 防止再次把带 Spring 仓储切面的适配器声明为 final，导致 filesystem Profile 启动失败。
+        assertFalse(Modifier.isFinal(FileSystemExportFileStorageAdapter.class
+                .getModifiers()));
     }
 
     @Test
