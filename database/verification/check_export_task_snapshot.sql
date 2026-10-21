@@ -99,6 +99,35 @@ BEGIN
 END
 $$;
 
+DO $$
+DECLARE
+    v_suffix text := substr(md5(clock_timestamp()::text || random()::text), 1, 16);
+    v_rejected boolean := false;
+BEGIN
+    -- 本次新增负向契约：仅填写七项 snapshot 字段中的 batch_no，必须被完整性约束拒绝。
+    BEGIN
+        INSERT INTO flow.export_task (
+            job_id, user_id, request_key, file_name, content_type,
+            batch_no, status, expires_at
+        ) VALUES (
+            'export-snapshot-partial-verification_' || v_suffix,
+            'export-snapshot-partial-verification-user',
+            'export-snapshot-partial-verification-request',
+            'partial.xlsx',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'B-PARTIAL', 'QUEUED', CURRENT_TIMESTAMP + INTERVAL '15 minutes'
+        );
+    EXCEPTION
+        WHEN check_violation THEN
+            v_rejected := true;
+    END;
+
+    IF NOT v_rejected THEN
+        RAISE EXCEPTION 'Partial export input snapshot was accepted unexpectedly';
+    END IF;
+END
+$$;
+
 ROLLBACK;
 
 SELECT 'V021 flow.export_task immutable input snapshot verification passed.'
