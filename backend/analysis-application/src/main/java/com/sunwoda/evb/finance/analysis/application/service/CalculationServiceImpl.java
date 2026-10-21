@@ -12,6 +12,7 @@ import com.sunwoda.evb.finance.analysis.domain.repository.CalculationResultRepos
 import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -184,7 +185,9 @@ public class CalculationServiceImpl implements CalculationService {
     }
 
     @Override
+    @Transactional
     public synchronized CalculationResult confirm(String batchNo, String operator) {
+        // 本次修改：确认时由同一数据库事务覆盖批次状态与结果状态，结果保存失败不得提交批次新状态。
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("确认人不能为空");
         }
@@ -203,7 +206,9 @@ public class CalculationServiceImpl implements CalculationService {
     }
 
     @Override
+    @Transactional
     public synchronized CalculationResult publish(String batchNo, String operator) {
+        // 本次修改：发布时由同一数据库事务覆盖批次状态与结果状态，避免批次已发布而结果仍为旧状态。
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("发布人不能为空");
         }
