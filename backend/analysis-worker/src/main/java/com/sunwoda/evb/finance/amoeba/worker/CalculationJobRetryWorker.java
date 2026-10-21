@@ -4,10 +4,13 @@ import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryExecuto
 import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryAlertPort;
 import com.sunwoda.evb.finance.analysis.application.service.CalculationRetryApplicationService;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJob;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaim;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaimLostException;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryCommand;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryDecision;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryAction;
+import com.sunwoda.evb.finance.analysis.application.model.CalculationRetryExecutionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,8 +20,8 @@ import java.util.List;
 /**
  * 计算作业失败处理 Worker。
  *
- * <p>本次新增：首次执行和到期重试共用同一执行路径；失败先落 FAILED，再由应用服务按策略排队，
- * 人工重试/补偿只委托应用服务，不在 Worker 绕过状态机；本次修改补充 MANUAL_REQUIRED 告警接线。</p>
+ * <p>本次新增：首次执行和到期重试共用同一状态机；本次修改将到期重试的租约确认、实际计算、
+ * 成功/失败回写放入应用事务，并补充 MANUAL_REQUIRED 告警接线。</p>
  *
  * <p>本类保持无 Spring 定时注解，触发器可按现有部署方式调用 {@link #runOnce(LocalDateTime, int)}。</p>
  */
@@ -63,10 +66,18 @@ public final class CalculationJobRetryWorker {
 
     /** 扫描到期自动重试，最多处理 limit 条。 */
     public void runOnce(LocalDateTime now, int limit) {
-        List<CalculationRetryState> due = retryService.findDue(now, limit);
-        for (CalculationRetryState state : due) {
-            retryService.prepareAutomaticRetry(state.getJobId(), now);
-            process(state.getJobId(), now);
+        List<CalculationRetryClaim> due = retryService.findDueClaims(now, limit);
+        for (CalculationRetryClaim claim : due) {
+            try {
+                CalculationRetryExecutionResult result = retryService.executeAutomaticRetry(claim, now, executor);
+                if (result.getDecision() != null && result.getDecision().isManualRequired()) {
+                    notifyManualRequired(result.getJob(), result.getDecision());
+                }
+            } catch (CalculationRetryClaimLostException lostClaim) {
+                // 本次新增：租约已被其他 Worker 接管时跳过当前任务，不能继续执行或覆盖新结果。
+                LOGGER.warn("计算重试租约已丢失，跳过执行: jobId={}, error={}",
+                        claim.getJobId(), message(lostClaim));
+            }
         }
     }
 

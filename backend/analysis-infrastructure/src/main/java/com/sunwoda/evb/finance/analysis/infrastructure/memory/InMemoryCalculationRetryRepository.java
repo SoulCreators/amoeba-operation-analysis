@@ -1,5 +1,7 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.memory;
 
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaim;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaimLostException;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryStatus;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryRepository;
@@ -24,6 +26,8 @@ import java.util.concurrent.ConcurrentMap;
 public class InMemoryCalculationRetryRepository implements CalculationRetryRepository {
     private final ConcurrentMap<String, CalculationRetryState> byJobId =
             new ConcurrentHashMap<String, CalculationRetryState>();
+    private final ConcurrentMap<String, CalculationRetryClaim> claims =
+            new ConcurrentHashMap<String, CalculationRetryClaim>();
 
     @Override
     public synchronized CalculationRetryState save(CalculationRetryState state) {
@@ -70,6 +74,41 @@ public class InMemoryCalculationRetryRepository implements CalculationRetryRepos
             }
         });
         return result.size() <= limit ? result : new ArrayList<CalculationRetryState>(result.subList(0, limit));
+    }
+
+    @Override
+    public synchronized List<CalculationRetryClaim> findDueClaims(LocalDateTime now, int limit) {
+        if (now == null) throw new IllegalArgumentException("now 不能为空");
+        if (limit <= 0) throw new IllegalArgumentException("limit 必须大于 0");
+        List<CalculationRetryClaim> result = new ArrayList<CalculationRetryClaim>();
+        List<CalculationRetryState> due = findDue(now, limit);
+        for (CalculationRetryState state : due) {
+            CalculationRetryClaim existing = claims.get(state.getJobId());
+            if (existing != null && existing.getClaimedUntil().isAfter(now)) continue;
+            CalculationRetryClaim claim = new CalculationRetryClaim(state,
+                    "memory-" + java.util.UUID.randomUUID().toString(), now.plusMinutes(5L));
+            claims.put(state.getJobId(), claim);
+            result.add(claim);
+        }
+        return result;
+    }
+
+    @Override
+    public synchronized void lockClaim(String jobId, String claimToken, LocalDateTime now) {
+        CalculationRetryClaim claim = claims.get(required(jobId, "jobId"));
+        if (claim == null || !claim.getClaimToken().equals(claimToken)
+                || !claim.getClaimedUntil().isAfter(now)) {
+            throw new CalculationRetryClaimLostException("计算重试租约已失效: jobId=" + jobId);
+        }
+    }
+
+    @Override
+    public synchronized void releaseClaim(String jobId, String claimToken) {
+        CalculationRetryClaim claim = claims.get(required(jobId, "jobId"));
+        if (claim != null && claim.getClaimToken().equals(claimToken)) {
+            // 本次新增：内存实现也按 token 释放，保持与 JDBC 所有权语义一致。
+            claims.remove(jobId);
+        }
     }
 
     private static String required(String value, String field) {

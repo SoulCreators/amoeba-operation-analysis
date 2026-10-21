@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJob;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJobStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryAction;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaim;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryCommand;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryDecision;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryPolicy;
@@ -14,6 +15,8 @@ import com.sunwoda.evb.finance.analysis.domain.repository.AnalysisBatchRepositor
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationJobRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryActionRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryRepository;
+import com.sunwoda.evb.finance.analysis.application.model.CalculationRetryExecutionResult;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryExecutor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -176,10 +179,70 @@ public class CalculationRetryApplicationService {
         return job;
     }
 
+    /**
+     * 在同一个应用事务内完成租约确认、重试执行和结果回写。
+     *
+     * <p>本次新增：执行器在事务边界内运行，使计算结果、作业状态、重试状态和租约释放不会被拆成多个提交；
+     * 租约丢失时由仓储拒绝进入执行阶段。</p>
+     */
+    @Transactional
+    public CalculationRetryExecutionResult executeAutomaticRetry(CalculationRetryClaim claim,
+                                                                  LocalDateTime now,
+                                                                  CalculationRetryExecutor executor) {
+        if (claim == null) throw new IllegalArgumentException("claim 不能为空");
+        if (executor == null) throw new IllegalArgumentException("executor 不能为空");
+        LocalDateTime actualTime = now == null ? LocalDateTime.now() : now;
+        retryRepository.lockClaim(claim.getJobId(), claim.getClaimToken(), actualTime);
+        try {
+            CalculationRetryState state = requiredState(claim.getJobId());
+            if (state.getStatus() != CalculationRetryStatus.PENDING_RETRY) {
+                throw new IllegalStateException("当前状态不可自动重试: " + state.getStatus());
+            }
+            CalculationJob job = requiredJob(claim.getJobId());
+            if (job.getStatus() != CalculationJobStatus.FAILED) {
+                throw new IllegalStateException("自动重试要求作业处于 FAILED: " + job.getStatus());
+            }
+
+            state.claim(actualTime);
+            job.moveTo(CalculationJobStatus.QUEUED);
+            jobRepository.save(job);
+            retryRepository.save(state);
+            job.moveTo(CalculationJobStatus.RUNNING);
+            jobRepository.save(job);
+            try {
+                executor.execute(job.getBatchNo());
+                job.moveTo(CalculationJobStatus.SUCCEEDED);
+                jobRepository.save(job);
+                state.succeed(actualTime);
+                retryRepository.save(state);
+                return new CalculationRetryExecutionResult(job, null);
+            } catch (RuntimeException failure) {
+                String error = message(failure);
+                job.fail(error);
+                jobRepository.save(job);
+                CalculationRetryDecision decision = CalculationRetryPolicy.decide(
+                        job.getAttemptNo(), error, actualTime);
+                if (decision.isManualRequired()) state.requireManual(decision, actualTime);
+                else state.schedule(decision, actualTime);
+                retryRepository.save(state);
+                return new CalculationRetryExecutionResult(job, decision);
+            }
+        } finally {
+            // 本次新增：释放必须同时携带 token，旧 Worker 不能删除新 Worker 的租约。
+            retryRepository.releaseClaim(claim.getJobId(), claim.getClaimToken());
+        }
+    }
+
     /** 仅领取已经到期且仍处于 PENDING_RETRY 的记录。 */
     public List<CalculationRetryState> findDue(LocalDateTime now, int limit) {
         if (limit <= 0) throw new IllegalArgumentException("limit 必须大于 0");
         return retryRepository.findDue(now == null ? LocalDateTime.now() : now, limit);
+    }
+
+    /** 本次新增：Worker 使用带 token 的领取结果，禁止丢失租约所有权凭证。 */
+    public List<CalculationRetryClaim> findDueClaims(LocalDateTime now, int limit) {
+        if (limit <= 0) throw new IllegalArgumentException("limit 必须大于 0");
+        return retryRepository.findDueClaims(now == null ? LocalDateTime.now() : now, limit);
     }
 
     /**
@@ -294,5 +357,11 @@ public class CalculationRetryApplicationService {
 
     private CalculationJob existingJob(String jobId) {
         return requiredJob(jobId);
+    }
+
+    private String message(RuntimeException failure) {
+        String detail = failure.getMessage();
+        return detail == null || detail.trim().isEmpty()
+                ? failure.getClass().getName() : detail;
     }
 }

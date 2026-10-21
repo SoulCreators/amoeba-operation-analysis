@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJob;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJobStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryAction;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaim;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryCommand;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryStatus;
@@ -15,6 +16,7 @@ import com.sunwoda.evb.finance.analysis.domain.repository.CalculationJobReposito
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryActionRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
+import com.sunwoda.evb.finance.analysis.application.model.CalculationRetryExecutionResult;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -145,6 +147,42 @@ class CalculationRetryApplicationServiceTest {
         assertThrows(IllegalStateException.class,
                 () -> fixture.service.manualRetry(command, "operator-1"));
         assertEquals(CalculationRetryStatus.MANUAL_REQUIRED, fixture.state().getStatus());
+    }
+
+    @Test
+    void automaticRetrySuccessWritesJobAndRetryStateAsOneApplicationResult() {
+        Fixture fixture = pendingRetryFixture();
+        CalculationRetryClaim claim = fixture.retries.findDueClaims(t0.plusMinutes(1), 1).get(0);
+
+        CalculationRetryExecutionResult result = fixture.service.executeAutomaticRetry(
+                claim, t0.plusMinutes(1), batchNo -> { });
+
+        assertEquals(CalculationJobStatus.SUCCEEDED, result.getJob().getStatus());
+        assertEquals(CalculationRetryStatus.SUCCEEDED, fixture.state().getStatus());
+        org.junit.jupiter.api.Assertions.assertNull(result.getDecision());
+    }
+
+    @Test
+    void automaticRetryFailureWritesFailureDecisionBeforeReturning() {
+        Fixture fixture = pendingRetryFixture();
+        CalculationRetryClaim claim = fixture.retries.findDueClaims(t0.plusMinutes(1), 1).get(0);
+
+        CalculationRetryExecutionResult result = fixture.service.executeAutomaticRetry(
+                claim, t0.plusMinutes(1), batchNo -> { throw new IllegalStateException("自动重试失败"); });
+
+        assertEquals(CalculationJobStatus.FAILED, result.getJob().getStatus());
+        assertEquals(CalculationRetryStatus.PENDING_RETRY, fixture.state().getStatus());
+        assertEquals("自动重试失败", fixture.state().getLastError());
+        assertEquals(2, result.getDecision().getRetryNo());
+    }
+
+    private Fixture pendingRetryFixture() {
+        Fixture fixture = new Fixture();
+        fixture.job = new CalculationJob("JOB-R-ATOMIC", "REQ-R-ATOMIC", "BATCH-R-ATOMIC", t0);
+        fixture.submit(fixture.job);
+        fixture.service.start(fixture.job.getJobId());
+        fixture.service.recordFailure(fixture.job.getJobId(), "首次失败", t0);
+        return fixture;
     }
 
     private Fixture manualRequiredFixture() {

@@ -1,5 +1,7 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaim;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaimLostException;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryStatus;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationRetryRepository;
@@ -14,6 +16,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,8 +25,8 @@ import java.util.UUID;
  *
  * <p>本次新增：只持久化 V028 状态表，不改动 V026 Outbox 和既有计算服务。</p>
  * <p>本次补充：db profile 下标记为首选实现，与既有内存仓储并存时保证数据库接线明确。</p>
- * <p>本次修复：到期查询通过 V029 领取表和 PostgreSQL 行锁/CAS 原子登记 Worker 租约，避免多个 Worker
- * 同时看到同一条 PENDING_RETRY 记录。</p>
+ * <p>本次修复：到期查询通过 V029/V034 领取表、claim token 和 PostgreSQL 行锁/CAS 原子登记 Worker 租约，
+ * 避免多个 Worker 同时看到同一条 PENDING_RETRY 记录，并拒绝旧租约继续写入。</p>
  */
 @Repository
 @Primary
@@ -52,16 +55,21 @@ public class JdbcCalculationRetryRepository implements CalculationRetryRepositor
                     + "FOR UPDATE OF r SKIP LOCKED), "
                     + "claimed AS ("
                     + "INSERT INTO flow.calculation_retry_claim "
-                    + "(job_id, worker_id, claimed_until, created_at, updated_at) "
-                    + "SELECT job_id, ?, ?, ?, ? FROM due "
+                    + "(job_id, worker_id, claim_token, claimed_until, created_at, updated_at) "
+                    + "SELECT job_id, ?, md5(job_id || ? || clock_timestamp()::text || random()::text), ?, ?, ? FROM due "
                     + "ON CONFLICT (job_id) DO UPDATE SET worker_id = EXCLUDED.worker_id, "
                     + "claimed_until = EXCLUDED.claimed_until, updated_at = EXCLUDED.updated_at "
                     + "WHERE flow.calculation_retry_claim.claimed_until <= ? "
-                    + "RETURNING job_id) "
+                    + "RETURNING job_id, claim_token, claimed_until) "
                     + "SELECT r.job_id, r.request_key, r.status, r.retry_no, r.last_failed_attempt_no, "
-                    + "r.next_retry_at, r.last_error, r.created_at, r.updated_at "
+                    + "r.next_retry_at, r.last_error, r.created_at, r.updated_at, c.claim_token, c.claimed_until "
                     + "FROM flow.calculation_retry r JOIN claimed c ON c.job_id = r.job_id "
                     + "ORDER BY r.next_retry_at, r.job_id";
+    private static final String LOCK_CLAIM_SQL =
+            "SELECT c.job_id FROM flow.calculation_retry_claim c "
+                    + "JOIN flow.calculation_retry r ON r.job_id = c.job_id "
+                    + "WHERE c.job_id = ? AND c.claim_token = ? AND c.claimed_until > ? "
+                    + "AND r.status = 'PENDING_RETRY' FOR UPDATE OF c, r";
     private static final long CLAIM_LEASE_MINUTES = 5L;
     private final JdbcTemplate jdbc;
     private final String workerId;
@@ -80,10 +88,6 @@ public class JdbcCalculationRetryRepository implements CalculationRetryRepositor
         jdbc.update(UPSERT_SQL, state.getJobId(), state.getRequestKey(), state.getStatus().name(),
                 state.getRetryNo(), state.getLastFailedAttemptNo(), timestamp(state.getNextRetryAt()),
                 state.getLastError(), timestamp(state.getCreatedAt()), timestamp(state.getUpdatedAt()));
-        if (state.getStatus() != CalculationRetryStatus.PENDING_RETRY) {
-            // 本次修复：状态离开 PENDING_RETRY 后立即释放领取租约，避免下一次失败被旧租约延迟。
-            jdbc.update("DELETE FROM flow.calculation_retry_claim WHERE job_id = ?", state.getJobId());
-        }
         return state;
     }
 
@@ -99,13 +103,48 @@ public class JdbcCalculationRetryRepository implements CalculationRetryRepositor
 
     @Override
     public List<CalculationRetryState> findDue(LocalDateTime now, int limit) {
+        List<CalculationRetryClaim> claims = findDueClaims(now, limit);
+        List<CalculationRetryState> states = new ArrayList<CalculationRetryState>();
+        for (CalculationRetryClaim claim : claims) states.add(claim.getState());
+        return states;
+    }
+
+    @Override
+    public List<CalculationRetryClaim> findDueClaims(LocalDateTime now, int limit) {
         if (now == null) throw new IllegalArgumentException("now 不能为空");
         if (limit <= 0) throw new IllegalArgumentException("limit 必须大于 0");
         LocalDateTime claimedUntil = now.plusMinutes(CLAIM_LEASE_MINUTES);
-        // 本次修复：单条 SQL 内先 SKIP LOCKED 锁定到期行，再以唯一 job_id 原子登记领取租约。
-        return jdbc.query(CLAIM_DUE_SQL, (rs, rowNum) -> map(rs),
-                timestamp(now), timestamp(now), limit, workerId, timestamp(claimedUntil),
+        // 本次修复：单条 SQL 内生成不可伪造的 token，并把 token 随领取结果返回给执行事务。
+        return jdbc.query(CLAIM_DUE_SQL, (rs, rowNum) -> new CalculationRetryClaim(
+                        map(rs), rs.getString("claim_token"), localDateTime(rs.getTimestamp("claimed_until"))),
+                timestamp(now), timestamp(now), limit, workerId, workerId, timestamp(claimedUntil),
                 timestamp(now), timestamp(now), timestamp(now));
+    }
+
+    @Override
+    public void lockClaim(String jobId, String claimToken, LocalDateTime now) {
+        if (jobId == null || jobId.trim().isEmpty()) throw new IllegalArgumentException("jobId 不能为空");
+        if (claimToken == null || claimToken.trim().isEmpty()) {
+            throw new IllegalArgumentException("claimToken 不能为空");
+        }
+        if (now == null) throw new IllegalArgumentException("now 不能为空");
+        Boolean owned = jdbc.query(LOCK_CLAIM_SQL,
+                (org.springframework.jdbc.core.ResultSetExtractor<Boolean>) rs -> rs.next(),
+                jobId, claimToken, timestamp(now));
+        if (!Boolean.TRUE.equals(owned)) {
+            throw new CalculationRetryClaimLostException("计算重试租约已失效: jobId=" + jobId);
+        }
+    }
+
+    @Override
+    public void releaseClaim(String jobId, String claimToken) {
+        if (jobId == null || jobId.trim().isEmpty()) throw new IllegalArgumentException("jobId 不能为空");
+        if (claimToken == null || claimToken.trim().isEmpty()) {
+            throw new IllegalArgumentException("claimToken 不能为空");
+        }
+        // 本次新增：按 job_id + token 双条件删除，旧 Worker 只能删除自己的租约。
+        jdbc.update("DELETE FROM flow.calculation_retry_claim WHERE job_id = ? AND claim_token = ?",
+                jobId, claimToken);
     }
 
     private Optional<CalculationRetryState> queryOne(String sql, String value) {

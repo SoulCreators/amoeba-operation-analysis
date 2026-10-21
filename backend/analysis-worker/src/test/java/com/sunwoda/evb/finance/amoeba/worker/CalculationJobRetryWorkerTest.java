@@ -4,10 +4,14 @@ import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryExecuto
 import com.sunwoda.evb.finance.analysis.application.port.CalculationRetryAlertPort;
 import com.sunwoda.evb.finance.analysis.application.service.CalculationRetryApplicationService;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJob;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaim;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryDecision;
+import com.sunwoda.evb.finance.analysis.application.model.CalculationRetryExecutionResult;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
@@ -84,5 +88,27 @@ class CalculationJobRetryWorkerTest {
         verify(service).recordFailure(eq(job.getJobId()), contains("告警前已落库"), org.mockito.ArgumentMatchers.any());
         verify(service, org.mockito.Mockito.times(1)).recordFailure(
                 eq(job.getJobId()), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void runOnceMustUseClaimAwareAtomicExecutionPath() {
+        CalculationRetryApplicationService service = mock(CalculationRetryApplicationService.class);
+        CalculationRetryExecutor executor = mock(CalculationRetryExecutor.class);
+        CalculationRetryAlertPort alert = mock(CalculationRetryAlertPort.class);
+        LocalDateTime now = LocalDateTime.of(2026, 10, 21, 10, 0);
+        CalculationJob job = new CalculationJob("JOB-W-CLAIM", "REQ-W-CLAIM", "BATCH-W-CLAIM", now);
+        CalculationRetryClaim claim = new CalculationRetryClaim(
+                CalculationRetryState.active(job.getJobId(), job.getRequestKey(), now),
+                "claim-token-1", now.plusMinutes(5));
+        when(service.findDueClaims(now, 1)).thenReturn(Collections.singletonList(claim));
+        when(service.executeAutomaticRetry(eq(claim), eq(now), eq(executor)))
+                .thenReturn(new CalculationRetryExecutionResult(job, null));
+
+        new CalculationJobRetryWorker(service, executor, alert).runOnce(now, 1);
+
+        verify(service).executeAutomaticRetry(eq(claim), eq(now), eq(executor));
+        verify(service, never()).prepareAutomaticRetry(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
+        verify(service, never()).start(org.mockito.ArgumentMatchers.anyString());
     }
 }

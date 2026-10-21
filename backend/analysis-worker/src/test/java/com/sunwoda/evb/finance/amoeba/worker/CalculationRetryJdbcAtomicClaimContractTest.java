@@ -1,6 +1,6 @@
 package com.sunwoda.evb.finance.amoeba.worker;
 
-import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryState;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationRetryClaim;
 import com.sunwoda.evb.finance.analysis.infrastructure.jdbc.JdbcCalculationRetryRepository;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * V029 PostgreSQL 原子领取契约。
  *
  * <p>本次新增测试：两个独立 JDBC 仓储实例同时扫描同一个到期任务，数据库只能返回一个领取结果，
- * 验证 SKIP LOCKED 与唯一 job_id 租约协同生效。</p>
+ * 并且返回非空 claim token，验证 SKIP LOCKED 与租约所有权凭证协同生效。</p>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CalculationRetryJdbcAtomicClaimContractTest {
@@ -76,14 +76,18 @@ class CalculationRetryJdbcAtomicClaimContractTest {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         try {
-            Future<List<CalculationRetryState>> left = pool.submit(() -> findDue(first, now, ready, start));
-            Future<List<CalculationRetryState>> right = pool.submit(() -> findDue(second, now, ready, start));
+            Future<List<CalculationRetryClaim>> left = pool.submit(() -> findDue(first, now, ready, start));
+            Future<List<CalculationRetryClaim>> right = pool.submit(() -> findDue(second, now, ready, start));
             assertTrue(ready.await(10, TimeUnit.SECONDS));
             start.countDown();
-            List<CalculationRetryState> leftResult = left.get(10, TimeUnit.SECONDS);
-            List<CalculationRetryState> rightResult = right.get(10, TimeUnit.SECONDS);
+            List<CalculationRetryClaim> leftResult = left.get(10, TimeUnit.SECONDS);
+            List<CalculationRetryClaim> rightResult = right.get(10, TimeUnit.SECONDS);
             assertEquals(1, leftResult.size() + rightResult.size(),
                     "同一到期重试只能由一个 Worker 领取");
+            List<CalculationRetryClaim> claimed = leftResult.isEmpty() ? rightResult : leftResult;
+            assertTrue(claimed.get(0).getClaimToken() != null
+                            && !claimed.get(0).getClaimToken().trim().isEmpty(),
+                    "领取结果必须携带 claim token");
         } finally {
             pool.shutdownNow();
             jdbc.update("DELETE FROM flow.calculation_retry_claim WHERE job_id = ?", jobId);
@@ -92,14 +96,14 @@ class CalculationRetryJdbcAtomicClaimContractTest {
         }
     }
 
-    private List<CalculationRetryState> findDue(JdbcCalculationRetryRepository repository,
-                                                 LocalDateTime now,
-                                                 CountDownLatch ready,
-                                                 CountDownLatch start) {
+    private List<CalculationRetryClaim> findDue(JdbcCalculationRetryRepository repository,
+                                                LocalDateTime now,
+                                                CountDownLatch ready,
+                                                CountDownLatch start) {
         ready.countDown();
         try {
             if (!start.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("并发测试启动超时");
-            return new ArrayList<CalculationRetryState>(repository.findDue(now, 1));
+            return new ArrayList<CalculationRetryClaim>(repository.findDueClaims(now, 1));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("并发测试被中断", interrupted);
