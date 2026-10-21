@@ -84,7 +84,9 @@ class JdbcAuditEventQueryRepositoryPostgresContractTest {
 
         // 本次新增：先按 occurred_at 倒序，再按 event_id 倒序；from 包含而 to 排除。
         assertEquals(Arrays.asList(eventC, eventB, eventA), eventIds(events));
-        assertEquals("{\"source\":\"query-contract\"}", events.get(0).getMetadata());
+        // 本次修复：JSONB 返回值可能由 PostgreSQL 规范化空格，按 JSONB 语义比较而不是比较原始文本。
+        assertTrue(jdbc.queryForObject("SELECT ?::jsonb = ?::jsonb", Boolean.class,
+                events.get(0).getMetadata(), "{\"source\":\"query-contract\"}"));
         assertTrue(events.stream().allMatch(event -> event.getOccurredAt().isBefore(to)));
     }
 
