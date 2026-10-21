@@ -51,6 +51,7 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
     private String adminUser;
     private String adminNoDetailUser;
     private String disabledAdminUser;
+    private String hqFinanceUser;
     private final List<String> fixtureTaskNos = new ArrayList<String>();
     private final List<String> fixtureBatchNos = new ArrayList<String>();
     private final List<String> fixtureUserIds = new ArrayList<String>();
@@ -153,6 +154,11 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
                 targetTaskNo, disabledAdminUser).isEmpty(),
                 "disabled ADMIN grant must not expose trace rows");
 
+        // 本次修改：总部财经在授权 scope 内拥有最高业务权限，但追溯来源行不得越过未授权范围。
+        assertEquals(Arrays.asList(key(scopeB, 3)),
+                keys(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
+                        targetTaskNo, hqFinanceUser)));
+
         // 本次修改：目标任务之外的同批次任务、其他视角和其他批次数据均写入真实表，验证不会串读。
         assertEquals(Arrays.asList(key(scopeA, 10)),
                 keys(provider.findForUser(targetBatchNo, AnalysisPerspective.BASE,
@@ -194,6 +200,7 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
         adminUser = "TJPS-U-ADMIN-" + token;
         adminNoDetailUser = "TJPS-U-ADMIN-NODETAIL-" + token;
         disabledAdminUser = "TJPS-U-ADMIN-DISABLED-" + token;
+        hqFinanceUser = "TJPS-U-HQ-FINANCE-" + token;
 
         // 本次修改：缩短授权主体、批次和任务标识前缀，确保拼接 UUID 后符合迁移中的 varchar(64)。
         targetBatchNo = "TJPS-B-" + token;
@@ -213,6 +220,7 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
         fixtureUserIds.add(adminUser);
         fixtureUserIds.add(adminNoDetailUser);
         fixtureUserIds.add(disabledAdminUser);
+        fixtureUserIds.add(hqFinanceUser);
 
         insertBatch(targetBatchNo, BASE);
         insertBatch(otherBatchNo, BASE);
@@ -238,6 +246,8 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
         grant(adminUser, BASE, scopeA, true, true, "ADMIN");
         grant(adminNoDetailUser, BASE, scopeA, true, false, "ADMIN");
         grant(disabledAdminUser, BASE, scopeA, false, true, "ADMIN");
+        // 本次修改：用精确 scope 的 HQ_FINANCE 夹具锁定最高业务权限与追溯数据边界。
+        grant(hqFinanceUser, BASE, scopeB, true, true, "HQ_FINANCE");
         grant(perspectiveUser(), PRODUCT_LINE, "ALL", true, true);
     }
 
@@ -261,6 +271,7 @@ class JdbcPnlFactSourceProviderPostgresSecurityContractTest {
         assertIdentifierLength("allScopeUser", allScopeUser, 64);
         assertIdentifierLength("disabledUser", disabledUser, 64);
         assertIdentifierLength("noDetailUser", noDetailUser, 64);
+        assertIdentifierLength("hqFinanceUser", hqFinanceUser, 64);
         assertIdentifierLength("perspectiveUser", perspectiveUser(), 64);
     }
 
