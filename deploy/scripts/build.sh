@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mvn -B -s "$(cd "$(dirname "${BASH_SOURCE[0]}")/../config" && pwd)/maven-settings.xml" \
-  -Dmaven.repo.local="${MAVEN_REPO_LOCAL:-.toolchain/m2}" -DskipTests clean package
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "${PROJECT_ROOT}"
+node scripts/check-architecture.mjs
+mvn -B -Dmaven.repo.local="${MAVEN_REPO_LOCAL:-${PROJECT_ROOT}/.toolchain/m2}" clean verify
 cd frontend
 npm ci
+npm run test:unit
 npm run build

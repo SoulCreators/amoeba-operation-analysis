@@ -1,20 +1,17 @@
-# 技术文档
+# 文档导航
 
-技术文档与代码版本同步维护，至少包含需求基线、架构、API、数据模型、计算规则、权限、AI、测试和运维文档。
+| 分类 | 内容 |
+|---|---|
+| [requirements/business-rules.md](requirements/business-rules.md) | 业务规则与当前 V1.3 需求入口 |
+| [governance](governance/README.md) | 项目章程、计划与版本分支规范 |
+| [planning](planning/README.md) | 待开发清单与后续整改计划 |
+| [architecture](architecture/README.md) | 现有模块边界、数据流、目录设计与 ADR |
+| [design](design/README.md) | V1.3 详细功能设计、数据计算、接口权限、开发测试与需求追踪 |
+| [development](development/local-development.md) | 可复现开发与验证步骤 |
+| [api](api) | 已编写的专题接口说明，实际 API 以控制器为准 |
+| [testing](testing) | 联调数据准备及验收材料 |
+| [operation](operation/README.md) | 部署和运维资料 |
+| [reports](reports/2026-10-21-enterprise-review.md) | 第一阶段代码与目录报告；[第二阶段财经展示整改](reports/2026-10-21-financial-display-remediation.md) |
+| [archive](archive/README.md) | 历史状态快照，不作为现状证据 |
 
-## 当前有效文档
-
-| 类型 | 文档 | 用途 |
-|---|---|---|
-| 总需求基线 | `requirements/经营分析数据平台需求规格与详细设计_V1.3.md` | 当前开发、测试和验收的总依据 |
-| 看板优化底稿 | `requirements/经营分析看板优化需求_20260921.md` | 7个已恢复P0、6个P1、待决策口径和详细验收 |
-| 开发清单 | `待开发清单_20261002.md` | 当前状态、增量任务、阻断点和开发顺序 |
-| 历史开发清单 | `待开发清单_20260920.md` | V1.3纳入前的代码状态快照，仅供追溯 |
-
-## 使用规则
-
-1. 若历史文档与V1.3冲突，以V1.3为准。
-2. V1.3标记“待确认”的计算口径不得由开发自行补齐。
-3. 每项开发任务必须关联需求编号和UAT编号。
-4. 需求变化应同步更新总需求、开发清单、接口/数据设计、测试用例和CHANGELOG。
-5. 真实财务数据、账号、密钥和未脱敏样本不得进入仓库。
+实现状态以当前源码、测试与评审报告为准。业务口径以批准的 V1.3 需求及后续有效决策为准；两者冲突必须登记差异，不能把“需求已写”视为“代码已实现”。旧开发清单保留历史追溯用途。

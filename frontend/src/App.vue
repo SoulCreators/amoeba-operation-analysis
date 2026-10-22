@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import AppFinal from './AppFinal.vue'
+import WorkbenchPage from './features/workbench/WorkbenchPage.vue'
 </script>
 
 <template>
-  <AppFinal />
+  <WorkbenchPage />
 </template>

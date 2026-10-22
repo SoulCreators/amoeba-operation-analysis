@@ -8,6 +8,8 @@ node_modules/
 dist/
 .vite/
 frontend/test-results/
+frontend/playwright-report/
+coverage/
 
 # IDE / OS
 .idea/
@@ -18,9 +20,18 @@ frontend/test-results/
 application-local.yml
 application-secret.yml
 .env
+.env.*
+!.env.example
 *.key
 *.pem
 .toolchain/
+
+# Runtime financial files and local test artifacts
+/data/
+/logs/
+/artifacts/
+*.dump
+*.backup
 
 # Real data
 *.xlsx

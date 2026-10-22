@@ -6,6 +6,16 @@ on:
     branches: [ main ]
 
 jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check repository and dependency boundaries
+        run: node scripts/check-architecture.mjs
+
   backend:
     runs-on: ubuntu-latest
     # 本次修改：为后端契约测试提供一次性 PostgreSQL，不使用任何生产凭据。

@@ -1,0 +1,64 @@
+{
+  "phase": 2,
+  "date": "2026-10-21",
+  "generatedAt": "2026-10-21T09:15:32.078Z",
+  "branch": "codex/refactor/enterprise-project-structure",
+  "baselineCommit": "c8ddc820c2806f886edadbaa06619cfc5cd879fb",
+  "changes": [
+    "Remove synthesized FC and ACT-as-FC matrix display",
+    "Gate forecast by published version, response context and complete amounts",
+    "Disable unsupported cumulative/custom periods",
+    "Show loaded batch period, use canonical matrix metric codes",
+    "Isolate overview state and reject stale analysis responses",
+    "Deduplicate concurrent batch initialization"
+  ],
+  "sourceSha256": {
+    "frontend/src/features/workbench/WorkbenchPage.vue": "34cf6f04522cacad5fdea5a878d3b5c163656b213a008088ea1d0aca53d9ca74",
+    "frontend/src/features/workbench/analysis-presentation.ts": "68ab95e8fb7f1aaee517df1444bfb7be1939a67cc22f708878cbfe76a5e422ea",
+    "frontend/tests/unit/fe-financial-presentation.spec.ts": "506ac1a3f47f784a23a69c1694435d486d4553c3407d23ae18510cd286b498ed",
+    "frontend/tests/unit/fe-002-workbench.spec.ts": "8893c45d7e3b0caf8b53f4d244348daa8046b2f44e25c89972c214e81ee24db8"
+  },
+  "frontend": {
+    "testFiles": 8,
+    "tests": 62,
+    "failures": 0,
+    "skipped": 0,
+    "newRegressionTests": 23,
+    "build": "passed",
+    "node": "26.5.0",
+    "nodeOptions": "--no-experimental-webstorage"
+  },
+  "e2e": {
+    "tests": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "node": "24.19.0",
+    "playwright": "1.48.2",
+    "chromium": "130.0.6723.31",
+    "initialRun": "3 passed, 1 failed: duplicate batch creation race; fixed and all 4 rerun successfully",
+    "stubTestCount": 1
+  },
+  "architecture": "passed",
+  "backend": {
+    "rerun": false,
+    "reason": "No backend/SQL changes in phase 2",
+    "priorEvidence": "2026-10-21-validation.json",
+    "priorPassingTests": 931
+  },
+  "cleanup": {
+    "localApi": "stopped"
+  },
+  "notImplemented": [
+    "Immutable calculation version pipeline",
+    "Production authentication integration",
+    "Cumulative/custom-month aggregation",
+    "FC matrix or overview endpoint expansion",
+    "Full workbench component decomposition"
+  ],
+  "delivery": {
+    "commit": false,
+    "push": false,
+    "deployment": false
+  }
+}
