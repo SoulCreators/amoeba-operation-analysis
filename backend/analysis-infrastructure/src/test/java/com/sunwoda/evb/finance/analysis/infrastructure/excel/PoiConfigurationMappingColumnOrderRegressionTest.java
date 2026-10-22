@@ -35,13 +35,13 @@ class PoiConfigurationMappingColumnOrderRegressionTest {
         ConfigurationApplyResult result = applier.apply(
                 task(ConfigurationImportType.SALES_PROJECT_MAPPING), workbook(
                         "21_销售项目映射",
-                        new String[]{"是否有效", "备注", "事业部", "客户项目", "电芯型号", "产品线",
+                        new String[]{"是否有效", "备注", "事业部", "出货基地", "客户项目改", "电芯型号", "产品线",
                                 "客户简称", "B品标识"},
-                        new String[]{"否", "销售备注", "事业部A", "项目A", "106Ah", "产品线A",
+                        new String[]{"否", "销售备注", "事业部A", "义乌", "项目A", "106Ah", "产品线A",
                                 "客户A", "否"}));
 
         assertMapping(result, mappings, MappingType.SALES_PROJECT,
-                "客户A|项目A|106Ah",
+                "义乌|客户A|项目A|106Ah",
                 "产品线A|事业部A|否|销售备注||", false);
     }
 

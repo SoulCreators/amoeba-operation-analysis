@@ -160,16 +160,16 @@ class ConfigurationImportServicePostgresContractTest {
 
     @Test
     void realXlsxSalesMappingImportFlowsThroughServicePoiAndJdbcToPostgres() throws Exception {
-        String matchKey = runPrefix + "-CUSTOMER|项目A|106Ah";
+        String matchKey = "义乌|" + runPrefix + "-CUSTOMER|项目A|106Ah";
         ConfigurationImportServiceImpl service = service(
                 new PoiConfigurationImportApplier(metrics, mappings));
         ConfigurationImportTask task = service.create(ConfigurationImportType.SALES_PROJECT_MAPPING,
                 runPrefix + "-mapping.xlsx", runPrefix + "-checksum", runPrefix + "-user");
         taskNos.add(task.getTaskNo());
         byte[] workbook = workbookBytes("21_销售项目映射",
-                new String[]{"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "B品标识",
+                new String[]{"出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "B品标识",
                         "备注", "是否有效"},
-                new String[]{runPrefix + "-CUSTOMER", "项目A", "106Ah", "产品线A", "事业部A",
+                new String[]{"义乌", runPrefix + "-CUSTOMER", "项目A", "106Ah", "产品线A", "事业部A",
                         "否", "真实导入", "是"});
 
         ImportValidationResult result = service.validate(task.getTaskNo(),

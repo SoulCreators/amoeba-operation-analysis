@@ -79,9 +79,9 @@ class ConfigurationImportServicePoiEndToEndContractTest {
         ConfigurationImportTask task = service.create(ConfigurationImportType.SALES_PROJECT_MAPPING,
                 "sales-project.xlsx", "checksum-poi-002", "U002");
         byte[] workbook = workbookBytes("21_销售项目映射",
-                new String[] {"是否有效", "备注", "事业部", "客户项目", "电芯型号", "产品线",
+                new String[] {"是否有效", "备注", "事业部", "出货基地", "客户项目改", "电芯型号", "产品线",
                         "客户简称", "B品标识"},
-                new String[] {"否", "销售备注", "事业部A", "项目A", "106Ah", "产品线A",
+                new String[] {"否", "销售备注", "事业部A", "义乌", "项目A", "106Ah", "产品线A",
                         "客户A", "否"});
 
         ImportValidationResult result = service.validate(task.getTaskNo(),
@@ -91,7 +91,7 @@ class ConfigurationImportServicePoiEndToEndContractTest {
         assertEquals(1, result.getRowCount());
         assertTrue(result.getIssues().isEmpty());
         MappingEntry entry = mappings.find(MappingType.SALES_PROJECT,
-                "客户A|项目A|106Ah").orElse(null);
+                "义乌|客户A|项目A|106Ah").orElse(null);
         assertTrue(entry != null);
         assertEquals("产品线A|事业部A|否|销售备注||", entry.getMappedValue());
         assertEquals(false, entry.isEnabled());

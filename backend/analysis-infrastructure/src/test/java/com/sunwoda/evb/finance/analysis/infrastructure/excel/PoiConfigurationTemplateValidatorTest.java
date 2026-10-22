@@ -58,6 +58,27 @@ class PoiConfigurationTemplateValidatorTest {
     }
 
     @Test
+    void blocksSalesTemplateWithoutShippingBaseAndAdjustedProjectKey() throws Exception {
+        XSSFWorkbook workbook = new XSSFWorkbook();
+        org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("21_销售项目映射");
+        org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+        String[] headers = {"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "是否有效"};
+        for (int i = 0; i < headers.length; i++) header.createCell(i).setCellValue(headers[i]);
+        sheet.createRow(1).createCell(0).setCellValue("客户A");
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        workbook.write(output);
+        workbook.close();
+
+        ImportValidationResult result = new PoiConfigurationTemplateValidator().validate(
+                "CFG-SALES-MISSING-KEY", ConfigurationImportType.SALES_PROJECT_MAPPING,
+                new ByteArrayInputStream(output.toByteArray()));
+
+        assertEquals(ImportStatus.INVALID, result.getStatus());
+        assertTrue(result.getIssues().stream().anyMatch(issue -> "出货基地".equals(issue.getFieldName())));
+        assertTrue(result.getIssues().stream().anyMatch(issue -> "客户项目改".equals(issue.getFieldName())));
+    }
+
+    @Test
     void recognizesRequiredFieldsInRealMetricTemplate() throws Exception {
         XSSFWorkbook workbook = new XSSFWorkbook();
         org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet("数据录入");

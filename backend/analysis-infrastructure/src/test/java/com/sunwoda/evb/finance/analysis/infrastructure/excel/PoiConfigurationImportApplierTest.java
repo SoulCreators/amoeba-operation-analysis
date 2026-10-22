@@ -83,9 +83,9 @@ class PoiConfigurationImportApplierTest {
 
         assertRealMapping(applier, mappings, ConfigurationImportType.SALES_PROJECT_MAPPING,
                 MappingType.SALES_PROJECT,
-                new String[]{"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "B品标识", "是否有效", "备注", "巴长", "巴长工号"},
-                new String[]{"深海", "A9E模组", "106Ah", "产品线A", "事业部A", "否", "是", "", "张三", "E000001"},
-                "深海|A9E模组|106Ah", "产品线A|事业部A|否||张三|E000001");
+                new String[]{"出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "B品标识", "是否有效", "备注", "巴长", "巴长工号"},
+                new String[]{"义乌", "深海", "A9E模组", "106Ah", "产品线A", "事业部A", "否", "是", "", "张三", "E000001"},
+                "义乌|深海|A9E模组|106Ah", "产品线A|事业部A|否||张三|E000001");
         assertRealMapping(applier, mappings, ConfigurationImportType.INVENTORY_MAPPING,
                 MappingType.INVENTORY,
                 new String[]{"物料编码", "电芯型号", "产品类型", "产品线", "事业部", "分摊比例", "是否有效", "备注"},
@@ -151,21 +151,21 @@ class PoiConfigurationImportApplierTest {
         MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
         PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
                 new InMemoryMetricDefinitionRepository(), mappings);
-        String[] headers = {"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "B品标识",
+        String[] headers = {"出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "B品标识",
                 "备注", "产品线巴长", "产品线巴长工号", "事业部巴长", "事业部巴长工号", "是否有效"};
 
         ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.SALES_PROJECT_MAPPING),
                 multiRowWorkbook("21_销售项目映射", headers,
-                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"},
-                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"}));
+                        new String[]{"义乌", "客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"},
+                        new String[]{"义乌", "客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"}));
 
         assertEquals(1, result.getAppliedCount());
         assertTrue(result.getIssues().isEmpty());
 
         ConfigurationApplyResult conflict = applier.apply(task(ConfigurationImportType.SALES_PROJECT_MAPPING),
                 multiRowWorkbook("21_销售项目映射", headers,
-                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"},
-                        new String[]{"客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "王五", "1003", "李四", "1002", "是"}));
+                        new String[]{"义乌", "客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "张三", "1001", "李四", "1002", "是"},
+                        new String[]{"义乌", "客户A", "项目A", "106Ah", "产品线A", "事业部A", "", "", "王五", "1003", "李四", "1002", "是"}));
 
         assertEquals(0, conflict.getAppliedCount());
         assertTrue(conflict.getIssues().stream().anyMatch(issue -> "DUPLICATE_KEY".equals(issue.getIssueCode())));
@@ -228,6 +228,42 @@ class PoiConfigurationImportApplierTest {
         assertEquals("DUPLICATE_KEY", result.getIssues().get(0).getIssueCode());
         assertEquals("2026-08|匈牙利|EUR", result.getIssues().get(0).getRawValue());
         assertTrue(!mappings.find(MappingType.FX_RATE, "2026-08|匈牙利|EUR").isPresent());
+    }
+
+    @Test
+    void rejectsInventoryRatiosThatDoNotReconcileBeforeWriting() throws Exception {
+        MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), mappings);
+
+        ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.INVENTORY_MAPPING),
+                realWorkbook("22_库存档案映射",
+                        new String[]{"物料编码", "电芯型号", "产品类型", "产品线", "事业部", "分摊比例", "是否有效", "备注"},
+                        new String[]{"MAT-RATIO", "106Ah", "正常产品", "产品线A", "事业部A", "99%", "是", ""}));
+
+        assertEquals(0, result.getAppliedCount());
+        assertTrue(result.getIssues().stream()
+                .anyMatch(issue -> "ALLOCATION_RATIO_NOT_ONE".equals(issue.getIssueCode())));
+        assertTrue(!mappings.find(MappingType.INVENTORY, "MAT-RATIO").isPresent());
+    }
+
+    @Test
+    void rejectsDifferentActiveLeadersForTheSameModelWithoutApplyingAnyMapping() throws Exception {
+        MappingEntryRepository mappings = new InMemoryMappingEntryRepository();
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), mappings);
+
+        ConfigurationApplyResult result = applier.apply(task(ConfigurationImportType.SALES_PROJECT_MAPPING),
+                multiRowWorkbook("21_销售项目映射",
+                        new String[]{"出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "B品标识",
+                                "是否有效", "备注", "巴长", "巴长工号"},
+                        new String[]{"义乌", "客户A", "项目A", "106Ah", "产品线A", "事业部A", "否", "是", "", "张三", "E001"},
+                        new String[]{"宜昌", "客户B", "项目B", "106Ah", "产品线A", "事业部A", "否", "是", "", "李四", "E002"}));
+
+        assertEquals(0, result.getAppliedCount());
+        assertTrue(result.getIssues().stream()
+                .anyMatch(issue -> "MAPPING_CONFLICT".equals(issue.getIssueCode())));
+        assertTrue(mappings.list(MappingType.SALES_PROJECT, true).isEmpty());
     }
 
     @Test
