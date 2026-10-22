@@ -2,6 +2,8 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.application.service.AiAnalysisService;
 import com.sunwoda.evb.finance.analysis.application.service.BatchReadinessService;
+import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import com.sunwoda.evb.finance.analysis.application.service.DataQualityService;
 import com.sunwoda.evb.finance.analysis.application.service.MetricTreeService;
 import com.sunwoda.evb.finance.analysis.application.service.PvmService;
@@ -18,6 +20,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class AnalysisControllerAuthenticationBoundaryTest {
     private BatchReadinessService batchReadinessService;
+    private BatchService batchService;
+    private PermissionService permissionService;
     private DataQualityService dataQualityService;
     private MetricTreeService metricTreeService;
     private PvmService pvmService;
@@ -34,14 +38,16 @@ class AnalysisControllerAuthenticationBoundaryTest {
     @BeforeEach
     void setUp() {
         batchReadinessService = mock(BatchReadinessService.class);
+        batchService = mock(BatchService.class);
+        permissionService = mock(PermissionService.class);
         dataQualityService = mock(DataQualityService.class);
         metricTreeService = mock(MetricTreeService.class);
         pvmService = mock(PvmService.class);
         aiAnalysisService = mock(AiAnalysisService.class);
         v13AnalysisService = mock(V13AnalysisService.class);
 
-        batchReadinessController = new BatchReadinessController(batchReadinessService);
-        dataQualityController = new DataQualityController(dataQualityService);
+        batchReadinessController = new BatchReadinessController(batchReadinessService, batchService, permissionService);
+        dataQualityController = new DataQualityController(dataQualityService, batchService, permissionService);
         metricTreeController = new MetricTreeController(metricTreeService);
         pvmController = new PvmController(pvmService);
         aiAnalysisController = new AiAnalysisController(aiAnalysisService);
