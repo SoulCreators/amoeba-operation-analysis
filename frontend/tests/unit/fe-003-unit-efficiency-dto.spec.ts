@@ -36,7 +36,7 @@ describe('FE-UT-008 unit-efficiency DTO mapping', () => {
     apiMock.v13Overview.mockResolvedValue(basePayload)
   })
 
-  it('renders the backend formal scope, manufacturing cost, Wh, and unit-cost fields', async () => {
+  it('hides technical candidate amounts while the business definition is pending', async () => {
     apiMock.v13UnitEfficiency.mockResolvedValue({
       ...basePayload,
       status: 'CALCULATED_TECHNICAL',
@@ -56,7 +56,9 @@ describe('FE-UT-008 unit-efficiency DTO mapping', () => {
     const wrapper = await openUnitEfficiencyView()
     const cells = wrapper.findAll('section.view.active tbody tr td').map((cell) => cell.text())
 
-    expect(cells).toEqual(['NANCHANG', 'L01', '1,234.5', '98,765.4', '0.12', '—'])
+    expect(cells).toEqual([])
+    expect(wrapper.text()).toContain('当前结果尚不可展示（CALCULATED_TECHNICAL）')
+    expect(wrapper.text()).not.toContain('1,234.5')
   })
 
   it('keeps missing numeric fields as placeholders and preserves explicit zero values', async () => {
@@ -76,8 +78,9 @@ describe('FE-UT-008 unit-efficiency DTO mapping', () => {
     const wrapper = await openUnitEfficiencyView()
     const cells = wrapper.findAll('section.view.active tbody tr td').map((cell) => cell.text())
 
-    expect(cells).toEqual(['YICHANG', 'L02', '—', '0', '0', '+0'])
-    expect(cells).not.toContain('NaN')
-    expect(cells).not.toContain('Infinity')
+    expect(cells).toEqual([])
+    expect(wrapper.text()).toContain('当前结果尚不可展示（CALCULATED_TECHNICAL）')
+    expect(wrapper.text()).not.toContain('NaN')
+    expect(wrapper.text()).not.toContain('Infinity')
   })
 })

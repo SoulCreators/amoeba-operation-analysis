@@ -41,13 +41,26 @@ export interface MatrixRow {
   product: string
   actual: number
   budget: number
+  gap: number
+  gapRate: number | null
 }
 
 export function matrixRowsFrom(payload: V13AnalysisPayload): MatrixRow[] {
   if (!payload.rows?.length || payload.rows.some((row) =>
-    !row.baseCode || !row.productCode || finiteAmount(row.actual) === null || finiteAmount(row.budget) === null)) return []
+    !row.baseCode || !row.productCode || ['actual', 'budget', 'gap'].some((key) => finiteAmount(row[key]) === null))) return []
   return payload.rows.map((row) => ({
     base: String(row.baseCode), product: String(row.productCode),
-    actual: finiteAmount(row.actual)!, budget: finiteAmount(row.budget)!,
+    actual: finiteAmount(row.actual)!, budget: finiteAmount(row.budget)!, gap: finiteAmount(row.gap)!,
+    gapRate: finiteAmount(row.gapRate),
   }))
+}
+
+/** Forecast rows must contain the selected server comparison; the UI never derives financial gaps. */
+export function forecastRowsFrom(payload: V13AnalysisPayload, scenario: Scenario): Record<string, unknown>[] {
+  const rows = payload.rows || []
+  if (!rows.length) return []
+  const comparison = scenario
+  if (rows.some((row) => !row.metricCode || row.comparison !== comparison ||
+    ['actual', 'budget', 'fc', 'gap'].some((key) => finiteAmount(row[key]) === null))) return []
+  return rows
 }
