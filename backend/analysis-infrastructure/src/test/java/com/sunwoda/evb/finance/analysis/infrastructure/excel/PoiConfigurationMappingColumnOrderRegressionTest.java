@@ -55,12 +55,12 @@ class PoiConfigurationMappingColumnOrderRegressionTest {
                         "22_库存档案映射",
                         new String[]{"备注", "是否有效", "产品线", "物料编码", "分摊比例", "电芯型号",
                                 "事业部", "产品类型"},
-                        new String[]{"库存备注", "是", "产品线I", "MAT-ORDER", "60%", "106Ah",
+                        new String[]{"库存备注", "是", "产品线I", "MAT-ORDER", "100%", "106Ah",
                                 "事业部I", "正常产品"}));
 
         assertMapping(result, mappings, MappingType.INVENTORY,
                 "MAT-ORDER",
-                "106Ah|正常产品|产品线I|事业部I|60%|库存备注", true);
+                "106Ah|正常产品|产品线I|事业部I|100%|库存备注", true);
     }
 
     @Test
