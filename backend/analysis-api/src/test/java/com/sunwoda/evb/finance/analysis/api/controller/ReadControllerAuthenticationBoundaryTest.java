@@ -6,6 +6,7 @@ import com.sunwoda.evb.finance.analysis.application.service.BatchService;
 import com.sunwoda.evb.finance.analysis.application.service.MappingService;
 import com.sunwoda.evb.finance.analysis.application.service.MetricService;
 import com.sunwoda.evb.finance.analysis.application.service.OverviewService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
@@ -37,7 +38,7 @@ class ReadControllerAuthenticationBoundaryTest {
         mappingService = mock(MappingService.class);
         metricService = mock(MetricService.class);
 
-        batchController = new BatchController(batchService);
+        batchController = new BatchController(batchService, mock(PermissionService.class));
         overviewController = new OverviewController(overviewService);
         datasetController = new DatasetController(datasetCatalog);
         mappingController = new MappingController(mappingService);

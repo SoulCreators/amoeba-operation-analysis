@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
@@ -15,6 +16,7 @@ import java.security.Principal;
 import java.time.LocalDateTime;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -28,13 +30,15 @@ class BatchControllerMockMvcContractTest {
     private static final String USER_ID = "U001";
 
     private BatchService batchService;
+    private PermissionService permissionService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         batchService = mock(BatchService.class);
+        permissionService = mock(PermissionService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new BatchController(batchService))
+                .standaloneSetup(new BatchController(batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -66,6 +70,8 @@ class BatchControllerMockMvcContractTest {
     void authenticatedGetReturnsSuccessfulEnvelope() throws Exception {
         AnalysisBatch batch = batch(BatchStatus.READY_FOR_CALCULATION);
         when(batchService.get(BATCH_NO)).thenReturn(batch);
+        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
+                .thenReturn(java.util.Collections.singleton("NORTH"));
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -81,22 +87,25 @@ class BatchControllerMockMvcContractTest {
     }
 
     @Test
-    void authenticatedMoveReturnsSuccessfulEnvelopeAndConvertsBatchStatus() throws Exception {
-        AnalysisBatch batch = batch(BatchStatus.CALCULATING);
-        when(batchService.move(BATCH_NO, BatchStatus.CALCULATING)).thenReturn(batch);
-
+    void genericStatusMutationIsForbiddenAndDoesNotReachBatchService() throws Exception {
         mockMvc.perform(post("/api/v1/batches/{batchNo}/status", BATCH_NO)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"CALCULATING\"}")
                         .principal(principal(USER_ID)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.code").value("OK"))
-                .andExpect(jsonPath("$.message").value("成功"))
-                .andExpect(jsonPath("$.data.batchNo").value(BATCH_NO))
-                .andExpect(jsonPath("$.data.status").value("CALCULATING"));
+                .andExpect(status().isForbidden());
 
-        verify(batchService).move(BATCH_NO, BatchStatus.CALCULATING);
+        verify(batchService, never()).move(BATCH_NO, BatchStatus.CALCULATING);
+    }
+
+    @Test
+    void batchNumberDoesNotGrantReadAccessWithoutPerspectiveScope() throws Exception {
+        when(batchService.get(BATCH_NO)).thenReturn(batch(BatchStatus.DRAFT));
+        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
+                .thenReturn(java.util.Collections.<String>emptySet());
+
+        mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isForbidden());
     }
 
     private AnalysisBatch batch(BatchStatus status) {

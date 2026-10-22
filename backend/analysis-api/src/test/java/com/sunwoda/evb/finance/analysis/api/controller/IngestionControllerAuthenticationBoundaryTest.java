@@ -14,6 +14,7 @@ import com.sunwoda.evb.finance.analysis.application.service.ConfigurationImportS
 import com.sunwoda.evb.finance.analysis.application.service.FcVersionCommandService;
 import com.sunwoda.evb.finance.analysis.application.service.ImportTaskService;
 import com.sunwoda.evb.finance.analysis.application.service.MappingService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import com.sunwoda.evb.finance.analysis.application.service.MetricService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,7 +54,7 @@ class IngestionControllerAuthenticationBoundaryTest {
         fcVersionCommandService = mock(FcVersionCommandService.class);
         calculationService = mock(CalculationService.class);
 
-        batchController = new BatchController(batchService);
+        batchController = new BatchController(batchService, mock(PermissionService.class));
         importTaskController = new ImportTaskController(importTaskService);
         mappingController = new MappingController(mappingService);
         metricController = new MetricController(metricService);
