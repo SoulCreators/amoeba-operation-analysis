@@ -7,6 +7,7 @@ import com.sunwoda.evb.finance.analysis.application.service.BatchService;
 import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
+import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 
@@ -23,8 +24,12 @@ public class BatchController {
 
     @PostMapping
     public ApiResult<AnalysisBatch> create(@RequestBody CreateBatchRequest request, Principal principal) {
-        return ApiResult.ok(batchService.create(request.getBatchNo(), request.getPeriod(),
-                AnalysisPerspective.fromCode(request.getPerspective()), requiredUser(principal)));
+        String userId = requiredUser(principal);
+        AnalysisPerspective perspective = AnalysisPerspective.fromCode(request.getPerspective());
+        if (!permissionService.canCalculate(userId, perspective)) {
+            throw new IllegalStateException("当前用户无权限创建批次");
+        }
+        return ApiResult.ok(batchService.create(request.getBatchNo(), request.getPeriod(), perspective, userId));
     }
 
     @GetMapping("/{batchNo}")
@@ -41,9 +46,17 @@ public class BatchController {
     public ApiResult<AnalysisBatch> move(@PathVariable String batchNo,
                                          @RequestBody MoveBatchRequest request,
                                          Principal principal) {
-        requiredUser(principal);
-        // 状态流转必须经过计算、确认或发布等专用应用服务，不能由通用 HTTP 状态接口绕过动作授权。
-        throw new IllegalStateException("批次状态只能由具备对应权限的专用业务操作推动");
+        String userId = requiredUser(principal);
+        BatchStatus nextStatus = BatchStatus.valueOf(request.getStatus());
+        if (nextStatus != BatchStatus.CHECKING
+                && nextStatus != BatchStatus.READY_FOR_CALCULATION) {
+            throw new IllegalStateException("当前用户无权限通过通用状态接口推进该批次");
+        }
+        AnalysisBatch batch = batchService.get(batchNo);
+        if (!permissionService.canCalculate(userId, batch.getPerspective())) {
+            throw new IllegalStateException("当前用户无权限推进批次准备状态");
+        }
+        return ApiResult.ok(batchService.move(batchNo, nextStatus));
     }
 
     private String requiredUser(Principal principal) {

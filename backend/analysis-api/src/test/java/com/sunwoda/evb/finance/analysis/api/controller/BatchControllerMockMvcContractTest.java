@@ -46,6 +46,7 @@ class BatchControllerMockMvcContractTest {
     @Test
     void authenticatedCreateReturnsSuccessfulEnvelopePassesPrincipalAndConvertsBasePerspective() throws Exception {
         AnalysisBatch batch = batch(BatchStatus.DRAFT);
+        when(permissionService.canCalculate(USER_ID, AnalysisPerspective.BASE)).thenReturn(true);
         when(batchService.create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, USER_ID))
                 .thenReturn(batch);
 
@@ -84,6 +85,34 @@ class BatchControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.data.status").value("READY_FOR_CALCULATION"));
 
         verify(batchService).get(BATCH_NO);
+    }
+
+    @Test
+    void authorizedPreparationTransitionReachesBatchService() throws Exception {
+        AnalysisBatch batch = batch(BatchStatus.CHECKING);
+        when(batchService.get(BATCH_NO)).thenReturn(batch);
+        when(permissionService.canCalculate(USER_ID, AnalysisPerspective.BASE)).thenReturn(true);
+        when(batchService.move(BATCH_NO, BatchStatus.CHECKING)).thenReturn(batch);
+
+        mockMvc.perform(post("/api/v1/batches/{batchNo}/status", BATCH_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CHECKING\"}")
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CHECKING"));
+
+        verify(batchService).move(BATCH_NO, BatchStatus.CHECKING);
+    }
+
+    @Test
+    void batchCreationRequiresFinanceActionPermission() throws Exception {
+        mockMvc.perform(post("/api/v1/batches")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"batchNo\":\"BATCH-001\",\"period\":\"2026-09\",\"perspective\":\"BASE\"}")
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isForbidden());
+
+        verify(batchService, never()).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, USER_ID);
     }
 
     @Test
