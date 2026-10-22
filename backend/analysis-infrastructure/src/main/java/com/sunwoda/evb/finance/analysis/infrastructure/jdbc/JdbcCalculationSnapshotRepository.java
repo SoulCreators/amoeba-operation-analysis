@@ -58,10 +58,20 @@ public class JdbcCalculationSnapshotRepository implements CalculationSnapshotRep
             throw new IllegalArgumentException("snapshot 不能为空");
         }
         // 本次新增：通过 PostgreSQL jsonb 显式转换保存两段 JSON，避免依赖驱动的隐式类型推断。
-        jdbc.update(SAVE_SQL, snapshot.getSnapshotId(), snapshot.getSnapshotType(),
+        int inserted = jdbc.update(SAVE_SQL, snapshot.getSnapshotId(), snapshot.getSnapshotType(),
                 snapshot.getSchemaVersion(), snapshot.getContentJson(), snapshot.getSourceVersionSetJson(),
                 snapshot.getContentHash(), snapshot.getSourceVersionHash(), snapshot.getRuleVersion(),
                 snapshot.getCreatedBy(), timestamp(snapshot.getCreatedAt()));
+        if (inserted == 0) {
+            Boolean identical = jdbc.queryForObject("SELECT snapshot_type = ? AND schema_version = ? "
+                    + "AND content_json = ?::jsonb AND source_version_set = ?::jsonb AND content_hash = ? "
+                    + "AND source_version_hash IS NOT DISTINCT FROM ? AND rule_version IS NOT DISTINCT FROM ? "
+                    + "AND created_by = ? AND created_at = ? FROM calc.calculation_snapshot WHERE snapshot_id = ?",
+                    Boolean.class, snapshot.getSnapshotType(), snapshot.getSchemaVersion(), snapshot.getContentJson(),
+                    snapshot.getSourceVersionSetJson(), snapshot.getContentHash(), snapshot.getSourceVersionHash(),
+                    snapshot.getRuleVersion(), snapshot.getCreatedBy(), timestamp(snapshot.getCreatedAt()), snapshot.getSnapshotId());
+            if (!Boolean.TRUE.equals(identical)) throw new IllegalStateException("快照标识已存在且内容不一致，拒绝静默复用");
+        }
         return snapshot;
     }
 

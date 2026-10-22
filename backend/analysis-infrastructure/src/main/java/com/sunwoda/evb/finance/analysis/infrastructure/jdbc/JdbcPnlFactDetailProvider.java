@@ -48,7 +48,11 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 + "(s.perspective = f.perspective AND s.can_view_detail = TRUE "
                 + "AND (s.scope_code = 'ALL' OR s.scope_code = f.scope_code)))) "
                 + "ORDER BY f.scope_code, f.base_code, f.product_code, f.line_code, f.id";
-        return jdbc.query(sql, (rs, row) -> new PnlFact(
+        return jdbc.query(sql, JdbcPnlFactDetailProvider::mapFact, requiredBatchNo, perspective.getCode(), requiredUserId);
+    }
+
+    static PnlFact mapFact(java.sql.ResultSet rs, int row) throws java.sql.SQLException {
+        return new PnlFact(
                 rs.getString("scope_code"), rs.getString("base_code"),
                 rs.getString("product_code"), rs.getString("line_code"),
                 rs.getBigDecimal("volume"), rs.getBigDecimal("revenue"),
@@ -66,8 +70,7 @@ public class JdbcPnlFactDetailProvider implements PnlFactDetailProvider {
                 rs.getBigDecimal("budget_labor_cost"), rs.getBigDecimal("budget_outsourcing_cost"),
                 rs.getBigDecimal("budget_variable_mfg_cost"), rs.getBigDecimal("budget_fixed_mfg_cost"),
                 rs.getBigDecimal("output_wh"), rs.getBigDecimal("budget_output_wh"),
-                rs.getBigDecimal("material_loss"), rs.getBigDecimal("budget_material_loss")),
-                requiredBatchNo, perspective.getCode(), requiredUserId);
+                rs.getBigDecimal("material_loss"), rs.getBigDecimal("budget_material_loss"));
     }
 
     private static String required(String value, String fieldName) {

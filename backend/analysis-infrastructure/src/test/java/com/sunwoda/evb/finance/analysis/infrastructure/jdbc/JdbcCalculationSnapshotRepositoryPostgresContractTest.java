@@ -93,8 +93,8 @@ class JdbcCalculationSnapshotRepositoryPostgresContractTest {
                         + " WHERE snapshot_id = ?", String.class, snapshotId));
 
         // 本次新增：重复保存同一主键不得覆盖不可变快照的首个内容和哈希。
-        repository.save(snapshot("{\"mapping\":\"changed\"}",
-                "[\"MAP-CHANGED\"]", "HASH-CHANGED"));
+        assertThrows(IllegalStateException.class, () -> repository.save(snapshot("{\"mapping\":\"changed\"}",
+                "[\"MAP-CHANGED\"]", "HASH-CHANGED")));
         CalculationSnapshot replay = repository.findById(snapshotId).get();
         assertTrue(replay.getContentJson().contains("\"mapping\""));
         assertTrue(!replay.getContentJson().contains("changed"));

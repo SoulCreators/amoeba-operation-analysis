@@ -38,6 +38,12 @@ public class CalculationController {
                 requiredUser(principal, "未获取到认证用户，拒绝返回经营结果")));
     }
 
+    @GetMapping("/{batchNo}/versions/{versionNo}/result")
+    public ApiResult<CalculationResult> versionResult(@PathVariable String batchNo, @PathVariable String versionNo,
+                                                     Principal principal) {
+        return ApiResult.ok(service.getVersionForUser(batchNo, versionNo, requiredUser(principal)));
+    }
+
     @PostMapping("/confirm")
     public ApiResult<CalculationResult> confirm(@RequestBody ResultLifecycleRequest request, Principal principal) {
         return ApiResult.ok(service.confirm(request.getBatchNo(), requiredUser(principal)));

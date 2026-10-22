@@ -51,7 +51,11 @@ import java.util.Set;
         JdbcAnalysisBatchRepository.class, JdbcPnlFactProvider.class,
         JdbcCalculationResultRepository.class, JdbcUserScopeRepository.class,
         // 本次修复：显式导入应用层计算服务和权限服务，确保执行器可以实际创建。
-        CalculationServiceImpl.class, PermissionServiceImpl.class})
+        CalculationServiceImpl.class, PermissionServiceImpl.class,
+        com.sunwoda.evb.finance.analysis.infrastructure.jdbc.JdbcCalculationRunStore.class,
+        com.sunwoda.evb.finance.analysis.infrastructure.jdbc.JdbcCalculationSnapshotRepository.class,
+        com.sunwoda.evb.finance.analysis.infrastructure.jdbc.JdbcCalculationVersionRepository.class,
+        com.sunwoda.evb.finance.analysis.application.service.CalculationVersionMaterializationService.class})
 public class CalculationRetryWorkerConfiguration {
 
     @Bean

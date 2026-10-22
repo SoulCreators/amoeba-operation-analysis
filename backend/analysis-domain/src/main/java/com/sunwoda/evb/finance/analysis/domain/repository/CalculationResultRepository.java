@@ -8,6 +8,10 @@ public interface CalculationResultRepository {
     CalculationResult save(CalculationResult result);
     Optional<CalculationResult> findByBatchNo(String batchNo);
 
+    default Optional<CalculationResult> findVersionForUser(String batchNo, String versionNo, String userId) {
+        return Optional.empty();
+    }
+
     /**
      * Reads the result visible to one user. Implementations backed by a
      * database may apply the user's VIEW_SCOPE predicate before materializing

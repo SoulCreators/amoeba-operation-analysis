@@ -22,6 +22,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,6 +41,23 @@ class CalculationControllerMockMvcContractTest {
                 .standaloneSetup(new CalculationController(service))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
+    }
+
+    @Test
+    void historicalResultUsesAuthenticatedPrincipalAndExplicitVersion() throws Exception {
+        when(service.getVersionForUser(BATCH_NO, "R1", USER_ID)).thenReturn(result());
+        mockMvc.perform(get("/api/v1/calculations/{batch}/versions/{version}/result", BATCH_NO, "R1")
+                        .principal(principal("  " + USER_ID + "  ")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.batchNo").value(BATCH_NO));
+        verify(service).getVersionForUser(BATCH_NO, "R1", USER_ID);
+        verifyNoMoreInteractions(service);
+    }
+
+    @Test
+    void historicalResultRejectsAnonymousRequestBeforeRepositoryAccess() throws Exception {
+        mockMvc.perform(get("/api/v1/calculations/{batch}/versions/{version}/result", BATCH_NO, "R1"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(service);
     }
 
     @Test

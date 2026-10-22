@@ -1,6 +1,7 @@
 package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactProvider;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationRunStore;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
@@ -31,6 +32,12 @@ public class CalculationServiceImpl implements CalculationService {
     private final Map<String, CalculationResult> results = new LinkedHashMap<String, CalculationResult>();
     private final CalculationResultRepository resultRepository;
     private final PvmReconciliationValidator pvmReconciliationValidator;
+    private CalculationRunStore runStore;
+
+    @Autowired(required = false)
+    public void setRunStore(CalculationRunStore runStore) {
+        this.runStore = runStore;
+    }
 
     @Autowired
     public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
@@ -61,10 +68,19 @@ public class CalculationServiceImpl implements CalculationService {
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("计算人不能为空");
         }
-        return calculateInternal(batchNo, operator.trim());
+        if (runStore != null) {
+            return runStore.execute(batchNo, operator.trim(),
+                    versionNo -> calculateInternal(batchNo, operator.trim(), versionNo));
+        }
+        CalculationResult previous = resultRepository == null ? results.get(batchNo)
+                : resultRepository.findByBatchNo(batchNo).orElse(null);
+        String versionNo = previous == null ? batchNo + "-R1"
+                : batchNo + "-R" + (Integer.parseInt(previous.getVersionNo()
+                        .substring(previous.getVersionNo().lastIndexOf("-R") + 2)) + 1);
+        return calculateInternal(batchNo, operator.trim(), versionNo);
     }
 
-    private CalculationResult calculateInternal(String batchNo, String operator) {
+    private CalculationResult calculateInternal(String batchNo, String operator, String versionNo) {
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
         if (batch.getStatus() == BatchStatus.CONFIRMED || batch.getStatus() == BatchStatus.PUBLISHED) {
@@ -110,7 +126,7 @@ public class CalculationServiceImpl implements CalculationService {
                 pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines()));
             }
             CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults,
-                    batchNo + "-R1", CalculationResultStatus.CALCULATED, null, null,
+                    versionNo, CalculationResultStatus.CALCULATED, null, null,
                     java.time.LocalDateTime.now(), null, null, facts);
             saveResult(result);
             batch.moveTo(BatchStatus.CALCULATED);
@@ -154,6 +170,23 @@ public class CalculationServiceImpl implements CalculationService {
             }
         }
         if (result == null) throw new IllegalArgumentException("批次尚未完成计算: " + batchNo);
+        return filterForUser(result, normalizedUser);
+    }
+
+    @Override
+    public synchronized CalculationResult getVersionForUser(String batchNo, String versionNo, String userId) {
+        if (userId == null || userId.trim().isEmpty()) throw new IllegalArgumentException("用户工号不能为空");
+        if (versionNo == null || versionNo.trim().isEmpty()) throw new IllegalArgumentException("版本不能为空");
+        if (resultRepository == null) throw new IllegalStateException("当前存储不支持历史结果");
+        CalculationResult result = resultRepository.findVersionForUser(batchNo, versionNo.trim(), userId.trim())
+                .orElseThrow(() -> new IllegalStateException("版本不存在或无范围权限"));
+        if (!permissionService.canViewHistory(userId.trim(), result.getPerspective())) {
+            throw new IllegalStateException("当前用户无历史版本查看权限");
+        }
+        return filterForUser(result, userId.trim());
+    }
+
+    private CalculationResult filterForUser(CalculationResult result, String normalizedUser) {
         if (!permissionService.canViewResult(normalizedUser, result.getPerspective(), result.getStatus())) {
             if (result.getStatus() != CalculationResultStatus.PUBLISHED) {
                 throw new IllegalStateException("当前结果尚未发布，仅财经角色可查看草稿");
@@ -191,11 +224,13 @@ public class CalculationServiceImpl implements CalculationService {
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("确认人不能为空");
         }
+        if (runStore != null) runStore.lockBatch(batchNo);
         CalculationResult current = get(batchNo);
         // 本次新增：确认人与发布人不要求不同；只校验当前操作者是否具备确认权限。
         if (!permissionService.canConfirm(operator.trim(), current.getPerspective(), resultScopes(current))) {
             throw new IllegalStateException("当前用户无结果确认权限");
         }
+        if (runStore != null) runStore.assertPublishable(current);
         CalculationResult confirmed = current.confirm(operator.trim());
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
@@ -212,11 +247,13 @@ public class CalculationServiceImpl implements CalculationService {
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("发布人不能为空");
         }
+        if (runStore != null) runStore.lockBatch(batchNo);
         CalculationResult current = get(batchNo);
         // 本次新增：发布权限独立校验，ADMIN 不因全量读取而获得发布写权限。
         if (!permissionService.canPublish(operator.trim(), current.getPerspective(), resultScopes(current))) {
             throw new IllegalStateException("当前用户无结果发布权限");
         }
+        if (runStore != null) runStore.assertPublishable(current);
         pvmReconciliationValidator.validate(current);
         CalculationResult published = current.publish(operator.trim());
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)

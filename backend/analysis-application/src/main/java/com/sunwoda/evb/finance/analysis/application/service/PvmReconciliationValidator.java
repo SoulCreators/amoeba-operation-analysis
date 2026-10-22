@@ -31,7 +31,7 @@ final class PvmReconciliationValidator {
         BigDecimal costGap = actualCost.subtract(budgetCost);
         return new Checks(volumeImpact, priceImpact, revenueGap, costGap, grossProfitGap,
                 revenueGap.subtract(volumeImpact).subtract(priceImpact),
-                grossProfitGap.subtract(revenueGap).add(costGap));
+                grossProfitGap.subtract(volumeImpact).subtract(priceImpact).add(costGap));
     }
 
     void validate(CalculationResult calculation) {

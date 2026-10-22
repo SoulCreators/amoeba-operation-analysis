@@ -13,6 +13,9 @@ public interface CalculationService {
     }
     CalculationResult get(String batchNo);
     CalculationResult getForUser(String batchNo, String userId);
+    default CalculationResult getVersionForUser(String batchNo, String versionNo, String userId) {
+        throw new IllegalStateException("当前存储不支持历史结果");
+    }
     CalculationResult confirm(String batchNo, String operator);
     CalculationResult publish(String batchNo, String operator);
 }
