@@ -173,8 +173,8 @@ describe('FE-CONFIG-IMPORT-STATE-001 configuration import state orchestration', 
     expect(wrapper.text()).not.toContain('校验并应用通过')
   })
 
-  // 本次修改：验证 USER_PERMISSION 只提示管理员授权，不推断权限文件已经生效或已获授权。
-  it('keeps USER_PERMISSION pending administrator authorization without inferring approval', async () => {
+  // 本次修改：验证 USER_PERMISSION 通过后明确反馈 ADMIN 校验和原子应用结果。
+  it('reports USER_PERMISSION as atomically applied by an administrator', async () => {
     const permissionTask = { ...task(), type: 'USER_PERMISSION', status: 'VALID' }
     apiMock.createConfigImport.mockResolvedValueOnce(permissionTask)
     apiMock.uploadConfigImport.mockResolvedValueOnce(permissionTask)
@@ -188,8 +188,8 @@ describe('FE-CONFIG-IMPORT-STATE-001 configuration import state orchestration', 
     await submitConfigImport(wrapper)
 
     const alert = wrapper.find('section.view.active .alert').text()
-    expect(alert).toContain('仍需管理员授权')
-    expect(alert).not.toContain('已生效')
-    expect(alert).not.toContain('授权成功')
+    expect(alert).toContain('ADMIN 权限校验')
+    expect(alert).toContain('原子应用')
+    expect(alert).toContain('1 行用户权限已生效')
   })
 })

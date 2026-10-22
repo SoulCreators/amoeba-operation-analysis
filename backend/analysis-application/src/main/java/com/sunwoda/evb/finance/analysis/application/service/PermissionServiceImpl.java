@@ -5,8 +5,12 @@ import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.PermissionAction;
 import com.sunwoda.evb.finance.analysis.domain.model.UserScope;
 import com.sunwoda.evb.finance.analysis.domain.repository.UserScopeRepository;
+import com.sunwoda.evb.finance.analysis.domain.repository.IamManagementRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,9 +25,23 @@ public class PermissionServiceImpl implements PermissionService {
     private static final String LEGACY_HQ_FINANCE_ROLE = "FINANCE_ADMIN";
 
     private final UserScopeRepository repository;
+    private final IamManagementRepository iamRepository;
 
     public PermissionServiceImpl(UserScopeRepository repository) {
+        this(repository, (IamManagementRepository) null);
+    }
+
+    /** 本次修改：新 IAM 仓储按模块能力可选注入；Worker 未导入该仓储时继续使用历史 user_scope。 */
+    @Autowired
+    public PermissionServiceImpl(UserScopeRepository repository,
+                                 ObjectProvider<IamManagementRepository> iamRepositoryProvider) {
+        this(repository, iamRepositoryProvider.getIfAvailable());
+    }
+
+    /** 本次修改：显式构造入口用于切片测试，并保持新旧调用方兼容。 */
+    public PermissionServiceImpl(UserScopeRepository repository, IamManagementRepository iamRepository) {
         this.repository = repository;
+        this.iamRepository = iamRepository;
     }
 
     @Override
@@ -215,6 +233,8 @@ public class PermissionServiceImpl implements PermissionService {
 
     private boolean hasAdminRole(String userId) {
         if (userId == null || userId.trim().isEmpty()) return false;
+        // 本次修改：新 IAM 主数据中的启用 ADMIN 关系优先生效；历史 user_scope 继续兼容。
+        if (iamRepository != null && iamRepository.hasEnabledRole(userId.trim(), ADMIN_ROLE)) return true;
         // 本次修改：管理员角色是全局只读角色，跨已登记视角识别，避免只因当前视角没有授权行而漏掉全量读取权。
         for (AnalysisPerspective candidate : AnalysisPerspective.values()) {
             for (UserScope scope : safeList(userId, candidate)) {
@@ -274,7 +294,20 @@ public class PermissionServiceImpl implements PermissionService {
         if (userId == null || userId.trim().isEmpty() || perspective == null) {
             return Collections.emptyList();
         }
-        return list(userId, perspective);
+        List<UserScope> scopes = list(userId, perspective);
+        // 本次修改：生产主数据停用用户、角色或用户角色关系后，历史 scope 不再授权。
+        if (iamRepository != null) {
+            com.sunwoda.evb.finance.analysis.domain.model.IamUser user = iamRepository.findUser(userId.trim());
+            if (user != null && !user.isEnabled()) return Collections.emptyList();
+            List<UserScope> active = new ArrayList<UserScope>();
+            for (UserScope scope : scopes) {
+                if (scope != null && iamRepository.hasEnabledRole(userId.trim(), normalizeRole(scope.getRoleCode()))) {
+                    active.add(scope);
+                }
+            }
+            return active;
+        }
+        return scopes;
     }
 
     private String normalizeScope(String scopeCode) {

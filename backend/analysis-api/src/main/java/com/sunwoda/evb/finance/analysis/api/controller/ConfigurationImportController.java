@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 import com.sunwoda.evb.finance.analysis.api.dto.CreateConfigurationImportRequest;
 import com.sunwoda.evb.finance.analysis.api.dto.MoveConfigurationImportRequest;
 import com.sunwoda.evb.finance.analysis.application.service.ConfigurationImportService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import com.sunwoda.evb.finance.analysis.common.ApiResult;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
@@ -19,32 +20,46 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
 import java.security.Principal;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @RestController
 @RequestMapping("/api/v1/config/imports")
 public class ConfigurationImportController {
     private final ConfigurationImportService service;
+    private final PermissionService permissionService;
 
     public ConfigurationImportController(ConfigurationImportService service) {
+        this(service, null);
+    }
+
+    /** 本次修改：生产接线对用户权限模板执行 ADMIN 强校验，单参数构造器保留既有切片测试。 */
+    @Autowired
+    public ConfigurationImportController(ConfigurationImportService service,
+                                         PermissionService permissionService) {
         this.service = service;
+        this.permissionService = permissionService;
     }
 
     @PostMapping
     public ApiResult<ConfigurationImportTask> create(@RequestBody CreateConfigurationImportRequest request,
                                                      Principal principal) {
-        return ApiResult.ok(service.create(ConfigurationImportType.valueOf(request.getType()),
-                request.getFileName(), request.getChecksum(), requiredUser(principal)));
+        ConfigurationImportType type = ConfigurationImportType.valueOf(request.getType());
+        String operator = requiredUser(principal);
+        requirePermissionAdmin(type, operator);
+        return ApiResult.ok(service.create(type, request.getFileName(), request.getChecksum(), operator));
     }
 
     @GetMapping("/{taskNo}")
     public ApiResult<ConfigurationImportTask> get(@PathVariable String taskNo, Principal principal) {
-        requiredUser(principal);
-        return ApiResult.ok(service.get(taskNo));
+        String operator = requiredUser(principal);
+        ConfigurationImportTask task = service.get(taskNo);
+        requirePermissionAdmin(task.getType(), operator);
+        return ApiResult.ok(task);
     }
 
     @GetMapping("/{taskNo}/issues")
     public ApiResult<List<ImportIssue>> issues(@PathVariable String taskNo, Principal principal) {
-        requiredUser(principal);
+        requirePermissionAdmin(taskNo, requiredUser(principal));
         return ApiResult.ok(service.issues(taskNo));
     }
 
@@ -52,7 +67,7 @@ public class ConfigurationImportController {
     public ApiResult<ConfigurationImportTask> upload(@PathVariable String taskNo,
                                                      @RequestPart("file") MultipartFile file,
                                                      Principal principal) {
-        requiredUser(principal);
+        requirePermissionAdmin(taskNo, requiredUser(principal));
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("配置文件不能为空");
         try {
             return ApiResult.ok(service.upload(taskNo, file.getInputStream()));
@@ -65,7 +80,7 @@ public class ConfigurationImportController {
     public ApiResult<ImportValidationResult> validate(@PathVariable String taskNo,
                                                       @RequestPart("file") MultipartFile file,
                                                       Principal principal) {
-        requiredUser(principal);
+        requirePermissionAdmin(taskNo, requiredUser(principal));
         if (file == null || file.isEmpty()) throw new IllegalArgumentException("配置文件不能为空");
         try {
             return ApiResult.ok(service.validate(taskNo, file.getInputStream()));
@@ -78,8 +93,19 @@ public class ConfigurationImportController {
     public ApiResult<ConfigurationImportTask> move(@PathVariable String taskNo,
                                                   @RequestBody MoveConfigurationImportRequest request,
                                                   Principal principal) {
-        requiredUser(principal);
+        requirePermissionAdmin(taskNo, requiredUser(principal));
         return ApiResult.ok(service.move(taskNo, ImportStatus.valueOf(request.getStatus())));
+    }
+
+    private void requirePermissionAdmin(ConfigurationImportType type, String operator) {
+        if (permissionService != null && type == ConfigurationImportType.USER_PERMISSION
+                && !permissionService.isEnabledAdmin(operator)) {
+            throw new IllegalStateException("仅ADMIN可导入用户权限模板");
+        }
+    }
+
+    private void requirePermissionAdmin(String taskNo, String operator) {
+        if (permissionService != null) requirePermissionAdmin(service.get(taskNo).getType(), operator);
     }
 
     private String requiredUser(Principal principal) {

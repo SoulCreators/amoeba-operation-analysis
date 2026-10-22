@@ -31,6 +31,31 @@ public class InMemoryUserScopeRepository implements UserScopeRepository {
         return Collections.unmodifiableList(result);
     }
 
+    @Override
+    public synchronized List<UserScope> findByUser(String userId) {
+        List<UserScope> result = new ArrayList<UserScope>();
+        for (UserScope scope : data.values()) {
+            if (scope.isEnabled() && scope.getUserId().equals(userId)) result.add(scope);
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    @Override
+    public synchronized void replaceForUser(String userId, List<UserScope> scopes) {
+        // 本次新增：内存实现同样保留旧授权键，仅把未再次提交的授权标记为停用。
+        List<UserScope> old = new ArrayList<UserScope>(data.values());
+        for (UserScope scope : old) {
+            if (scope.getUserId().equals(userId) && scope.isEnabled()) {
+                save(new UserScope(scope.getUserId(), scope.getRoleCode(), scope.getPerspective(),
+                        scope.getScopeCode(), scope.isCanViewDetail(), scope.isCanExport(),
+                        scope.isCanEditConfig(), false));
+            }
+        }
+        if (scopes != null) {
+            for (UserScope scope : scopes) save(scope);
+        }
+    }
+
     private String key(UserScope scope) {
         return scope.getUserId() + "|" + scope.getRoleCode() + "|"
                 + scope.getPerspective().getCode() + "|" + scope.getScopeCode();

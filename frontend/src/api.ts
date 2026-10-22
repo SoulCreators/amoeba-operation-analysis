@@ -101,6 +101,15 @@ export interface AdminDataScope {
   scopeCodes: string[]
 }
 
+export interface AdminScopeGrant {
+  roleCode: string
+  perspective: Perspective
+  scopeCode: string
+  canViewDetail: boolean
+  canExport: boolean
+  canEditConfig: boolean
+}
+
 export interface AdminUser {
   userId: string
   employeeNo?: string
@@ -109,6 +118,7 @@ export interface AdminUser {
   email?: string
   roleCodes: string[]
   scopes?: AdminDataScope[]
+  scopeGrants?: AdminScopeGrant[]
   enabled: boolean
 }
 
@@ -127,6 +137,35 @@ export interface AdminMenu {
   path?: string
   displayOrder: number
   enabled: boolean
+}
+
+export interface AuditEvent {
+  eventId: string
+  traceId?: string
+  operator: string
+  service: string
+  action: string
+  objectType: string
+  objectId: string
+  fromState?: string
+  toState?: string
+  result: string
+  reason?: string
+  metadata?: string
+  occurredAt: string
+}
+
+export interface AuditEventFilters {
+  eventId?: string
+  traceId?: string
+  operator?: string
+  service?: string
+  action?: string
+  objectType?: string
+  objectId?: string
+  result?: string
+  occurredFrom?: string
+  occurredTo?: string
 }
 
 type AdminListPayload<T> = T[] | { items?: T[]; content?: T[]; records?: T[] }
@@ -212,6 +251,8 @@ export const api = {
   adminMenus: async () => normalizeAdminList(await unwrap<AdminListPayload<AdminMenu>>(http.get('/admin/menus'))),
   createAdminMenu: (payload: AdminMenu) => unwrap<AdminMenu>(http.post('/admin/menus', payload)),
   updateAdminMenu: (payload: AdminMenu) => unwrap<AdminMenu>(http.put('/admin/menus', payload)),
-  updateAdminUserScopes: (userId: string, scopes: AdminDataScope[]) => unwrap<AdminUser>(http.put(`/admin/users/${encodeURIComponent(userId)}/scopes`, { scopes })),
+  updateAdminUserScopes: (userId: string, roleCodes: string[], scopes: AdminScopeGrant[]) => unwrap<AdminUser>(http.put(`/admin/users/${encodeURIComponent(userId)}/scopes`, { roleCodes, scopes })),
   updateAdminRoleMenus: (roleCode: string, menuCodes: string[]) => unwrap<AdminRole>(http.put(`/admin/roles/${encodeURIComponent(roleCode)}/menus`, { menuCodes })),
+  // 本次修改：审计页面直接调用只读查询接口，空筛选项由 Axios 忽略或以空字符串传递，不生成前端记录。
+  auditLogs: (params: AuditEventFilters = {}) => unwrap<AuditEvent[]>(http.get('/audit-logs', { params })),
 }

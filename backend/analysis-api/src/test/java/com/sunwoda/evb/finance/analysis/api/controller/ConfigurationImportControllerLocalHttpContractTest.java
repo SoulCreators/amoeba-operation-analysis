@@ -106,6 +106,7 @@ class ConfigurationImportControllerLocalHttpContractTest {
     @Test
     void uploadBindsFilePartThroughRealMvcAndReturnsSuccessEnvelope() throws Exception {
         ConfigurationImportTask task = task(ImportStatus.VALIDATING);
+        when(service.get(TASK_NO)).thenReturn(task);
         when(service.upload(eq(TASK_NO), any(InputStream.class))).thenReturn(task);
         ArgumentCaptor<InputStream> inputCaptor = ArgumentCaptor.forClass(InputStream.class);
 
@@ -115,6 +116,7 @@ class ConfigurationImportControllerLocalHttpContractTest {
         JsonNode data = objectMapper.readTree(response.getBody()).path("data");
         assertThat(data.path("taskNo").asText()).isEqualTo(TASK_NO);
         assertThat(data.path("type").asText()).isEqualTo("FX_RATE");
+        verify(service).get(TASK_NO);
         verify(service).upload(eq(TASK_NO), inputCaptor.capture());
         assertThat(readAll(inputCaptor.getValue())).containsExactly(FILE_BYTES);
         verifyNoMoreInteractions(service);
@@ -122,8 +124,10 @@ class ConfigurationImportControllerLocalHttpContractTest {
 
     @Test
     void validateBindsFilePartThroughRealMvcAndReturnsSuccessEnvelope() throws Exception {
+        ConfigurationImportTask task = task(ImportStatus.VALIDATING);
         ImportValidationResult result = new ImportValidationResult(
                 TASK_NO, ImportStatus.VALID, 1, Collections.singletonList("opaque-column"), Collections.emptyList());
+        when(service.get(TASK_NO)).thenReturn(task);
         when(service.validate(eq(TASK_NO), any(InputStream.class))).thenReturn(result);
         ArgumentCaptor<InputStream> inputCaptor = ArgumentCaptor.forClass(InputStream.class);
 
@@ -134,6 +138,7 @@ class ConfigurationImportControllerLocalHttpContractTest {
         assertThat(data.path("taskNo").asText()).isEqualTo(TASK_NO);
         assertThat(data.path("rowCount").asInt()).isEqualTo(1);
         assertThat(data.path("headers").get(0).asText()).isEqualTo("opaque-column");
+        verify(service).get(TASK_NO);
         verify(service).validate(eq(TASK_NO), inputCaptor.capture());
         assertThat(readAll(inputCaptor.getValue())).containsExactly(FILE_BYTES);
         verifyNoMoreInteractions(service);

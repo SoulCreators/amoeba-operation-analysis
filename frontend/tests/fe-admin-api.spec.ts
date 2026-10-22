@@ -63,13 +63,13 @@ describe('FE-ADMIN-API-001 管理中心接口合同', () => {
   })
 
   it('保存用户数据范围和角色菜单，并安全编码路径主键', async () => {
-    const scopes = [{ perspective: 'BASE' as const, scopeCodes: ['NC01', 'YC01'] }]
+    const scopes = [{ roleCode: 'HQ_FINANCE', perspective: 'BASE' as const, scopeCode: 'NC01', canViewDetail: true, canExport: true, canEditConfig: false }]
     httpMock.put.mockResolvedValueOnce(success({ ...user, scopes })).mockResolvedValueOnce(success(role))
 
-    await api.updateAdminUserScopes('user/a', scopes)
+    await api.updateAdminUserScopes('user/a', ['HQ_FINANCE'], scopes)
     await api.updateAdminRoleMenus('HQ FINANCE', ['OVERVIEW'])
 
-    expect(httpMock.put).toHaveBeenNthCalledWith(1, '/admin/users/user%2Fa/scopes', { scopes })
+    expect(httpMock.put).toHaveBeenNthCalledWith(1, '/admin/users/user%2Fa/scopes', { roleCodes: ['HQ_FINANCE'], scopes })
     expect(httpMock.put).toHaveBeenNthCalledWith(2, '/admin/roles/HQ%20FINANCE/menus', { menuCodes: ['OVERVIEW'] })
   })
 

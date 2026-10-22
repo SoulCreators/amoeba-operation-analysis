@@ -29,6 +29,9 @@ public class AdminReadOnlyHttpInterceptor implements HandlerInterceptor {
                              Object handler) {
         if (isReadMethod(request.getMethod())) return true;
 
+        // 本次修改：IAM 管理写入口由 IamAdminService 再次校验真实 ADMIN；其余业务写入口仍保持 ADMIN 只读。
+        if (isIamManagementPath(request)) return true;
+
         Principal principal = request.getUserPrincipal();
         if (principal == null || isBlank(principal.getName())) {
             // 本次新增：匿名请求继续交给 Controller/认证链返回 401，不在只读门禁中吞掉认证语义。
@@ -39,6 +42,12 @@ public class AdminReadOnlyHttpInterceptor implements HandlerInterceptor {
             throw new IllegalStateException("ADMIN 只读权限禁止 HTTP 写请求");
         }
         return true;
+    }
+
+    private boolean isIamManagementPath(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        String prefix = request.getContextPath() + "/api/v1/admin/";
+        return uri != null && uri.startsWith(prefix);
     }
 
     private boolean isReadMethod(String method) {

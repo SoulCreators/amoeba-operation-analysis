@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import javax.sql.DataSource;
 import java.util.List;
+import java.util.Collections;
 
 @Repository
 @Primary
@@ -39,5 +40,26 @@ public class JdbcUserScopeRepository implements UserScopeRepository {
                         rs.getString("role_code"), AnalysisPerspective.fromCode(rs.getString("perspective")),
                         rs.getString("scope_code"), rs.getBoolean("can_view_detail"), rs.getBoolean("can_export"),
                         rs.getBoolean("can_edit_config"), rs.getBoolean("enabled")), userId, perspective.getCode());
+    }
+
+    @Override
+    public List<UserScope> findByUser(String userId) {
+        return jdbc.query("SELECT user_id, role_code, perspective, scope_code, can_view_detail, can_export, "
+                        + "can_edit_config, enabled FROM iam.user_scope WHERE user_id = ? AND enabled = TRUE "
+                        + "ORDER BY perspective, role_code, scope_code", (rs, row) -> new UserScope(
+                        rs.getString("user_id"), rs.getString("role_code"),
+                        AnalysisPerspective.fromCode(rs.getString("perspective")), rs.getString("scope_code"),
+                        rs.getBoolean("can_view_detail"), rs.getBoolean("can_export"),
+                        rs.getBoolean("can_edit_config"), rs.getBoolean("enabled")), userId);
+    }
+
+    @Override
+    public void replaceForUser(String userId, List<UserScope> scopes) {
+        // 本次新增：先软停用该用户全部旧范围，再通过既有唯一键恢复本次提交授权。
+        jdbc.update("UPDATE iam.user_scope SET enabled = FALSE, updated_at = CURRENT_TIMESTAMP "
+                + "WHERE user_id = ? AND enabled = TRUE", userId);
+        for (UserScope scope : scopes == null ? Collections.<UserScope>emptyList() : scopes) {
+            save(scope);
+        }
     }
 }

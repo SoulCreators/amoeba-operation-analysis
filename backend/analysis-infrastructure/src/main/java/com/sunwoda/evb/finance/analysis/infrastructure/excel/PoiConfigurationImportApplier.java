@@ -1,6 +1,8 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.excel;
 
 import com.sunwoda.evb.finance.analysis.application.port.ConfigurationImportApplier;
+import com.sunwoda.evb.finance.analysis.application.service.IamAdminService;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationApplyResult;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportTask;
 import com.sunwoda.evb.finance.analysis.domain.model.ConfigurationImportType;
@@ -8,6 +10,9 @@ import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import com.sunwoda.evb.finance.analysis.domain.model.MappingEntry;
 import com.sunwoda.evb.finance.analysis.domain.model.MappingType;
 import com.sunwoda.evb.finance.analysis.domain.model.MetricDefinition;
+import com.sunwoda.evb.finance.analysis.domain.model.IamRole;
+import com.sunwoda.evb.finance.analysis.domain.model.IamUser;
+import com.sunwoda.evb.finance.analysis.domain.model.UserScope;
 import com.sunwoda.evb.finance.analysis.domain.repository.MappingEntryRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.MetricDefinitionRepository;
 import org.apache.poi.ss.usermodel.Cell;
@@ -17,12 +22,15 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.stereotype.Repository;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,19 +38,29 @@ import java.util.Set;
 
 /**
  * Applies metric definitions and the business-field configuration templates.
- * Permission files are deliberately retained after structural validation and
- * are not written by this adapter until the administrator workflow is connected.
+ * In the production Spring wiring, permission files are atomically applied through
+ * the IAM administrator service after the entire workbook passes validation.
  */
 @Repository
 public class PoiConfigurationImportApplier implements ConfigurationImportApplier {
     private final MetricDefinitionRepository metricRepository;
     private final MappingEntryRepository mappingRepository;
+    private final IamAdminService iamAdminService;
     private final DataFormatter formatter = new DataFormatter(Locale.CHINA);
 
     public PoiConfigurationImportApplier(MetricDefinitionRepository metricRepository,
                                          MappingEntryRepository mappingRepository) {
+        this(metricRepository, mappingRepository, null);
+    }
+
+    /** 本次修改：生产环境接入 IAM 管理服务，使权限模板在 ADMIN 审批边界内原子应用。 */
+    @Autowired
+    public PoiConfigurationImportApplier(MetricDefinitionRepository metricRepository,
+                                         MappingEntryRepository mappingRepository,
+                                         IamAdminService iamAdminService) {
         this.metricRepository = metricRepository;
         this.mappingRepository = mappingRepository;
+        this.iamAdminService = iamAdminService;
     }
 
     @Override
@@ -51,7 +69,7 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
             return applyMetrics(task, inputStream);
         }
         if (task.getType() == ConfigurationImportType.USER_PERMISSION) {
-            return validatePermissionRows(inputStream);
+            return applyPermissions(task, inputStream);
         }
         MappingType mappingType = mappingType(task.getType());
         if (mappingType != null) return applyMappings(task, mappingType, inputStream);
@@ -237,8 +255,11 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
         }
     }
 
-    private ConfigurationApplyResult validatePermissionRows(InputStream inputStream) {
+    private ConfigurationApplyResult applyPermissions(ConfigurationImportTask task, InputStream inputStream) {
         List<ImportIssue> issues = new ArrayList<ImportIssue>();
+        Map<String, PermissionUser> users = new LinkedHashMap<String, PermissionUser>();
+        Map<String, String> roleNames = new LinkedHashMap<String, String>();
+        int rowCount = 0;
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = sheetFor(workbook, ConfigurationImportType.USER_PERMISSION);
             Map<String, Integer> headers = headers(sheet.getRow(0));
@@ -247,13 +268,165 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
             for (int rowNo = 1; rowNo <= sheet.getLastRowNum(); rowNo++) {
                 Row row = sheet.getRow(rowNo);
                 if (blank(row)) continue;
+                rowCount++;
                 validateRequiredValues(row, headers, required, rowNo, issues);
+                String employeeNo = first(row, headers, "工号").trim();
+                String displayName = first(row, headers, "姓名").trim();
+                String roleName = first(row, headers, "用户角色").trim();
+                String roleCode = roleCode(roleName);
+                AnalysisPerspective perspective = perspective(first(row, headers, "数据视角"), rowNo, issues);
+                List<String> scopeCodes = scopeCodes(first(row, headers, "可查看范围"));
+                Boolean detail = permissionBoolean(first(row, headers, "明细查看权限"));
+                Boolean export = permissionBoolean(first(row, headers, "数据导出权限"));
+                Boolean enabled = permissionBoolean(first(row, headers, "是否有效"));
+                String configRange = first(row, headers, "配置维护范围");
+                if (roleCode == null) issues.add(new ImportIssue(rowNo + 1, "用户角色", "ROLE_INVALID",
+                        "用户角色必须使用已知角色名称或稳定角色编码", roleName));
+                if (scopeCodes.isEmpty()) issues.add(new ImportIssue(rowNo + 1, "可查看范围", "SCOPE_INVALID",
+                        "可查看范围至少包含一个范围编码", null));
+                if (detail == null) issues.add(booleanIssue(rowNo, "明细查看权限"));
+                if (export == null) issues.add(booleanIssue(rowNo, "数据导出权限"));
+                if (enabled == null) issues.add(booleanIssue(rowNo, "是否有效"));
+                if (employeeNo.isEmpty() || displayName.isEmpty() || roleCode == null || perspective == null
+                        || scopeCodes.isEmpty() || detail == null || export == null || enabled == null) continue;
+                roleNames.put(roleCode, roleName);
+                PermissionUser user = users.get(employeeNo);
+                if (user == null) {
+                    user = new PermissionUser(employeeNo, displayName, enabled.booleanValue());
+                    users.put(employeeNo, user);
+                } else if (!user.displayName.equals(displayName) || user.enabled != enabled.booleanValue()) {
+                    issues.add(new ImportIssue(rowNo + 1, "工号", "USER_CONFLICT",
+                            "同一工号的姓名或是否有效不一致: " + employeeNo, employeeNo));
+                    continue;
+                }
+                user.roles.add(roleCode);
+                if ("ADMIN".equals(roleCode)) continue;
+                for (String scopeCode : scopeCodes) {
+                    UserScope grant = new UserScope(employeeNo, roleCode, perspective, scopeCode,
+                            detail.booleanValue(), export.booleanValue(), configAllowed(configRange, scopeCode), true);
+                    String key = roleCode + "|" + perspective.getCode() + "|" + scopeCode;
+                    UserScope previous = user.grants.get(key);
+                    if (previous != null && !sameCapabilities(previous, grant)) {
+                        issues.add(new ImportIssue(rowNo + 1, "可查看范围", "DUPLICATE_KEY",
+                                "同一用户、角色、视角和范围存在冲突授权: " + key, scopeCode));
+                    } else {
+                        user.grants.put(key, grant);
+                    }
+                }
             }
         } catch (Exception ex) {
             issues.add(new ImportIssue(null, null, "APPLY_FAILED",
-                    "用户权限配置结构检查失败: " + ex.getMessage(), null));
+                    "用户权限配置解析失败: " + ex.getMessage(), null));
         }
-        return new ConfigurationApplyResult(0, issues);
+        // 本次修改：旧切片测试的双参数构造器继续执行结构检查；Spring 生产接线始终注入 IAM 服务并实际应用。
+        if (iamAdminService == null) return new ConfigurationApplyResult(0, issues);
+        if (!issues.isEmpty()) return new ConfigurationApplyResult(0, issues);
+
+        String operator = task.getCreatedBy();
+        Map<String, IamRole> existingRoles = new LinkedHashMap<String, IamRole>();
+        for (IamRole role : iamAdminService.listRoles(operator, true)) existingRoles.put(role.getRoleCode(), role);
+        for (Map.Entry<String, String> role : roleNames.entrySet()) {
+            IamRole existing = existingRoles.get(role.getKey());
+            if (existing != null && !existing.isEnabled()) {
+                issues.add(new ImportIssue(null, "用户角色", "ROLE_DISABLED",
+                        "角色已停用，不能通过权限模板重新授权: " + role.getKey(), role.getKey()));
+            }
+        }
+        if (!issues.isEmpty()) return new ConfigurationApplyResult(0, issues);
+        for (Map.Entry<String, String> role : roleNames.entrySet()) {
+            if (!existingRoles.containsKey(role.getKey())) {
+                iamAdminService.createRole(operator, new IamRole(role.getKey(), role.getValue(),
+                        "由用户权限初始化模板创建", "ADMIN".equals(role.getKey()), true));
+            }
+        }
+
+        Map<String, IamUser> existingUsers = new LinkedHashMap<String, IamUser>();
+        for (IamUser user : iamAdminService.listUsers(operator, true)) existingUsers.put(user.getUserId(), user);
+        for (PermissionUser row : users.values()) {
+            IamUser existing = existingUsers.get(row.employeeNo);
+            IamUser value = new IamUser(row.employeeNo, row.employeeNo,
+                    existing == null ? row.employeeNo : existing.getUsername(), row.displayName,
+                    existing == null ? null : existing.getEmail(), existing == null ? null : existing.getDepartment(),
+                    row.enabled);
+            List<String> roles = new ArrayList<String>(row.roles);
+            if (existing == null) {
+                iamAdminService.createUser(operator, value, roles,
+                        java.util.Collections.<com.sunwoda.evb.finance.analysis.domain.model.DataScopeSelection>emptyList());
+            } else {
+                iamAdminService.updateUser(operator, value, roles, null);
+            }
+            iamAdminService.replaceUserAuthorization(operator, row.employeeNo, roles,
+                    new ArrayList<UserScope>(row.grants.values()));
+        }
+        return new ConfigurationApplyResult(rowCount, issues);
+    }
+
+    private String roleCode(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.matches("[A-Za-z][A-Za-z0-9_-]{1,63}")) return normalized.toUpperCase(Locale.ROOT);
+        if ("系统管理员".equals(normalized) || "管理员".equals(normalized) || "财经IT".equalsIgnoreCase(normalized)) return "ADMIN";
+        if ("总部财经".equals(normalized)) return "HQ_FINANCE";
+        if ("基地财经".equals(normalized)) return "BASE_FINANCE";
+        if ("产品线财经".equals(normalized)) return "PRODUCT_LINE_FINANCE";
+        if ("事业部财经".equals(normalized)) return "BUSINESS_UNIT_FINANCE";
+        return null;
+    }
+
+    private AnalysisPerspective perspective(String value, int rowNo, List<ImportIssue> issues) {
+        String normalized = value == null ? "" : value.trim();
+        if ("基地".equals(normalized)) return AnalysisPerspective.BASE;
+        if ("产品线".equals(normalized)) return AnalysisPerspective.PRODUCT_LINE;
+        if ("事业部".equals(normalized)) return AnalysisPerspective.BUSINESS_UNIT;
+        try { return AnalysisPerspective.fromCode(normalized); }
+        catch (IllegalArgumentException ex) {
+            issues.add(new ImportIssue(rowNo + 1, "数据视角", "PERSPECTIVE_INVALID", ex.getMessage(), normalized));
+            return null;
+        }
+    }
+
+    private List<String> scopeCodes(String value) {
+        Set<String> result = new LinkedHashSet<String>();
+        if (value != null) for (String code : value.split("[,，;；\\s]+")) {
+            if (!code.trim().isEmpty()) result.add(code.trim().toUpperCase(Locale.ROOT));
+        }
+        return new ArrayList<String>(result);
+    }
+
+    private Boolean permissionBoolean(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if ("是".equals(normalized) || "有".equals(normalized) || "允许".equals(normalized)
+                || "启用".equals(normalized) || "1".equals(normalized) || "true".equalsIgnoreCase(normalized)) return Boolean.TRUE;
+        if ("否".equals(normalized) || "无".equals(normalized) || "不允许".equals(normalized)
+                || "停用".equals(normalized) || "0".equals(normalized) || "false".equalsIgnoreCase(normalized)) return Boolean.FALSE;
+        return null;
+    }
+
+    private boolean configAllowed(String value, String scopeCode) {
+        Boolean direct = permissionBoolean(value);
+        if (direct != null) return direct.booleanValue();
+        List<String> ranges = scopeCodes(value);
+        return ranges.contains("ALL") || ranges.contains(scopeCode);
+    }
+
+    private ImportIssue booleanIssue(int rowNo, String field) {
+        return new ImportIssue(rowNo + 1, field, "BOOLEAN_INVALID", field + "仅支持是/否、允许/不允许、1/0或true/false", null);
+    }
+
+    private boolean sameCapabilities(UserScope left, UserScope right) {
+        return left.isCanViewDetail() == right.isCanViewDetail()
+                && left.isCanExport() == right.isCanExport()
+                && left.isCanEditConfig() == right.isCanEditConfig();
+    }
+
+    private static final class PermissionUser {
+        private final String employeeNo;
+        private final String displayName;
+        private final boolean enabled;
+        private final Set<String> roles = new LinkedHashSet<String>();
+        private final Map<String, UserScope> grants = new LinkedHashMap<String, UserScope>();
+        private PermissionUser(String employeeNo, String displayName, boolean enabled) {
+            this.employeeNo = employeeNo; this.displayName = displayName; this.enabled = enabled;
+        }
     }
 
     private void validateRequiredValues(Row row, Map<String, Integer> headers,

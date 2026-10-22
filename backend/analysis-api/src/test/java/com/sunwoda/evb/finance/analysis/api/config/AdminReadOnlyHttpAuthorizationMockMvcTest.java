@@ -94,6 +94,20 @@ class AdminReadOnlyHttpAuthorizationMockMvcTest {
     }
 
     @Test
+    void enabledAdminCanReachOnlyDedicatedIamManagementWritePath() throws Exception {
+        when(permissionService.isEnabledAdmin(ADMIN_USER)).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/admin/users").principal(principal(ADMIN_USER)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/probe").principal(principal(ADMIN_USER)))
+                .andExpect(status().isForbidden());
+
+        // 本次新增：管理员路径不由全局只读门禁拦截，真实 Controller 仍需在应用服务内校验 ADMIN。
+        assertEquals(0, probeController.invocations.get());
+        verify(permissionService).isEnabledAdmin(ADMIN_USER);
+    }
+
+    @Test
     void nonAdminAndDisabledAdminAreNotBlockedAndClientRoleIsIgnored() throws Exception {
         when(permissionService.isEnabledAdmin(NORMAL_USER)).thenReturn(false);
         when(permissionService.isEnabledAdmin("DISABLED-ADMIN")).thenReturn(false);

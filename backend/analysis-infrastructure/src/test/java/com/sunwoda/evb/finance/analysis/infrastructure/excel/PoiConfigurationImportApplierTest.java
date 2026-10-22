@@ -8,6 +8,13 @@ import com.sunwoda.evb.finance.analysis.domain.repository.MappingEntryRepository
 import com.sunwoda.evb.finance.analysis.domain.repository.MetricDefinitionRepository;
 import com.sunwoda.evb.finance.analysis.infrastructure.memory.InMemoryMappingEntryRepository;
 import com.sunwoda.evb.finance.analysis.infrastructure.memory.InMemoryMetricDefinitionRepository;
+import com.sunwoda.evb.finance.analysis.infrastructure.memory.InMemoryIamManagementRepository;
+import com.sunwoda.evb.finance.analysis.infrastructure.memory.InMemoryUserScopeRepository;
+import com.sunwoda.evb.finance.analysis.application.service.IamAdminServiceImpl;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionServiceImpl;
+import com.sunwoda.evb.finance.analysis.domain.model.IamRole;
+import com.sunwoda.evb.finance.analysis.domain.model.IamUser;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +26,34 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PoiConfigurationImportApplierTest {
+    @Test
+    void appliesUserPermissionTemplateThroughAdminWorkflow() throws Exception {
+        InMemoryIamManagementRepository iam = new InMemoryIamManagementRepository();
+        InMemoryUserScopeRepository scopes = new InMemoryUserScopeRepository();
+        PermissionServiceImpl permissions = new PermissionServiceImpl(scopes, iam);
+        IamAdminServiceImpl iamService = new IamAdminServiceImpl(iam, scopes, permissions, event -> { });
+        iam.insertRole(new IamRole("ADMIN", "系统管理员", null, true, true), "BOOTSTRAP");
+        iam.insertUser(new IamUser("ADMIN-1", "管理员", null, "IT", true), "BOOTSTRAP");
+        iam.replaceUserRoles("ADMIN-1", java.util.Collections.singletonList("ADMIN"), "BOOTSTRAP");
+        PoiConfigurationImportApplier applier = new PoiConfigurationImportApplier(
+                new InMemoryMetricDefinitionRepository(), new InMemoryMappingEntryRepository(), iamService);
+        ConfigurationImportTask permissionTask = new ConfigurationImportTask(null, "CFG-PERMISSION", ConfigurationImportType.USER_PERMISSION,
+                "permission.xlsx", null, "ADMIN-1", LocalDateTime.now());
+
+        ConfigurationApplyResult result = applier.apply(permissionTask,
+                realWorkbook("28_用户权限", new String[]{"姓名", "工号", "用户角色", "数据视角", "可查看范围",
+                                "明细查看权限", "数据导出权限", "配置维护范围", "是否有效", "备注"},
+                        new String[]{"张三", "E000001", "基地财经", "基地", "义乌", "是", "是", "义乌", "是", ""}));
+
+        assertEquals(1, result.getAppliedCount());
+        assertTrue(result.getIssues().isEmpty());
+        assertEquals("张三", iam.findUser("E000001").getDisplayName());
+        assertEquals(java.util.Collections.singletonList("BASE_FINANCE"), iam.findRoleCodesByUser("E000001"));
+        assertTrue(permissions.canViewDetail("E000001", AnalysisPerspective.BASE, "义乌"));
+        assertTrue(permissions.canExport("E000001", AnalysisPerspective.BASE, "义乌"));
+        assertTrue(permissions.canEditConfig("E000001", AnalysisPerspective.BASE, "义乌"));
+    }
+
     @Test
     void appliesMetricDefinitionAndUpdatesSameCodeInsteadOfDuplicating() throws Exception {
         MetricDefinitionRepository metrics = new InMemoryMetricDefinitionRepository();

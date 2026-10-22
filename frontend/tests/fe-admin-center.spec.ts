@@ -98,17 +98,22 @@ describe('FE-ADMIN-CENTER-001 管理中心页面逻辑', () => {
   })
 
   it('校验并保存用户数据范围', async () => {
-    const saved = { ...user, scopes: [{ perspective: 'BASE', scopeCodes: ['NC01', 'YC01'] }] }
+    const scopeGrant = { roleCode: 'HQ_FINANCE', perspective: 'BASE', scopeCode: 'NC01', canViewDetail: true, canExport: true, canEditConfig: false }
+    const saved = { ...user, scopeGrants: [scopeGrant], scopes: [{ perspective: 'BASE', scopeCodes: ['NC01'] }] }
     apiMock.updateAdminUserScopes.mockResolvedValueOnce(saved)
     const wrapper = mount(AdminCenter, { props: { mode: 'scopes' } })
     await flushPromises()
 
     await findButton(wrapper, '配置范围')!.trigger('click')
-    await wrapper.get('.scope-row input').setValue('NC01，YC01 NC01')
+    await findButton(wrapper, '添加范围')!.trigger('click')
+    await wrapper.get('.scope-row input[placeholder="例如 NC01 或 ALL"]').setValue('nc01')
+    const capabilities = wrapper.findAll('.scope-row input[type="checkbox"]')
+    await capabilities[0].setValue(true)
+    await capabilities[1].setValue(true)
     await findButton(wrapper, '保存数据范围')!.trigger('click')
     await flushPromises()
 
-    expect(apiMock.updateAdminUserScopes).toHaveBeenCalledWith('u-001', [{ perspective: 'BASE', scopeCodes: ['NC01', 'YC01'] }])
+    expect(apiMock.updateAdminUserScopes).toHaveBeenCalledWith('u-001', ['HQ_FINANCE'], [scopeGrant])
     expect(wrapper.text()).toContain('数据范围已保存')
   })
 

@@ -2,9 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   api,
-  type AdminDataScope,
   type AdminMenu,
   type AdminRole,
+  type AdminScopeGrant,
   type AdminUser,
 } from './api'
 
@@ -28,7 +28,7 @@ const editingMenuCode = ref('')
 const menuForm = ref<AdminMenu>(emptyMenu())
 
 const scopeUserId = ref('')
-const scopeDrafts = ref<AdminDataScope[]>([])
+const scopeDrafts = ref<AdminScopeGrant[]>([])
 const menuRoleCode = ref('')
 const selectedMenuCodes = ref<string[]>([])
 
@@ -226,14 +226,13 @@ async function toggleMenu(menu: AdminMenu) {
   }
 }
 
-function cloneScope(scope: AdminDataScope): AdminDataScope {
-  return { perspective: scope.perspective, scopeCodes: [...(scope.scopeCodes || [])] }
+function cloneScope(scope: AdminScopeGrant): AdminScopeGrant {
+  return { ...scope }
 }
 
 function editScopes(user: AdminUser) {
   scopeUserId.value = user.userId
-  scopeDrafts.value = (user.scopes || []).map(cloneScope)
-  if (!scopeDrafts.value.length) scopeDrafts.value = [{ perspective: 'BASE', scopeCodes: [] }]
+  scopeDrafts.value = (user.scopeGrants || []).map(cloneScope)
   message.value = ''
 }
 
@@ -243,30 +242,26 @@ function resetScopeEditor() {
 }
 
 function addScope() {
-  scopeDrafts.value.push({ perspective: 'BASE', scopeCodes: [] })
-}
-
-function parseScopeCodes(value: string) {
-  return [...new Set(value.split(/[,，\s]+/).map((item) => item.trim()).filter(Boolean))]
-}
-
-function setScopeCodes(index: number, value: string) {
-  scopeDrafts.value[index].scopeCodes = parseScopeCodes(value)
+  const user = users.value.find((item) => item.userId === scopeUserId.value)
+  const roleCode = user?.roleCodes.find((code) => code !== 'ADMIN') || ''
+  if (!roleCode) { message.value = '当前用户没有可配置数据范围的业务角色；ADMIN 全量只读权限无需配置范围。'; return }
+  scopeDrafts.value.push({ roleCode, perspective: 'BASE', scopeCode: '', canViewDetail: false, canExport: false, canEditConfig: false })
 }
 
 async function saveScopes() {
   if (!scopeUserId.value) { message.value = '请先选择用户。'; return }
-  if (!scopeDrafts.value.length) { message.value = '请至少配置一条数据范围。'; return }
-  const perspectives = scopeDrafts.value.map((scope) => scope.perspective)
-  if (new Set(perspectives).size !== perspectives.length) { message.value = '同一用户不能重复配置相同视角。'; return }
-  if (scopeDrafts.value.some((scope) => !scope.scopeCodes.length)) { message.value = '每条数据范围至少填写一个范围编码；全域请填写 ALL。'; return }
+  const target = users.value.find((user) => user.userId === scopeUserId.value)
+  if (!target) { message.value = '用户不存在，请刷新后重试。'; return }
+  if (scopeDrafts.value.some((scope) => !scope.roleCode || !scope.scopeCode.trim())) { message.value = '每条授权都必须选择角色并填写范围编码；全域请填写 ALL。'; return }
+  const keys = scopeDrafts.value.map((scope) => `${scope.roleCode}|${scope.perspective}|${scope.scopeCode.trim().toUpperCase()}`)
+  if (new Set(keys).size !== keys.length) { message.value = '同一角色、视角和范围编码不能重复授权。'; return }
   saving.value = true
   message.value = ''
   try {
-    const scopes = scopeDrafts.value.map(cloneScope)
-    const saved = await api.updateAdminUserScopes(scopeUserId.value, scopes)
+    const scopes = scopeDrafts.value.map((scope) => ({ ...cloneScope(scope), scopeCode: scope.scopeCode.trim().toUpperCase() }))
+    const saved = await api.updateAdminUserScopes(scopeUserId.value, [...target.roleCodes], scopes)
     users.value = replaceByKey(users.value, saved, 'userId')
-    scopeDrafts.value = (saved.scopes || scopes).map(cloneScope)
+    scopeDrafts.value = (saved.scopeGrants || scopes).map(cloneScope)
     message.value = `用户 ${saved.displayName} 的数据范围已保存。`
   } catch (reason) {
     message.value = `数据范围保存失败：${readableError(reason)}`
@@ -367,8 +362,17 @@ onMounted(load)
     <template v-else-if="!error && mode === 'scopes'">
       <div class="panel table-scroll admin-list"><table v-if="users.length"><thead><tr><th>用户ID</th><th>姓名</th><th>角色</th><th>当前数据范围</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="user in users" :key="user.userId"><td>{{ user.userId }}</td><td>{{ user.displayName }}</td><td>{{ user.roleCodes?.join('、') || '—' }}</td><td>{{ user.scopes?.map(scope => `${scope.perspective}:${scope.scopeCodes.join('/')}`).join('；') || '未配置' }}</td><td><span :class="['status', user.enabled ? 'ok' : 'gray']">{{ user.enabled ? '启用' : '停用' }}</span></td><td><button class="link-button" @click="editScopes(user)">配置范围</button></td></tr></tbody></table><div v-else class="admin-state empty-state">暂无用户，需先在用户管理中创建生产用户。</div></div>
       <div v-if="scopeUserId" class="panel admin-form admin-list">
-        <div class="panel-title">配置用户 {{ scopeUserId }} 的数据范围 <small>范围编码支持逗号分隔，全域使用 ALL</small></div>
-        <div v-for="(item, index) in scopeDrafts" :key="index" class="scope-row"><select v-model="item.perspective"><option value="BASE">基地</option><option value="PRODUCT_LINE">产品线</option><option value="BUSINESS_UNIT">事业部</option><option value="ALL">全部视角</option></select><input :value="item.scopeCodes.join(',')" placeholder="例如 NC01,YC01 或 ALL" @input="setScopeCodes(index, ($event.target as HTMLInputElement).value)"><button class="btn" @click="scopeDrafts.splice(index, 1)">移除</button></div>
+        <div class="panel-title">配置用户 {{ scopeUserId }} 的数据权限 <small>逐条授权角色、视角、范围与能力；全域范围编码使用 ALL</small></div>
+        <div v-for="(item, index) in scopeDrafts" :key="index" class="scope-row">
+          <select v-model="item.roleCode"><option v-for="roleCode in users.find(user => user.userId === scopeUserId)?.roleCodes.filter(code => code !== 'ADMIN')" :key="roleCode" :value="roleCode">{{ roleCode }}</option></select>
+          <select v-model="item.perspective"><option value="BASE">基地</option><option value="PRODUCT_LINE">产品线</option><option value="BUSINESS_UNIT">事业部</option></select>
+          <input v-model.trim="item.scopeCode" placeholder="例如 NC01 或 ALL">
+          <label><input v-model="item.canViewDetail" type="checkbox">明细</label>
+          <label><input v-model="item.canExport" type="checkbox">导出/PDF</label>
+          <label><input v-model="item.canEditConfig" type="checkbox">配置维护</label>
+          <button class="btn" @click="scopeDrafts.splice(index, 1)">移除</button>
+        </div>
+        <div v-if="!scopeDrafts.length" class="admin-state empty-state">尚未配置业务数据授权；可添加授权，或保存空列表清除现有授权。</div>
         <div class="action-row"><button class="btn" @click="addScope">添加范围</button><button class="btn" @click="resetScopeEditor">取消</button><button class="btn primary" :disabled="saving" @click="saveScopes">{{ saving ? '保存中…' : '保存数据范围' }}</button></div>
       </div>
     </template>
@@ -398,5 +402,5 @@ onMounted(load)
 </template>
 
 <style scoped>
-.admin-state{display:flex;align-items:center;justify-content:center;gap:12px;min-height:92px;padding:18px;border:1px dashed #c8cfd6;border-radius:7px;background:#fafbfc;color:#65717c}.error-state{justify-content:space-between;border-color:#e0adb7;background:#fff7f8;color:#8d1730}.admin-form{margin-bottom:15px}.admin-list{margin-top:15px}.admin-grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px}.admin-grid label{display:flex;flex-direction:column;gap:5px;color:#65717c;font-size:12px}.admin-grid label.wide{grid-column:span 2}.admin-grid input,.admin-grid select,.scope-row input{width:100%;padding:8px;border:1px solid #d4dbe1;border-radius:4px;background:#fff;color:#26313b}.choice-box{display:flex;gap:10px 18px;flex-wrap:wrap;margin:14px 0 0;padding:10px 12px;border:1px solid #e1e5e9;border-radius:6px}.choice-box legend{padding:0 5px;color:#65717c;font-size:12px}.choice-box label{display:flex;align-items:center;gap:5px}.scope-row{display:grid;grid-template-columns:190px minmax(260px,1fr) auto;gap:9px;margin:9px 0}.link-button+ .link-button{margin-left:10px}.link-button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:900px){.admin-grid{grid-template-columns:1fr 1fr}.scope-row{grid-template-columns:1fr}.admin-grid label.wide{grid-column:span 1}}@media(max-width:640px){.admin-grid{grid-template-columns:1fr}}
+.admin-state{display:flex;align-items:center;justify-content:center;gap:12px;min-height:92px;padding:18px;border:1px dashed #c8cfd6;border-radius:7px;background:#fafbfc;color:#65717c}.error-state{justify-content:space-between;border-color:#e0adb7;background:#fff7f8;color:#8d1730}.admin-form{margin-bottom:15px}.admin-list{margin-top:15px}.admin-grid{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px}.admin-grid label{display:flex;flex-direction:column;gap:5px;color:#65717c;font-size:12px}.admin-grid label.wide{grid-column:span 2}.admin-grid input,.admin-grid select,.scope-row>input,.scope-row>select{width:100%;padding:8px;border:1px solid #d4dbe1;border-radius:4px;background:#fff;color:#26313b}.choice-box{display:flex;gap:10px 18px;flex-wrap:wrap;margin:14px 0 0;padding:10px 12px;border:1px solid #e1e5e9;border-radius:6px}.choice-box legend{padding:0 5px;color:#65717c;font-size:12px}.choice-box label,.scope-row label{display:flex;align-items:center;gap:5px}.scope-row label input{width:auto}.scope-row{display:grid;grid-template-columns:140px 140px minmax(160px,1fr) auto auto auto auto;align-items:center;gap:9px;margin:9px 0}.link-button+ .link-button{margin-left:10px}.link-button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:1100px){.scope-row{grid-template-columns:1fr 1fr 1fr}.scope-row .btn{justify-self:start}}@media(max-width:900px){.admin-grid{grid-template-columns:1fr 1fr}.scope-row{grid-template-columns:1fr}.admin-grid label.wide{grid-column:span 1}}@media(max-width:640px){.admin-grid{grid-template-columns:1fr}}
 </style>
