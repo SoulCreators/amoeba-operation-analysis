@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,7 +35,7 @@ class ExceptionWorkbenchServiceTest {
 
     @Test
     void listFiltersBySeverityErrorCodeObjectAndStatus() {
-        repository.replaceByTaskNo(TASK_NO, List.of(
+        repository.replaceByTaskNo(TASK_NO, Arrays.asList(
                 report("OBJ-1", "FIELD_EMPTY", IssueSeverity.BLOCKING, 1),
                 report("OBJ-1", "TYPE_INVALID", IssueSeverity.WARNING, 2),
                 report("OBJ-2", "FIELD_EMPTY", IssueSeverity.WARNING, 3)));
@@ -49,7 +50,7 @@ class ExceptionWorkbenchServiceTest {
 
     @Test
     void ignoreWarningRecordsAuditAndPersists() {
-        repository.replaceByTaskNo(TASK_NO, List.of(
+        repository.replaceByTaskNo(TASK_NO, Arrays.asList(
                 report("OBJ-1", "TYPE_INVALID", IssueSeverity.WARNING, 1)));
         Long id = repository.findByTaskNo(TASK_NO).get(0).getId();
 
@@ -63,7 +64,7 @@ class ExceptionWorkbenchServiceTest {
 
     @Test
     void ignoreBlockingIsRejected() {
-        repository.replaceByTaskNo(TASK_NO, List.of(
+        repository.replaceByTaskNo(TASK_NO, Arrays.asList(
                 report("OBJ-1", "FIELD_EMPTY", IssueSeverity.BLOCKING, 1)));
         Long id = repository.findByTaskNo(TASK_NO).get(0).getId();
 
@@ -74,7 +75,7 @@ class ExceptionWorkbenchServiceTest {
 
     @Test
     void ignoreUnknownOrMismatchedTaskIsRejected() {
-        repository.replaceByTaskNo(TASK_NO, List.of(
+        repository.replaceByTaskNo(TASK_NO, Arrays.asList(
                 report("OBJ-1", "TYPE_INVALID", IssueSeverity.WARNING, 1)));
         Long id = repository.findByTaskNo(TASK_NO).get(0).getId();
 
@@ -86,7 +87,7 @@ class ExceptionWorkbenchServiceTest {
 
     @Test
     void recheckReopensIgnoredWarnings() {
-        repository.replaceByTaskNo(TASK_NO, List.of(
+        repository.replaceByTaskNo(TASK_NO, Arrays.asList(
                 report("OBJ-1", "FIELD_EMPTY", IssueSeverity.BLOCKING, 1),
                 report("OBJ-1", "TYPE_INVALID", IssueSeverity.WARNING, 2)));
         Long warningId = repository.findByTaskNo(TASK_NO).get(1).getId();
@@ -101,11 +102,11 @@ class ExceptionWorkbenchServiceTest {
 
     @Test
     void hasBlockingOpenReflectsClosureGate() {
-        repository.replaceByTaskNo(TASK_NO, List.of(
+        repository.replaceByTaskNo(TASK_NO, Arrays.asList(
                 report("OBJ-1", "TYPE_INVALID", IssueSeverity.WARNING, 1)));
         assertFalse(service.hasBlockingOpen(TASK_NO));
 
-        repository.replaceByTaskNo(TASK_NO, List.of(
+        repository.replaceByTaskNo(TASK_NO, Arrays.asList(
                 report("OBJ-1", "FIELD_EMPTY", IssueSeverity.BLOCKING, 1),
                 report("OBJ-1", "TYPE_INVALID", IssueSeverity.WARNING, 2)));
         assertTrue(service.hasBlockingOpen(TASK_NO));
