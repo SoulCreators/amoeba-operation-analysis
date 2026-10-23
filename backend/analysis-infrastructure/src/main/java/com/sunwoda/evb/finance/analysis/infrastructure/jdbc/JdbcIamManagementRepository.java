@@ -4,6 +4,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.IamMenu;
 import com.sunwoda.evb.finance.analysis.domain.model.IamRole;
 import com.sunwoda.evb.finance.analysis.domain.model.IamUser;
 import com.sunwoda.evb.finance.analysis.domain.repository.IamManagementRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DuplicateKeyException;
@@ -21,6 +22,7 @@ import java.util.List;
 public class JdbcIamManagementRepository implements IamManagementRepository {
     private final JdbcTemplate jdbc;
 
+    @Autowired
     public JdbcIamManagementRepository(DataSource dataSource) { this(new JdbcTemplate(dataSource)); }
     JdbcIamManagementRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 

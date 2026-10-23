@@ -1,11 +1,14 @@
 package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import javax.sql.DataSource;
 import java.util.Arrays;
 import java.util.Collections;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -13,6 +16,20 @@ import static org.mockito.Mockito.verify;
 
 /** 本次新增：锁定 JDBC 关联替换的软停用和恢复语义。 */
 class JdbcIamManagementRepositoryTest {
+    @Test
+    void dbProfileAutowiresDataSourceConstructor() {
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        context.getEnvironment().setActiveProfiles("db");
+        context.getBeanFactory().registerSingleton("dataSource", mock(DataSource.class));
+        context.register(JdbcIamManagementRepository.class);
+        try {
+            context.refresh();
+            assertNotNull(context.getBean(JdbcIamManagementRepository.class));
+        } finally {
+            context.close();
+        }
+    }
+
     @Test
     void userRolesAreSoftDisabledThenUpserted() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
