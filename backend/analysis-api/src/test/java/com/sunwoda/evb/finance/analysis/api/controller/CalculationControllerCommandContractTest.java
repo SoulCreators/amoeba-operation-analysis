@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.dto.CalculateRequest;
 import com.sunwoda.evb.finance.analysis.api.dto.ResultLifecycleRequest;
+import com.sunwoda.evb.finance.analysis.api.dto.WithdrawRequest;
 import com.sunwoda.evb.finance.analysis.application.service.CalculationService;
 import com.sunwoda.evb.finance.analysis.common.ApiResult;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
@@ -67,6 +68,24 @@ class CalculationControllerCommandContractTest {
         ApiResult<CalculationResult> actual = controller.publish(request, principal());
 
         verify(service).publish(BATCH_NO, TRUSTED_PRINCIPAL);
+        assertSuccessfulResult(actual, expected);
+    }
+
+    @Test
+    void withdrawUsesBatchNoReasonTargetsAndAuthenticatedPrincipal() {
+        WithdrawRequest request = new WithdrawRequest();
+        request.setBatchNo(BATCH_NO);
+        request.setReason("数据口径错误");
+        request.setNotificationTargets(Collections.singletonList("finance-lead@example.com"));
+        CalculationResult expected = result();
+        when(service.withdraw(BATCH_NO, "数据口径错误",
+                Collections.singletonList("finance-lead@example.com"), TRUSTED_PRINCIPAL))
+                .thenReturn(expected);
+
+        ApiResult<CalculationResult> actual = controller.withdraw(request, principal());
+
+        verify(service).withdraw(BATCH_NO, "数据口径错误",
+                Collections.singletonList("finance-lead@example.com"), TRUSTED_PRINCIPAL);
         assertSuccessfulResult(actual, expected);
     }
 

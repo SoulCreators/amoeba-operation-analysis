@@ -1,38 +1,17 @@
-# 数据库脚本
+# 数据库脚本与变更治理
 
-本仓库当前没有引入 Flyway 或 Liquibase，也没有 Spring 自动执行迁移的配置。数据库结构由
-`database/migration/V###__description.sql` 维护，按编号顺序由部署/运维流程使用 PostgreSQL
-客户端执行；例如：
+截至本次评审，仓库有 34 个迁移 SQL（V001–V034）、15 个验证 SQL 和 16 个回滚 SQL。迁移按编号依次建立元数据、配置、权限、原始事实、结果、FC、导出、审计、计算快照/版本、人工修订、重试与 Outbox 结构。
 
-```bash
-psql -v ON_ERROR_STOP=1 -f database/migration/V018__create_export_task.sql
-```
+| 目录 | 用途 |
+|---|---|
+| `migration/` | 唯一的增量结构变更来源，已执行文件不得修改 |
+| `verification/` | 结构、约束、版本和原子性检查 |
+| `rollback/` | 部分迁移的手工回滚脚本，不是完整自动降级工具 |
 
-数据库迁移必须使用递增编号，不允许修改已执行的迁移文件。每次结构变化必须同步补充校验脚本和回滚说明。
+当前未集成 Flyway/Liquibase，也未实现完整迁移历史和校验和管理。生产迁移必须由发布流程记录已执行版本并执行增量；不能把“新空库全部迁移通过”等同于存量数据库可重复全量执行。
 
-## V024 配置导入问题
+新建隔离测试库的执行步骤见 [开发验证说明](../docs/development/local-development.md)。执行 SQL 使用 `psql -v ON_ERROR_STOP=1`，失败立即停止。
 
-`V024__create_configuration_import_issue.sql` 为 `flow.configuration_import_task`
-建立独立的问题表和外键，不能复用月度事实导入的 `flow.import_issue`。
-结构校验使用 `database/verification/check_configuration_import_issue.sql`；手工回滚使用
-`database/rollback/V024__create_configuration_import_issue.sql`，执行前应完成备份。
+当前结构要点：V017 增加事实来源追溯；V018–V021 覆盖导出任务、清理生命周期、审计和导出输入快照；V024 增加配置导入问题；V025–V034 覆盖计算任务、快照/版本、人工修订、重试、幂等、结果版本归属、Outbox 领取/投递和重试令牌。以 SQL 和 JDBC 代码为准，表存在不等于所有应用链路已经接入。
 
-## V018 导出任务元数据
-
-`V018__create_export_task.sql` 新增 `flow.export_task`，覆盖当前
-`ExportTaskPort` 能提供的任务 ID、用户、用户维度 `request_key` 幂等键、文件名/类型、状态以及
-创建、更新、完成、过期和错误信息。`(user_id, request_key)` 是幂等唯一约束；`job_id` 另有唯一约束。
-
-批次、结果版本、视角、格式范围快照等业务元数据尚未写入本表：当前应用端口尚未把这些字段传给
-基础设施层，后续必须先扩展端口契约和结果版本快照，再新增迁移，不通过拼接 `request_key` 伪造这些字段。
-
-表只保存最小任务元数据，不保存文件字节，也不声明对象存储已经存在；当前 JDBC 适配器的
-`download()` 在文件存储适配器接入前保持不可用，不实现 Worker 或生产导出任务接线。
-
-结构和幂等性校验：
-
-```bash
-psql -v ON_ERROR_STOP=1 -f database/verification/check_export_task.sql
-```
-
-手工回滚前应确认没有后续对象依赖该表，再执行 `database/rollback/V018__drop_export_task.sql`。
+每次新迁移须附验证、数据保留与恢复方案。回滚前检查后续依赖和已生成业务数据；优先评估向前修复。删除表或历史财务结果不能被当作例行回滚动作。本轮目录优化未改动任何已有 SQL。

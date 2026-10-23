@@ -11,6 +11,7 @@ import com.sunwoda.evb.finance.analysis.domain.repository.ImportFileRepository;
 import com.sunwoda.evb.finance.analysis.domain.repository.ImportTaskRepository;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -73,17 +74,18 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                           Map<String, Accumulator> accumulators) {
         try (InputStream input = fileRepository.open(task.getTaskNo());
              Workbook workbook = WorkbookFactory.create(input)) {
-            Sheet sheet = workbook.getSheetAt(0);
+            Sheet sheet = PoiSheetLocator.locate(workbook, task.getDatasetCode());
             Row header = sheet.getRow(0);
             if (header == null) return;
             Map<String, Integer> columns = headers(header);
             for (int rowNo = 1; rowNo <= sheet.getLastRowNum(); rowNo++) {
                 Row row = sheet.getRow(rowNo);
                 if (row == null) continue;
+                if (perspective == AnalysisPerspective.BASE && excluded(row, columns)) continue;
                 String scope = scope(row, columns, perspective);
                 if (scope.isEmpty()) continue;
                 String baseCode = firstText(row, columns, "收入计算基地", "基地", "出货基地");
-                String productCode = firstText(row, columns, "产品线", "电芯型号", "产品类别", "客户项目改", "客户项目");
+                String productCode = firstText(row, columns, "电芯型号", "产品线", "产品类别", "客户项目改", "客户项目");
                 String lineCode = firstText(row, columns, "拉线", "线体", "产线");
                 String key = factKey(scope, baseCode, productCode, lineCode);
                 Accumulator accumulator = accumulators.get(key);
@@ -95,18 +97,25 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                 if (isRevenueCost(code, perspective)) {
                     if (isBudget(code)) {
                         accumulator.budgetVolume = add(accumulator.budgetVolume,
-                                number(row, columns, "预算销量", "预算电量", "预算数量", "销量", "电量", "数量"));
+                                budgetVolume(row, columns, "预算销量", "预算电量", "预算数量", "销量", "电量", "数量"));
                         accumulator.budgetOutputWh = addNullable(accumulator.budgetOutputWh,
                                 numberOrNull(row, columns, "Wh", "产出Wh", "产出电量Wh"));
-                        accumulator.budgetRevenue = add(accumulator.budgetRevenue, number(row, columns, "营业收入", "销售收入", "收入"));
-                        accumulator.budgetSalesCost = add(accumulator.budgetSalesCost, number(row, columns, "销售成本", "成本"));
-                        accumulator.budgetMaterialCost = add(accumulator.budgetMaterialCost, number(row, columns, "材料成本"));
+                        accumulator.budgetRevenue = add(accumulator.budgetRevenue, budgetAmount(row, columns,
+                                "预算营业收入", "营业收入", "销售收入", "收入"));
+                        accumulator.budgetSalesCost = add(accumulator.budgetSalesCost, budgetAmount(row, columns,
+                                "预算销售成本", "销售成本", "成本"));
+                        accumulator.budgetMaterialCost = add(accumulator.budgetMaterialCost, budgetAmount(row, columns,
+                                "预算材料成本", "材料成本"));
                         accumulator.budgetMaterialLoss = addNullable(accumulator.budgetMaterialLoss,
-                                numberOrNull(row, columns, "预算材料损耗"));
-                        accumulator.budgetLaborCost = add(accumulator.budgetLaborCost, number(row, columns, "直接人工", "人工成本"));
-                        accumulator.budgetOutsourcingCost = add(accumulator.budgetOutsourcingCost, number(row, columns, "外协加工成本", "外协成本"));
-                        accumulator.budgetVariableManufacturingCost = add(accumulator.budgetVariableManufacturingCost, number(row, columns, "制造成本-变动", "变动制费"));
-                        accumulator.budgetFixedManufacturingCost = add(accumulator.budgetFixedManufacturingCost, number(row, columns, "制造成本-固定", "固定制费"));
+                                budgetAmountOrNull(row, columns, "预算材料损耗", "材料损耗"));
+                        accumulator.budgetLaborCost = add(accumulator.budgetLaborCost, budgetAmount(row, columns,
+                                "预算直接人工", "直接人工", "人工成本"));
+                        accumulator.budgetOutsourcingCost = add(accumulator.budgetOutsourcingCost, budgetAmount(row, columns,
+                                "预算外协加工成本", "外协加工成本", "外协成本"));
+                        accumulator.budgetVariableManufacturingCost = add(accumulator.budgetVariableManufacturingCost,
+                                budgetAmount(row, columns, "预算制造成本-变动", "制造成本-变动", "制造费用-变动", "变动制费"));
+                        accumulator.budgetFixedManufacturingCost = add(accumulator.budgetFixedManufacturingCost,
+                                budgetAmount(row, columns, "预算制造成本-固定", "制造成本-固定", "制造费用-固定", "固定制费"));
                     } else {
                         accumulator.volume = add(accumulator.volume, number(row, columns, "销量", "电量", "数量"));
                         accumulator.outputWh = addNullable(accumulator.outputWh,
@@ -118,13 +127,15 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                                 numberOrNull(row, columns, "材料损耗"));
                         accumulator.laborCost = add(accumulator.laborCost, number(row, columns, "直接人工", "人工成本"));
                         accumulator.outsourcingCost = add(accumulator.outsourcingCost, number(row, columns, "外协加工成本", "外协成本"));
-                        accumulator.variableManufacturingCost = add(accumulator.variableManufacturingCost, number(row, columns, "制造成本-变动", "变动制费"));
-                        accumulator.fixedManufacturingCost = add(accumulator.fixedManufacturingCost, number(row, columns, "制造成本-固定", "固定制费"));
+                        accumulator.variableManufacturingCost = add(accumulator.variableManufacturingCost,
+                                number(row, columns, "制造成本-变动", "制造费用-变动", "变动制费"));
+                        accumulator.fixedManufacturingCost = add(accumulator.fixedManufacturingCost,
+                                number(row, columns, "制造成本-固定", "制造费用-固定", "固定制费"));
                     }
                 } else if (code.contains("IDLE")) {
                     accumulator.idleExpense = add(accumulator.idleExpense, number(row, columns, "金额", "闲置费用"));
                 } else if (code.contains("L3_EXP") || code.contains("LAB_MFG_EXP")) {
-                    accumulator.baseExpense = add(accumulator.baseExpense, number(row, columns, "金额", "费用金额"));
+                    routeL3Expense(accumulator, row, columns);
                 } else if (code.contains("RD_EXP")) {
                     accumulator.rdExpense = add(accumulator.rdExpense, number(row, columns, "金额", "研发费用"));
                 } else if (code.contains("IMPAIRMENT")) {
@@ -143,6 +154,25 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
     private String factKey(String scope, String baseCode, String productCode, String lineCode) {
         return String.valueOf(scope) + "\u001f" + String.valueOf(baseCode)
                 + "\u001f" + String.valueOf(productCode) + "\u001f" + String.valueOf(lineCode);
+    }
+
+    private boolean excluded(Row row, Map<String, Integer> columns) {
+        String flag = firstText(row, columns, "不计算").trim().toLowerCase(Locale.ROOT);
+        return "是".equals(flag) || "1".equals(flag) || "y".equals(flag)
+                || "yes".equals(flag) || "true".equals(flag);
+    }
+
+    /** 三级费用按费用分类归集：事业部销售/管理费用进对应字段，其余保留基地费用口径。 */
+    private void routeL3Expense(Accumulator accumulator, Row row, Map<String, Integer> columns) {
+        String category = firstText(row, columns, "费用分类");
+        BigDecimal amount = number(row, columns, "金额", "费用金额");
+        if ("销售费用".equals(category)) {
+            accumulator.salesExpense = add(accumulator.salesExpense, amount);
+        } else if ("管理费用".equals(category)) {
+            accumulator.adminExpense = add(accumulator.adminExpense, amount);
+        } else {
+            accumulator.baseExpense = add(accumulator.baseExpense, amount);
+        }
     }
 
     private boolean isRevenueCost(String code, AnalysisPerspective perspective) {
@@ -187,8 +217,31 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
     }
 
     private BigDecimal number(Row row, Map<String, Integer> columns, String... names) {
-        String value = firstText(row, columns, names);
-        if (value.isEmpty()) return BigDecimal.ZERO;
+        BigDecimal value = numberOrNull(row, columns, names);
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal budgetAmount(Row row, Map<String, Integer> columns, String... names) {
+        return number(row, columns, names).movePointRight(4);
+    }
+
+    private BigDecimal budgetAmountOrNull(Row row, Map<String, Integer> columns, String... names) {
+        BigDecimal value = numberOrNull(row, columns, names);
+        return value == null ? null : value.movePointRight(4);
+    }
+
+    private BigDecimal budgetVolume(Row row, Map<String, Integer> columns, String... names) {
+        return number(row, columns, names).movePointRight(6);
+    }
+
+    private BigDecimal numberOrNull(Row row, Map<String, Integer> columns, String... names) {
+        Cell cell = firstCell(row, columns, names);
+        if (cell == null || cell.getCellType() == CellType.BLANK) return null;
+        if (cell.getCellType() == CellType.NUMERIC) {
+            return BigDecimal.valueOf(cell.getNumericCellValue());
+        }
+        String value = text(cell);
+        if (value.isEmpty()) return null;
         try {
             return new BigDecimal(value.replace(",", "").replace("(", "-").replace(")", ""));
         } catch (NumberFormatException ex) {
@@ -196,14 +249,15 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
         }
     }
 
-    private BigDecimal numberOrNull(Row row, Map<String, Integer> columns, String... names) {
-        String value = firstText(row, columns, names);
-        if (value.isEmpty()) return null;
-        try {
-            return new BigDecimal(value.replace(",", "").replace("(", "-").replace(")", ""));
-        } catch (NumberFormatException ex) {
-            throw new IllegalStateException("数值字段无法转换: " + value, ex);
+    private Cell firstCell(Row row, Map<String, Integer> columns, String... names) {
+        for (String name : names) {
+            Integer index = columns.get(normalize(name));
+            if (index != null) {
+                Cell cell = row.getCell(index);
+                if (cell != null && !text(cell).isEmpty()) return cell;
+            }
         }
+        return null;
     }
 
     private BigDecimal add(BigDecimal left, BigDecimal right) {
@@ -261,6 +315,8 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
         private BigDecimal budgetMaterialLoss;
         private BigDecimal outputWh;
         private BigDecimal budgetOutputWh;
+        private BigDecimal salesExpense = BigDecimal.ZERO;
+        private BigDecimal adminExpense = BigDecimal.ZERO;
 
         private Accumulator(String scopeCode, String baseCode, String productCode, String lineCode) {
             this.scopeCode = scopeCode;
@@ -278,7 +334,9 @@ public class PoiPnlFactProvider implements PnlFactProvider, PnlFactTaskReader {
                     outsourcingCost, variableManufacturingCost, fixedManufacturingCost,
                     budgetMaterialCost, budgetLaborCost, budgetOutsourcingCost,
                     budgetVariableManufacturingCost, budgetFixedManufacturingCost,
-                    outputWh, budgetOutputWh, materialLoss, budgetMaterialLoss);
+                    outputWh, budgetOutputWh, materialLoss, budgetMaterialLoss,
+                    BigDecimal.ZERO, salesExpense, adminExpense,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         }
     }
 }

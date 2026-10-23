@@ -41,6 +41,14 @@ public class PnlFact {
     /** 产出电量（Wh）；为空表示来源模板未提供该口径，不能计算元/Wh。 */
     private final BigDecimal outputWh;
     private final BigDecimal budgetOutputWh;
+    /** 运营费用（基地视角：基地利润再扣减项）；缺失时按现有聚合口径视为零，不由展示层补值。 */
+    private final BigDecimal operatingExpense;
+    private final BigDecimal budgetOperatingExpense;
+    /** 销售费用、管理费用（事业部视角：项目利润再扣减项）；来源缺失时不借用其他视角。 */
+    private final BigDecimal salesExpense;
+    private final BigDecimal budgetSalesExpense;
+    private final BigDecimal adminExpense;
+    private final BigDecimal budgetAdminExpense;
 
     public PnlFact(String scopeCode, BigDecimal volume, BigDecimal revenue,
                    BigDecimal salesCost, BigDecimal idleExpense, BigDecimal baseExpense,
@@ -167,6 +175,40 @@ public class PnlFact {
                    BigDecimal budgetFixedManufacturingCost, BigDecimal outputWh,
                    BigDecimal budgetOutputWh, BigDecimal materialLoss,
                    BigDecimal budgetMaterialLoss) {
+        this(scopeCode, baseCode, productCode, lineCode, volume, revenue, salesCost, idleExpense, baseExpense,
+                rdExpense, assetImpairment, creditImpairment, otherIncome, budgetVolume, budgetRevenue,
+                budgetSalesCost, budgetIdleExpense, budgetBaseExpense, budgetRdExpense,
+                budgetAssetImpairment, budgetCreditImpairment, budgetOtherIncome, materialCost,
+                laborCost, outsourcingCost, variableManufacturingCost, fixedManufacturingCost,
+                budgetMaterialCost, budgetLaborCost, budgetOutsourcingCost, budgetVariableManufacturingCost,
+                budgetFixedManufacturingCost, outputWh, budgetOutputWh, materialLoss, budgetMaterialLoss,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    /**
+     * 全字段构造器：在三视角损益公式中区分基地运营费用、事业部销售/管理费用。
+     * 这些费用缺失时传零，展示层不得把缺失渲染为业务零；此处零仅表示聚合层的可加默认值。
+     */
+    public PnlFact(String scopeCode, String baseCode, String productCode, String lineCode,
+                   BigDecimal volume, BigDecimal revenue,
+                   BigDecimal salesCost, BigDecimal idleExpense, BigDecimal baseExpense,
+                   BigDecimal rdExpense, BigDecimal assetImpairment,
+                   BigDecimal creditImpairment, BigDecimal otherIncome,
+                   BigDecimal budgetVolume, BigDecimal budgetRevenue,
+                   BigDecimal budgetSalesCost, BigDecimal budgetIdleExpense,
+                   BigDecimal budgetBaseExpense, BigDecimal budgetRdExpense,
+                   BigDecimal budgetAssetImpairment, BigDecimal budgetCreditImpairment,
+                   BigDecimal budgetOtherIncome, BigDecimal materialCost,
+                   BigDecimal laborCost, BigDecimal outsourcingCost,
+                   BigDecimal variableManufacturingCost, BigDecimal fixedManufacturingCost,
+                   BigDecimal budgetMaterialCost, BigDecimal budgetLaborCost,
+                   BigDecimal budgetOutsourcingCost, BigDecimal budgetVariableManufacturingCost,
+                   BigDecimal budgetFixedManufacturingCost, BigDecimal outputWh,
+                   BigDecimal budgetOutputWh, BigDecimal materialLoss,
+                   BigDecimal budgetMaterialLoss, BigDecimal operatingExpense,
+                   BigDecimal salesExpense, BigDecimal adminExpense,
+                   BigDecimal budgetOperatingExpense, BigDecimal budgetSalesExpense,
+                   BigDecimal budgetAdminExpense) {
         this.scopeCode = scopeCode;
         this.baseCode = emptyToNull(baseCode);
         this.productCode = emptyToNull(productCode);
@@ -204,6 +246,12 @@ public class PnlFact {
         this.budgetMaterialLoss = budgetMaterialLoss;
         this.outputWh = outputWh;
         this.budgetOutputWh = budgetOutputWh;
+        this.operatingExpense = value(operatingExpense);
+        this.salesExpense = value(salesExpense);
+        this.adminExpense = value(adminExpense);
+        this.budgetOperatingExpense = value(budgetOperatingExpense);
+        this.budgetSalesExpense = value(budgetSalesExpense);
+        this.budgetAdminExpense = value(budgetAdminExpense);
     }
 
     public String getScopeCode() { return scopeCode; }
@@ -242,6 +290,12 @@ public class PnlFact {
     public BigDecimal getBudgetMaterialLoss() { return budgetMaterialLoss; }
     public BigDecimal getOutputWh() { return outputWh; }
     public BigDecimal getBudgetOutputWh() { return budgetOutputWh; }
+    public BigDecimal getOperatingExpense() { return operatingExpense; }
+    public BigDecimal getSalesExpense() { return salesExpense; }
+    public BigDecimal getAdminExpense() { return adminExpense; }
+    public BigDecimal getBudgetOperatingExpense() { return budgetOperatingExpense; }
+    public BigDecimal getBudgetSalesExpense() { return budgetSalesExpense; }
+    public BigDecimal getBudgetAdminExpense() { return budgetAdminExpense; }
 
     private BigDecimal value(BigDecimal number) {
         return number == null ? BigDecimal.ZERO : number;

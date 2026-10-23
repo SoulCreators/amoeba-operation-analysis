@@ -1,0 +1,68 @@
+{
+  "date": "2026-10-22",
+  "baseCommit": "aa3ac6f",
+  "branch": "codex/fix/calculation-reliability",
+  "backend": {
+    "command": "mvn -o -B -Dmaven.repo.local=<existing-local-cache> clean verify",
+    "result": "PASS",
+    "modules": {
+      "analysis-api": {
+        "tests": 280,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "analysis-application": {
+        "tests": 323,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "analysis-infrastructure": {
+        "tests": 317,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "analysis-worker": {
+        "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "total": {
+      "tests": 946,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "database": {
+    "version": "PostgreSQL 15.18",
+    "isolated": true,
+    "migrations": 35,
+    "verificationScripts": 16,
+    "upgrade": "V001-V034 with legacy result -> V035: preserved 123.12345678 and NULL-version row",
+    "rollback": "V035 without ordinary snapshots: rollback and reapply passed"
+  },
+  "architecture": "make check passed",
+  "diffCheck": "git diff --check passed",
+  "newTests": 15,
+  "push": {
+    "status": "BLOCKED",
+    "httpStatus": 403,
+    "account": "mengchen4816-dot",
+    "pushed": false
+  },
+  "businessApproval": false,
+  "formalPublication": "BLOCKED: PVM_FORMAL_GRAIN; zero-volume PVM also blocked when applicable",
+  "limitations": [
+    "No production data or finance UAT",
+    "No independent failed-job transaction/heartbeat for ordinary calculation",
+    "Upstream configuration provenance and original file retention not established",
+    "No automatic Excel-to-result replay",
+    "Frontend unchanged and not tested in this task"
+  ],
+  "formalConfirmation": "BLOCKED under the same gate as publication"
+}

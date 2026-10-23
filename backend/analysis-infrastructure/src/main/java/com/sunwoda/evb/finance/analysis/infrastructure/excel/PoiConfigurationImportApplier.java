@@ -25,6 +25,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -132,11 +133,19 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
         List<ImportIssue> issues = new ArrayList<ImportIssue>();
         List<MappingRow> rows = new ArrayList<MappingRow>();
         Map<String, String> seenRows = new HashMap<String, String>();
+        Map<String, String> leadersByModel = new HashMap<String, String>();
+        Map<String, BigDecimal> inventoryRatios = new HashMap<String, BigDecimal>();
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = sheetFor(workbook, task.getType());
             Map<String, Integer> headers = headers(sheet.getRow(0));
             boolean genericMapping = has(headers, "matchkey", "匹配键", "组合键", "来源值")
                     && has(headers, "mappedvalue", "映射值", "目标值");
+            if (type == MappingType.SALES_PROJECT && !genericMapping
+                    && (!has(headers, "出货基地") || !has(headers, "客户项目改"))) {
+                issues.add(new ImportIssue(1, !has(headers, "出货基地") ? "出货基地" : "客户项目改",
+                        "CONFIG_SCHEMA_BLOCKED",
+                        "销售项目映射待补齐出货基地、客户项目改字段，当前模板不能满足四键精确匹配", null));
+            }
             for (int rowNo = 1; rowNo <= sheet.getLastRowNum(); rowNo++) {
                 Row row = sheet.getRow(rowNo);
                 if (blank(row)) continue;
@@ -158,6 +167,39 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
                     continue;
                 }
                 boolean enabled = booleanValue(first(row, headers, "enabled", "是否启用", "是否有效"), true);
+                if (enabled && type == MappingType.SALES_PROJECT) {
+                    String model = first(row, headers, "电芯型号");
+                    // Only the shared leader field is unambiguous for non-financial
+                    // ownership. Product-line and BU leaders are separate dimensions.
+                    String leader = has(headers, "产品线巴长工号", "事业部巴长工号")
+                            ? "" : first(row, headers, "巴长工号");
+                    if (!model.isEmpty() && !leader.isEmpty()) {
+                        String previousLeader = leadersByModel.putIfAbsent(normalizeBusinessValue(model), leader);
+                        if (previousLeader != null && !previousLeader.equals(leader)) {
+                            issues.add(new ImportIssue(rowNo + 1, "巴长工号", "MAPPING_CONFLICT",
+                                    "同一电芯型号只能对应一个有效巴长工号: " + model, leader));
+                        }
+                    }
+                }
+                if (enabled && type == MappingType.INVENTORY) {
+                    String material = first(row, headers, "物料编码");
+                    String ratioText = first(row, headers, "分摊比例");
+                    if (!material.isEmpty() && !ratioText.isEmpty()) {
+                        try {
+                            BigDecimal ratio = new BigDecimal(ratioText.replace("%", "").trim());
+                            if (ratioText.contains("%")) ratio = ratio.movePointLeft(2);
+                            if (ratio.signum() < 0 || ratio.compareTo(BigDecimal.ONE) > 0) {
+                                throw new NumberFormatException("比例超出0到1范围");
+                            }
+                            String ratioKey = normalizeBusinessValue(material);
+                            inventoryRatios.put(ratioKey,
+                                    inventoryRatios.getOrDefault(ratioKey, BigDecimal.ZERO).add(ratio));
+                        } catch (NumberFormatException ex) {
+                            issues.add(new ImportIssue(rowNo + 1, "分摊比例", "INVALID_RATIO",
+                                    "库存分摊比例必须是0到1之间的十进制比例", ratioText));
+                        }
+                    }
+                }
                 String rowSignature = key + "\u0000" + value + "\u0000" + enabled;
                 String previousSignature = seenRows.get(key);
                 if (previousSignature != null) {
@@ -171,6 +213,16 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
             }
         } catch (Exception ex) {
             issues.add(new ImportIssue(null, null, "APPLY_FAILED", "映射配置应用失败: " + ex.getMessage(), null));
+        }
+        if (type == MappingType.INVENTORY) {
+            for (Map.Entry<String, BigDecimal> ratio : inventoryRatios.entrySet()) {
+                if (ratio.getValue().compareTo(BigDecimal.ONE) != 0) {
+                    issues.add(new ImportIssue(null, "分摊比例", "ALLOCATION_RATIO_NOT_ONE",
+                            "同一物料的有效分摊比例合计必须为1；当前物料 " + ratio.getKey()
+                                    + " 合计为 " + ratio.getValue().toPlainString(),
+                            ratio.getValue().toPlainString()));
+                }
+            }
         }
         if (!issues.isEmpty()) return new ConfigurationApplyResult(0, issues);
         for (MappingRow row : rows) {
@@ -199,25 +251,25 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
             case SALES_PROJECT_MAPPING:
                 if (has(headers, "产品线巴长", "事业部巴长")) {
                     return new MappingFields(
-                            new String[]{"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "B品标识"},
+                            new String[]{"出货基地", "客户简称", "客户项目改", "电芯型号"},
                             new String[]{"产品线巴长", "产品线巴长工号", "事业部巴长", "事业部巴长工号", "备注"},
-                            new String[]{"客户简称", "客户项目", "产品线", "事业部", "是否有效"});
+                            new String[]{"出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "是否有效"});
                 }
                 return new MappingFields(
-                        new String[]{"客户简称", "客户项目", "电芯型号"},
+                        new String[]{"出货基地", "客户简称", "客户项目改", "电芯型号"},
                         new String[]{"产品线", "事业部", "B品标识", "备注", "巴长", "巴长工号"},
-                        new String[]{"客户简称", "产品线", "事业部", "是否有效"});
+                        new String[]{"出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "是否有效"});
             case INVENTORY_MAPPING:
                 if (has(headers, "物料描述")) {
                     return new MappingFields(
-                            new String[]{"物料编码", "物料描述", "电芯型号", "产品类型", "产品线", "事业部"},
-                            new String[]{"分摊比例", "备注"},
-                            new String[]{"物料编码", "物料描述", "产品类型", "产品线", "事业部", "是否有效"});
+                        new String[]{"物料编码", "物料描述", "电芯型号", "产品类型", "产品线", "事业部"},
+                        new String[]{"分摊比例", "备注"},
+                        new String[]{"物料编码", "物料描述", "产品类型", "产品线", "事业部", "分摊比例", "是否有效"});
                 }
                 return new MappingFields(
                         new String[]{"物料编码"},
                         new String[]{"电芯型号", "产品类型", "产品线", "事业部", "分摊比例", "备注"},
-                        new String[]{"物料编码", "电芯型号", "产品线", "事业部", "是否有效"});
+                        new String[]{"物料编码", "电芯型号", "产品线", "事业部", "分摊比例", "是否有效"});
             case EXPENSE_CATEGORY:
                 if (has(headers, "公司段", "BU段", "部门段")) {
                     return new MappingFields(
@@ -554,6 +606,11 @@ public class PoiConfigurationImportApplier implements ConfigurationImportApplier
 
     private String value(Cell cell) { return cell == null ? "" : formatter.formatCellValue(cell).trim(); }
     private String normalize(String value) { return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT); }
+    private String normalizeBusinessValue(String value) {
+        if (value == null) return "";
+        return java.text.Normalizer.normalize(value.trim(), java.text.Normalizer.Form.NFKC)
+                .replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+    }
     private String defaultIfEmpty(String value, String defaultValue) { return value.isEmpty() ? defaultValue : value; }
     private int integer(String value, int defaultValue) { try { return value.isEmpty() ? defaultValue : Integer.parseInt(value); } catch (NumberFormatException ex) { return defaultValue; } }
     private boolean booleanValue(String value, boolean defaultValue) { if (value.isEmpty()) return defaultValue; return "true".equalsIgnoreCase(value) || "是".equals(value) || "启用".equals(value) || "1".equals(value); }

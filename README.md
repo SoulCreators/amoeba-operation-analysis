@@ -1,143 +1,34 @@
-# 阿米巴经营分析平台｜项目开发仓库（JDK 8）
+# 阿米巴经营分析平台
 
-本目录是阿米巴经营分析平台的企业开发工作区，承接GitHub仓库源码、数据库脚本、部署文件、测试材料、交付文档及可交互业务验证Demo。
+基地、产品线、事业部三视角经营分析平台。业务主线是 Excel 导入、校验与追溯、确定性损益计算、财经确认发布，以及 PVM、FC、指标树和 AI 草稿分析。
 
-## 使用边界
+当前为 JDK 8 / Spring Boot 2.7.18 六模块单体，API 与 Worker 独立运行；前端使用 Vue 3 / TypeScript / Vite，数据库使用 PostgreSQL。已有功能及生产差距见 [代码分析与企业级优化报告](docs/reports/2026-10-21-enterprise-review.md)。目录整理不代表财务口径或上线验收完成。最新进展见 [第二阶段财经展示整改](docs/reports/2026-10-21-financial-display-remediation.md)。
 
-- `backend/`、`frontend/`、`database/`、`deploy/`为可提交至GitHub的工程内容。
-- `docs/`为与代码同步维护的架构、接口、计算规则、权限、AI和运维文档。
-- `00_项目管理/`用于项目基线、任务和版本管理；不放真实财务数据。
-- `tests/`只放脱敏样本、测试脚本和验收结果。
-- 真实生产数据、账号密码、Token、AI密钥不得进入本目录或GitHub。
+## 工程导航
 
-## 总体目录
+| 目录 | 职责 |
+|---|---|
+| [backend](backend/README.md) | common、domain、application、infrastructure、api、worker 六个 Maven 模块 |
+| [frontend](frontend/README.md) | 应用入口、业务功能、共享 API 契约及前端测试 |
+| [database](database/README.md) | 有序迁移、结构校验、手工回滚；SQL 保持原路径与编号 |
+| [deploy](deploy/README.md) | 容器定义、环境辅助、构建脚本和可选 Maven 镜像 |
+| [scripts](scripts/README.md) | 仓库级目录与依赖检查 |
+| [templates](templates/README.md) | 已批准的导入模板，不放业务填报结果 |
+| [tests](tests/README.md) | 跨模块测试材料与安全验证脚本 |
+| [docs](docs/README.md) | 需求、项目治理、计划、架构、运维、历史资料和评审报告 |
+| [demo](demo/index.html) | 独立演示原型，不作为正式计算结果 |
 
-```text
-项目开发仓库_JDK8/
-├── README.md
-├── CONTRIBUTING.md
-├── CHANGELOG.md
-├── pom.xml                         # 后续克隆代码后生成/维护
-├── .gitignore
-├── .github/
-│   ├── workflows/ci.yml
-│   ├── pull_request_template.md
-│   └── CODEOWNERS
-├── 00_项目管理/
-│   ├── 项目章程.md
-│   ├── 版本与分支规范.md
-│   ├── 需求开发测试追踪表.xlsx
-│   └── 会议与决策记录/
-├── backend/
-│   ├── analysis-common/
-│   ├── analysis-domain/
-│   ├── analysis-application/
-│   ├── analysis-infrastructure/
-│   ├── analysis-api/
-│   └── analysis-worker/
-├── frontend/
-├── demo/
-│   └── index.html                   # 可直接双击打开的业务验证Demo
-├── database/
-│   ├── migration/
-│   ├── seed/
-│   ├── views/
-│   ├── verification/
-│   └── rollback/
-├── templates/
-│   ├── base/
-│   ├── product-bu/
-│   ├── common/
-│   └── permission/
-├── docs/
-│   ├── architecture/
-│   ├── api/
-│   ├── database/
-│   ├── calculation/
-│   ├── permission/
-│   ├── ai/
-│   ├── testing/
-│   └── operation/
-├── deploy/
-│   ├── docker/
-│   ├── nginx/
-│   ├── config/
-│   ├── scripts/
-│   └── monitoring/
-└── tests/
-    ├── api-integration/
-    ├── calculation-golden-sample/
-    ├── permission-matrix/
-    ├── e2e/
-    ├── performance/
-    └── security/
-```
+## 开发入口
 
-## 当前实现基线
+1. 阅读 [需求与业务规则](docs/requirements/business-rules.md) 和 [V1.3 需求基线](docs/requirements/经营分析数据平台需求规格与详细设计_V1.3.md)。
+2. 按 [本地开发与验证](docs/development/local-development.md) 准备 JDK 8、Maven、Node 和一次性测试数据库。
+3. 执行 `make check` 检查工程边界；准备测试数据库后执行 `make verify`。
+4. 按 [贡献规范](CONTRIBUTING.md) 在功能分支开发，通过 PR 评审。
 
-- JDK 8；默认Spring Boot 2.7.18；Maven构建。
-- 前后端分离；后端为模块化单体，API和Worker分别部署。
-- PostgreSQL保存配置、原始数据、标准数据、计算过程、结果、权限和审计数据。
-- Excel原文件使用对象存储或公司文件服务保存。
-- 一期采用人工导入、确定性规则计算、财经复核发布、本地AI辅助分析。
-- ERP、预算、PMS等接口只预留标准数据入口，一期不直接接入。
+API 唯一启动类：`com.sunwoda.evb.finance.analysis.api.AnalysisApiApplication`。Worker 启动类保留 `com.sunwoda.evb.finance.amoeba.worker.AnalysisWorkerApplication`。前端启动链：`main.ts → App.vue → features/workbench/WorkbenchPage.vue`。
 
-## 当前需求基线
+## 财经与数据边界
 
-- 当前总需求版本为V1.3（2026-10-02）。
-- 开发入口：`01_需求与业务规则.md`。
-- 总需求：`docs/requirements/经营分析数据平台需求规格与详细设计_V1.3.md`。
-- 看板优化底稿：`docs/requirements/经营分析看板优化需求_20260921.md`。
-- 当前开发清单：`docs/待开发清单_20261002.md`。
-- V1.3新增7个已恢复P0和6个P1；原会议第8个P0内容遗失，暂不开发。
-- YU、线体元/Wh、FC版本、风险阈值、经营分析利润和单位毛利等口径确认前，不得发布正式计算结果。
+正式数字来自可追溯事实和确定性规则；AI 不改账、不自动发布。未确认的 YU、Wh、FC、利润及风险口径必须明确标注阻断状态。权限取自服务端认证主体与授权范围；`local` Profile 的 `X-User-Id` 仅用于本地联调。
 
-## 业务验证Demo
-
-直接打开 [demo/index.html](demo/index.html) 即可体验，无需启动后端或数据库。Demo覆盖：
-
-`月度数据导入 → 基础配置导入 → 导入校验 → 未匹配处理 → 开始计算 → 三视角看板 → 分视角财经损益表（含报表层级、取数关系和公式说明） → 指标树/指标库 → 用户/菜单管理 → PVM指标配置 → 毛利分析（产品类型/电芯型号/客户项目/客户简称可多选组合） → 自定义月份组合 → 权限切换 → AI分析草稿`。
-
-Demo补充：左侧导航统一尺寸并支持菜单管理上移/下移；月度数据导入仅在“月度数据导入”页面出现，经营看板、损益、PVM、毛利分析等结果页面不再显示导入入口；指标库、用户管理、菜单管理均提供对应配置文件导入入口。
-
-V1.1 细节校验版补充：月度批次区分基地数据集与产品线/事业部数据集并展示必需数据完整性；增加计算结果确认、发布、结果版本元数据、模板与字段版本控制、基地粒度/汇率/分摊配置说明、简易人工调整单及 AI 草稿状态/撤回/分发交互。
-
-后端能力补充：`GET /api/v1/metric-tree/{batchNo}` 从已确认/已发布的损益结果和启用中的指标库读取配置，按认证主体的可见范围计算指标树，返回实际值、预算值、GAP及AI简析模板。指标公式一期支持指标编码、`SUM()`、加减乘除和除零保护；生产环境仍需替换内存仓储并接入公司统一认证。
-
-导入持久化补充：启用 Spring Profile `filesystem` 后，导入原文件和校验问题会写入 `analysis.storage.root` 指定的受控目录；默认仍使用内存适配器，便于单元测试和本地 Demo。正式生产环境应替换为公司对象存储/文件服务，并配置目录访问、保留周期、病毒扫描和备份策略。
-
-结果持久化补充：启用 Spring Profile `db` 后，计算结果仓储使用 PostgreSQL 的 `calc.pnl_result` 与 `calc.pnl_result_line` 表，确认/发布状态、版本号及结果明细随结果保存；默认内存仓储用于本地开发。数据库 Profile 需要运行方提供已配置的 `DataSource` 和迁移脚本。
-
-数据库适配补充：`db` Profile 已提供批次、月度/配置导入任务、导入问题、指标库、映射关系、用户范围和计算结果的 JDBC 仓储；配置文件仅提供环境变量占位，不包含真实账号。启动前需执行 `database/migration/` 全量迁移并提供 PostgreSQL JDBC 驱动。
-
-标准事实落库补充：校验通过的 Excel 任务在 `db` Profile 下会使用同一套 POI 标准化逻辑写入 `raw.pnl_fact`，按批次、视角和任务号先删后写，避免重复校验导致金额叠加；生产部署建议同时启用 `db,filesystem`，并在真实样表回归后再开放计算。
-
-批次完整性补充：`GET /api/v1/batches/{batchNo}/readiness` 汇总当前视角的数据集目录和导入任务，返回必需数据集是否存在、校验状态、问题数及 `readyForCalculation`，前端工作台会在页面顶部提示是否满足计算条件。
-
-配置中心补充：前端“配置中心”提供指标库和映射关系的查询、新增/更新、停用入口、基础配置文件上传入口，并展示导入问题明细和当前批次的数据质量摘要；后端提供指标、映射、配置任务上传/结构校验、问题查询及 `GET /api/v1/batches/{batchNo}/quality` 接口。当前版本已支持指标定义和常用映射类型的标准字段解析、重复键检查、增量更新和应用；用户权限类配置仍只做留存与结构校验，不会未经管理员流程自动写入。质量摘要用于计算前置提示，不替代财经复核。
-
-安全边界补充：批次、导入任务、配置、映射、指标库写入以及结果确认/发布接口的操作人均从认证 `Principal` 获取，忽略请求体中的工号字段；查询类结果、PVM、指标树和 AI 接口同样不接受前端传入工号作为权限依据。
-
-AI 持久化补充：启用 `db` Profile 后，AI 草稿按批次和结果版本写入 `calc.ai_analysis_draft`，六段内容采用可逆编码保存，发布状态和发布人随草稿更新；正式环境应在此基础上补充提示词/模型版本、调用耗时、失败重试和审计字段。
-
-Demo使用脱敏演示数据，仅用于财经和业务确认页面、操作流程、分析口径及权限边界，不代表正式生产数据。
-
-## 开发提交规则
-
-- `main`为受保护主分支，禁止直接提交。
-- 功能开发使用`codex/feature/*`，缺陷修复使用`codex/fix/*`。
-- 所有变更通过Pull Request合并。
-- 提交信息采用Conventional Commits：`feat`、`fix`、`refactor`、`docs`、`test`、`chore`。
-- 每个版本必须有变更记录、数据库迁移说明和回滚方案。
-- 合并前至少通过JDK 8编译、单元测试、接口测试和必要的权限测试。
-
-## 已完成的代码基线
-
-首个基线已提交至`main`，包含：
-
-1. JDK 8 Maven工程骨架；
-2. 后端六个模块及API/Worker启动类；
-3. Vue前端工程骨架；
-4. 数据库迁移和种子数据目录；
-5. CI、分支、提交、PR和代码所有者规范；
-6. 部署配置模板及健康检查脚本。
+真实财务明细、凭据、导出文件和运行日志不得提交。`data/`、`artifacts/`、`.env.*` 等已加入忽略规则，忽略规则不等于数据脱敏或安全扫描。

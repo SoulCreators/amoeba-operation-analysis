@@ -2,6 +2,10 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.BatchReadinessService;
+import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
+import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchReadiness;
 import com.sunwoda.evb.finance.analysis.domain.model.DatasetReadiness;
@@ -12,12 +16,14 @@ import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.security.Principal;
+import java.time.LocalDateTime;
 import java.util.Collections;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,13 +35,17 @@ class BatchReadinessControllerMockMvcContractTest {
     private static final String USER_ID = "U001";
 
     private BatchReadinessService service;
+    private BatchService batchService;
+    private PermissionService permissionService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         service = mock(BatchReadinessService.class);
+        batchService = mock(BatchService.class);
+        permissionService = mock(PermissionService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new BatchReadinessController(service))
+                .standaloneSetup(new BatchReadinessController(service, batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -49,6 +59,9 @@ class BatchReadinessControllerMockMvcContractTest {
                 Collections.singletonList(new DatasetReadiness(
                         "SALES", "销售数据", true, true, "READY", 0, "TASK-001")));
         when(service.get(BATCH_NO)).thenReturn(readiness);
+        when(batchService.get(BATCH_NO)).thenReturn(batch());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}/readiness", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -63,6 +76,8 @@ class BatchReadinessControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.data.datasets[0].taskNo").value("TASK-001"));
 
         verify(service).get(BATCH_NO);
+        verify(batchService).get(BATCH_NO);
+        verify(permissionService).canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL");
     }
 
     @Test
@@ -73,7 +88,19 @@ class BatchReadinessControllerMockMvcContractTest {
         assertUnauthenticated(readinessRequest(principal("")));
         assertUnauthenticated(readinessRequest(principal("   ")));
 
-        verifyNoInteractions(service);
+        verifyNoInteractions(service, batchService, permissionService);
+    }
+
+    @Test
+    void authenticatedUserWithoutBatchPerspectiveScopeReceivesForbiddenWithoutReadingReadiness() throws Exception {
+        when(batchService.get(BATCH_NO)).thenReturn(batch());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL")).thenReturn(false);
+
+        mockMvc.perform(readinessRequest(principal(USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A0002"));
+
+        verify(service, never()).get(BATCH_NO);
     }
 
     private void assertUnauthenticated(RequestBuilder request) throws Exception {
@@ -92,5 +119,10 @@ class BatchReadinessControllerMockMvcContractTest {
 
     private Principal principal(String name) {
         return () -> name;
+    }
+
+    private AnalysisBatch batch() {
+        return new AnalysisBatch(1L, BATCH_NO, "2026-08", AnalysisPerspective.BASE,
+                BatchStatus.DRAFT, USER_ID, LocalDateTime.now());
     }
 }

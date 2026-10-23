@@ -9,7 +9,7 @@ const httpMock = vi.hoisted(() => ({
 
 vi.mock('axios', () => ({ default: { create: vi.fn(() => httpMock) } }))
 
-import { api, type AdminMenu, type AdminRole, type AdminUser } from '../src/api'
+import { api, type AdminMenu, type AdminRole, type AdminUser } from '../src/shared/api'
 
 function success<T>(data: T) {
   return { data: { code: '0', message: 'ok', data } }

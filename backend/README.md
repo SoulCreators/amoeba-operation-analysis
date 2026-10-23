@@ -1,181 +1,32 @@
 # 后端工程
 
-后端按模块化单体设计：`common`、`domain`、`application`、`infrastructure`、`api`、`worker`。一期先以可替换的内存适配器跑通批次、三视角和经营总览链路，数据库迁移脚本已经同步建立生产落地所需的批次、数据集、指标、结果和权限表。
+模块化单体，API 和 Worker 分别部署。生产代码统一使用 `com.sunwoda.evb.finance.analysis`；现有 Worker 使用 `com.sunwoda.evb.finance.amoeba.worker`，为兼容启动和 Spring 显式接线保留。
 
-详细类级目录参见：
+| 模块 | 职责 | 直接内部依赖 |
+|---|---|---|
+| analysis-common | 通用响应、基础工具 | 无 |
+| analysis-domain | 批次、事实、结果、版本、权限、状态策略及仓储契约 | common |
+| analysis-application | 用例编排、权限、计算、导入、导出、版本与重试端口 | domain |
+| analysis-infrastructure | JDBC、POI、文件系统、内存、AI 适配器 | application |
+| analysis-api | HTTP 控制器、DTO、异常映射与 API 启动 | infrastructure |
+| analysis-worker | 导出、清理、计算重试、Outbox 调度与 Worker 接线 | infrastructure |
 
-`/Users/aydenchen-mac/Documents/自我/经营分析平台/经营分析平台_JDK8_完整代码目录设计_20260916.md`
+构建依赖指向内层。基础设施实现内层端口，application 不依赖具体 JDBC/HTTP 实现。仓库检查见 `scripts/check-architecture.mjs`；它是静态门禁，不能替代 Spring 上下文和数据库事务测试。
 
-## 本地构建
+## 构建和启动
+
+在仓库根目录执行，详细环境见 [本地开发](../docs/development/local-development.md)：
 
 ```bash
 source deploy/scripts/env-local.sh
-mvn -Dmaven.repo.local="$PWD/.toolchain/m2" clean test
+mvn -B -Dmaven.repo.local="$MAVEN_REPO_LOCAL" verify
+java -jar backend/analysis-api/target/analysis-api-0.1.0-SNAPSHOT.jar --spring.profiles.active=local
 ```
 
-## 启动 API
+`verify` 包含必须连接 PostgreSQL 的契约测试，需要先配置隔离测试数据库。`local` 仅供联调。`db` 启用 JDBC；`filesystem` 启用文件适配器。默认内存结果不可作为正式数据存储。
 
-```bash
-source deploy/scripts/env-local.sh
-mvn -Dmaven.repo.local="$PWD/.toolchain/m2" -pl backend/analysis-api -am spring-boot:run
-```
+API 唯一启动类为 `com.sunwoda.evb.finance.analysis.api.AnalysisApiApplication`。旧 `amoeba.api`、common/domain/application/infrastructure 骨架已移除；历史内容可从 Git 基线 `c8ddc82` 追溯。
 
-默认端口为 `8080`。
+## 业务与实现导航
 
-## 已实现的一期接口
-
-### 健康检查
-
-`GET /api/v1/health`
-
-### 创建分析批次
-
-`POST /api/v1/batches`
-
-```json
-{
-  "batchNo": "202609-BASE-001",
-  "period": "2026-09",
-  "perspective": "BASE",
-  "createdBy": "demo"
-}
-```
-
-`perspective` 支持 `BASE`、`PRODUCT_LINE`、`BUSINESS_UNIT`。
-
-### 查询批次和推进状态
-
-- `GET /api/v1/batches/{batchNo}`
-- `POST /api/v1/batches/{batchNo}/status`
-
-```json
-{
-  "status": "READY_FOR_CALCULATION"
-}
-```
-
-### 查询经营总览
-
-`GET /api/v1/overview?period=2026-09&perspective=BASE&scope=ALL`
-
-本地 Profile 不预置经营指标；只有真实 Excel 导入、规则计算完成后才返回经营结果。生产环境由数据库结果适配器提供真实数据，不改变前端接口契约。
-
-### 查询当前视角数据集目录
-
-`GET /api/v1/datasets?perspective=BASE`
-
-目录将基地数据集与产品线/事业部数据集分开返回，但使用同一批次和导入任务接口。
-
-### 登记月度数据导入任务
-
-`POST /api/v1/batches/{batchNo}/imports`
-
-```json
-{
-  "datasetCode": "BASE_ACT_INC_COST",
-  "fileName": "基地实际收入成本明细_2026-09.xlsx",
-  "checksum": "sha256:...",
-  "createdBy": "finance"
-}
-```
-
-查询和推进校验状态：
-
-- `GET /api/v1/imports/{taskNo}`
-- `POST /api/v1/imports/{taskNo}/status`
-- `POST /api/v1/imports/{taskNo}/validate`（multipart字段名：`file`）
-
-```json
-{
-  "status": "VALID",
-  "issueCount": 0
-}
-```
-
-当前已支持首个工作表首行字段标题、必填字段缺失/空值、重复字段和空文件校验；错误明细已通过仓储接口落入任务链路，当前使用内存实现，数据库持久化和对象存储适配将在下一步接入。配置类导入不会复用月度业务数据入口。
-
-### 基础配置导入
-
-基础配置使用独立入口，不进入月度业务批次：
-
-`POST /api/v1/config/imports`
-
-```json
-{
-  "type": "SALES_PROJECT_MAPPING",
-  "fileName": "销售项目清单.xlsx",
-  "checksum": "sha256:...",
-  "createdBy": "finance"
-}
-```
-
-支持的配置类型包括销售项目映射、库存映射、费用分类、费用分摊、汇率、基地粒度、用户权限和指标定义。
-
-### 映射关系维护
-
-- `GET /api/v1/mappings?type=SALES_PROJECT&includeDisabled=false`
-- `POST /api/v1/mappings`
-- `POST /api/v1/mappings/disable`
-
-映射使用组合键和映射值，支持更新与失效，不使用生效期间和版本字段。
-
-### 指标库维护
-
-- `GET /api/v1/metrics?perspective=BASE`
-- `POST /api/v1/metrics`
-
-指标公式以确定性表达式保存，经营总览可按 `ALL` 或指定视角配置。
-
-### 用户范围权限
-
-结果查询依赖容器认证后的 `Principal`，不接受前端传入的用户工号：`GET /api/v1/calculations/{batchNo}`。匿名请求直接拒绝；服务端按认证主体加载 `iam.user_scope` 对应的视角和范围。结果未发布时，仅角色编码包含 `FINANCE` 或 `ADMIN` 的用户可以查看草稿；已发布结果按 `scopeCode=ALL` 或具体授权范围过滤。用户权限的写入入口待接入公司统一认证和管理员角色后开放，避免普通调用方伪造或修改权限。
-
-### 三视角损益计算
-
-- `POST /api/v1/calculations`，请求体 `{ "batchNo": "202609-BASE-001" }`
-- `GET /api/v1/calculations/{batchNo}`（由容器认证主体提供用户身份，按授权范围返回）
-- `POST /api/v1/calculations/confirm`，请求体 `{ "batchNo": "202609-BASE-001", "operator": "finance-001" }`
-- `POST /api/v1/calculations/publish`，请求体 `{ "batchNo": "202609-BASE-001", "operator": "finance-001" }`
-
-计算服务按批次视角执行统一损益骨架：收入、销售成本、毛利、闲置费用、基地费用、研发费用、减值、其他收益、净利润和净利率，并同时输出预算值及实际-预算 GAP。Excel校验通过后，当前由文件事实适配器读取已登记的导入文件；`raw.pnl_fact` 已预留为后续数据库事实层。预算收入成本使用 `BASE_BUD_INC_COST` 或 `PLBU_BUD_INC_COST` 数据集，与实际数据按同一分析范围汇总。
-
-计算结果生命周期为：`CALCULATED`（已计算）→ `CONFIRMED`（财经确认）→ `PUBLISHED`（正式发布）。已确认或已发布批次不可直接重算；结果会携带版本号、确认人、发布人及时间。
-
-### PVM因素分析
-
-`GET /api/v1/pvm/{batchNo}`
-
-PVM读取当前用户可见的已计算结果，按视角返回独立逻辑标识，并输出电量量变、收入价变、成本差额、毛利差额及收入/毛利勾稽差异。勾稽差异不为零时，后续发布校验应阻断。
-
-### AI经营分析
-
-- `POST /api/v1/ai/analysis/{batchNo}`：由认证用户生成AI草稿。
-- `GET /api/v1/ai/analysis/{batchNo}`：查看当前授权范围内的草稿或已发布结果。
-- `POST /api/v1/ai/analysis/{batchNo}/publish`：财经角色确认并发布。
-
-一期固定输出经营总述、未达标、亮点、原因线索、风险和行动建议。当前内置确定性规则Gateway用于联调，正式环境替换为公司本地AI实现；`calc.ai_analysis_draft` 已预留结果版本、提示词版本、模型编码及六段内容持久化字段。
-
-### V1.3 经营分析能力
-
-V1.3 查询统一使用认证主体进行权限过滤，接口前缀为 `/api/v1/v13`：
-
-- `GET /overview/{batchNo}?scenario=ACT_BGT`：返回真实计算结果的 KPI、绝对 GAP、GAP 率和有利/不利 TOP；支持 `ACT_BGT`，`ACT_FC`、`FC_BGT` 在 FC 数据未接入时返回阻断状态。
-- `GET /matrix/{batchNo}?metric=GROSS_PROFIT`：事业部批次在标准事实明细具备基地/产品维度时返回正式矩阵；旧模板或数据库结果回读缺少明细时返回阻断状态，不把 scope 聚合冒充产品明细。
-- `GET /unit-efficiency/{batchNo}`：线体元/Wh查询。事实明细同时具备线体、实际/预算产出 Wh 时，按“变动制费+固定制费 ÷ 产出 Wh”返回 `CALCULATED_TECHNICAL` 技术计算结果；缺少分母或线体时返回 `PENDING_DEFINITION`。当前业务费用范围仍需财经确认，技术结果不会直接标记为正式经营口径。
-- `GET /forecast/{batchNo}?scenario=ACT_FC&fcVersion=...`：查询 FC 版本及预测快照；快照覆盖当前指标时返回 ACT-FC/FC-BGT，版本存在但快照不完整时返回 `PENDING_SOURCE_DATA`，无正式/指定版本时返回 `PENDING_FC_VERSION`，不以 BGT 或历史 FC 替代。
-- `POST /api/v1/fc-versions`：创建 FC 草稿版本，提交视角、基准期间和覆盖期间。
-- `POST /api/v1/fc-versions/{versionCode}/snapshots?perspective=...&basePeriod=...`：上传 FC 快照 Excel。模板首表首行必须包含“期间、范围编码、指标编码、预测值”（支持“范围/指标/值”别名），指标限定为 `VOLUME`、`REVENUE`、`GROSS_PROFIT`、`BASE_EXPENSE`、`NET_PROFIT`、`PROFIT_RATE`；校验不通过时禁止部分写入，同一版本草稿可按唯一键覆盖导入。
-- `POST /api/v1/fc-versions/{versionCode}/publish?perspective=...&basePeriod=...`：发布正式版本。同一视角和基准期间已有正式版本时拒绝发布，避免未确认的静默替换；正式版本不可再次覆盖。
-- `GET /risk/{batchNo}`：基于真实收入、毛利和净利润 GAP 输出观察项；风险红黄阈值未配置前不会伪造正式等级。
-- `GET /waterfall/{batchNo}`：在原有总毛利 PVM 因子基础上，按销量归一化返回单位毛利预算、实际、GAP、量/价/材料/人工/外协/制造费用因素及其他成本残差，并提供勾稽检查；返回 `CALCULATED_TECHNICAL`，单位分母仍需财经确认后才能作为正式口径。
-- `GET /topics/{batchNo}/{topicCode}`：为库龄、运营费用、产品下钻、研发提单和科目矩阵保留统一专题接口，源数据未接入时返回阻断项。
-
-这些接口的返回体都包含 `status`、`blockers` 和 `notes`，便于前端区分“可计算结果”和“待口径/数据模型补齐”。
-
-## 下一步实现顺序
-
-1. Excel 模板注册、月度批次导入与完整性校验；
-2. 基础映射、指标库和用户权限的配置接口；
-3. 基地 / 产品线 / 事业部各自的损益结果与分析接口；
-4. PVM、指标树、AI 分析和发布审计流程；
-5. 用真实样表数据完成 UAT，并替换内存适配器。
+[系统架构和数据流](../docs/architecture/README.md) 解释各模块及计算链路；[代码评审报告](../docs/reports/2026-10-21-enterprise-review.md) 列出现有能力、源码证据和生产差距。API 的实际路由以 `analysis-api/.../controller` 为准，已有专题接口说明位于 [docs/api](../docs/api)。

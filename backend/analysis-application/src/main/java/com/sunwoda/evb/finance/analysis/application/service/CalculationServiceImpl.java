@@ -1,7 +1,9 @@
 package com.sunwoda.evb.finance.analysis.application.service;
 
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactProvider;
+import com.sunwoda.evb.finance.analysis.application.port.CalculationRunStore;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
@@ -30,7 +32,12 @@ public class CalculationServiceImpl implements CalculationService {
     private final PermissionService permissionService;
     private final Map<String, CalculationResult> results = new LinkedHashMap<String, CalculationResult>();
     private final CalculationResultRepository resultRepository;
-    private final PvmReconciliationValidator pvmReconciliationValidator;
+    private CalculationRunStore runStore;
+
+    @Autowired(required = false)
+    public void setRunStore(CalculationRunStore runStore) {
+        this.runStore = runStore;
+    }
 
     @Autowired
     public CalculationServiceImpl(AnalysisBatchRepository batchRepository, PnlFactProvider factProvider,
@@ -40,7 +47,6 @@ public class CalculationServiceImpl implements CalculationService {
         this.factProvider = factProvider;
         this.permissionService = permissionService;
         this.resultRepository = resultRepository;
-        this.pvmReconciliationValidator = new PvmReconciliationValidator();
     }
 
     /** 保留原有基于 UserScopeRepository 的应用层构造调用。 */
@@ -61,10 +67,19 @@ public class CalculationServiceImpl implements CalculationService {
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("计算人不能为空");
         }
-        return calculateInternal(batchNo, operator.trim());
+        if (runStore != null) {
+            return runStore.execute(batchNo, operator.trim(),
+                    versionNo -> calculateInternal(batchNo, operator.trim(), versionNo));
+        }
+        CalculationResult previous = resultRepository == null ? results.get(batchNo)
+                : resultRepository.findByBatchNo(batchNo).orElse(null);
+        String versionNo = previous == null ? batchNo + "-R1"
+                : batchNo + "-R" + (Integer.parseInt(previous.getVersionNo()
+                        .substring(previous.getVersionNo().lastIndexOf("-R") + 2)) + 1);
+        return calculateInternal(batchNo, operator.trim(), versionNo);
     }
 
-    private CalculationResult calculateInternal(String batchNo, String operator) {
+    private CalculationResult calculateInternal(String batchNo, String operator, String versionNo) {
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
         if (batch.getStatus() == BatchStatus.CONFIRMED || batch.getStatus() == BatchStatus.PUBLISHED) {
@@ -107,10 +122,10 @@ public class CalculationServiceImpl implements CalculationService {
             }
             List<PnlResult> pnlResults = new ArrayList<PnlResult>();
             for (Map.Entry<String, MutablePnl> entry : grouped.entrySet()) {
-                pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines()));
+                pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines(batch.getPerspective())));
             }
             CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults,
-                    batchNo + "-R1", CalculationResultStatus.CALCULATED, null, null,
+                    versionNo, CalculationResultStatus.CALCULATED, null, null,
                     java.time.LocalDateTime.now(), null, null, facts);
             saveResult(result);
             batch.moveTo(BatchStatus.CALCULATED);
@@ -154,6 +169,71 @@ public class CalculationServiceImpl implements CalculationService {
             }
         }
         if (result == null) throw new IllegalArgumentException("批次尚未完成计算: " + batchNo);
+        return filterForUser(result, normalizedUser);
+    }
+
+    @Override
+    public synchronized CalculationResult getCumulativeForUser(String batchNo, String userId) {
+        if (userId == null || userId.trim().isEmpty()) throw new IllegalArgumentException("用户工号不能为空");
+        String normalizedUser = userId.trim();
+        AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
+        // 累计 = 当年 1 月至目标批次所在月，逐月加载事实后统一汇总；结果只读派生，不落库不覆盖。
+        String year = batch.getPeriod().substring(0, 4);
+        List<AnalysisBatch> batches = batchRepository.findByPerspectiveAndPeriodRange(
+                batch.getPerspective(), year + "-01", batch.getPeriod());
+        List<PnlFact> facts = new ArrayList<PnlFact>();
+        for (AnalysisBatch monthly : batches) {
+            try {
+                facts.addAll(factProvider.load(monthly));
+            } catch (RuntimeException ex) {
+                throw new IllegalStateException("累计计算缺少可用期间数据: " + monthly.getPeriod()
+                        + "（" + ex.getMessage() + "）", ex);
+            }
+        }
+        Map<String, MutablePnl> grouped = new LinkedHashMap<String, MutablePnl>();
+        for (PnlFact fact : facts) {
+            MutablePnl pnl = grouped.get(fact.getScopeCode());
+            if (pnl == null) {
+                pnl = new MutablePnl();
+                grouped.put(fact.getScopeCode(), pnl);
+            }
+            pnl.add(fact);
+        }
+        List<PnlResult> pnlResults = new ArrayList<PnlResult>();
+        for (Map.Entry<String, MutablePnl> entry : grouped.entrySet()) {
+            pnlResults.add(new PnlResult(entry.getKey(), entry.getValue().toLines(batch.getPerspective())));
+        }
+        // 继承目标批次的版本号与状态，仅用于范围可见性；累计行本身不落库。
+        String versionNo = batchNo + "-YTD";
+        CalculationResultStatus status = CalculationResultStatus.CALCULATED;
+        if (resultRepository != null) {
+            CalculationResult current = resultRepository.findByBatchNo(batchNo).orElse(null);
+            if (current != null) {
+                versionNo = current.getVersionNo();
+                status = current.getStatus();
+            }
+        }
+        CalculationResult result = new CalculationResult(batchNo, batch.getPerspective(), pnlResults,
+                versionNo, status, null, null,
+                java.time.LocalDateTime.now(), null, null, facts);
+        return filterForUser(result, normalizedUser);
+    }
+
+    @Override
+    public synchronized CalculationResult getVersionForUser(String batchNo, String versionNo, String userId) {
+        if (userId == null || userId.trim().isEmpty()) throw new IllegalArgumentException("用户工号不能为空");
+        if (versionNo == null || versionNo.trim().isEmpty()) throw new IllegalArgumentException("版本不能为空");
+        if (resultRepository == null) throw new IllegalStateException("当前存储不支持历史结果");
+        CalculationResult result = resultRepository.findVersionForUser(batchNo, versionNo.trim(), userId.trim())
+                .orElseThrow(() -> new IllegalStateException("版本不存在或无范围权限"));
+        if (!permissionService.canViewHistory(userId.trim(), result.getPerspective())) {
+            throw new IllegalStateException("当前用户无历史版本查看权限");
+        }
+        return filterForUser(result, userId.trim());
+    }
+
+    private CalculationResult filterForUser(CalculationResult result, String normalizedUser) {
         if (!permissionService.canViewResult(normalizedUser, result.getPerspective(), result.getStatus())) {
             if (result.getStatus() != CalculationResultStatus.PUBLISHED) {
                 throw new IllegalStateException("当前结果尚未发布，仅财经角色可查看草稿");
@@ -175,7 +255,9 @@ public class CalculationServiceImpl implements CalculationService {
         }
         return new CalculationResult(result.getBatchNo(), result.getPerspective(), visibleResults,
                 result.getVersionNo(), result.getStatus(), result.getConfirmedBy(), result.getPublishedBy(),
-                result.getCalculatedAt(), result.getConfirmedAt(), result.getPublishedAt(), visibleFacts);
+                result.getCalculatedAt(), result.getConfirmedAt(), result.getPublishedAt(), visibleFacts,
+                result.getWithdrawnBy(), result.getWithdrawnAt(), result.getWithdrawReason(),
+                result.getNotificationTargets());
     }
 
     private boolean containsScope(Set<String> allowedScopes, String scopeCode) {
@@ -191,11 +273,13 @@ public class CalculationServiceImpl implements CalculationService {
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("确认人不能为空");
         }
+        if (runStore != null) runStore.lockBatch(batchNo);
         CalculationResult current = get(batchNo);
         // 本次新增：确认人与发布人不要求不同；只校验当前操作者是否具备确认权限。
         if (!permissionService.canConfirm(operator.trim(), current.getPerspective(), resultScopes(current))) {
             throw new IllegalStateException("当前用户无结果确认权限");
         }
+        if (runStore != null) runStore.assertPublishable(current);
         CalculationResult confirmed = current.confirm(operator.trim());
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
@@ -212,12 +296,13 @@ public class CalculationServiceImpl implements CalculationService {
         if (operator == null || operator.trim().isEmpty()) {
             throw new IllegalArgumentException("发布人不能为空");
         }
+        if (runStore != null) runStore.lockBatch(batchNo);
         CalculationResult current = get(batchNo);
         // 本次新增：发布权限独立校验，ADMIN 不因全量读取而获得发布写权限。
         if (!permissionService.canPublish(operator.trim(), current.getPerspective(), resultScopes(current))) {
             throw new IllegalStateException("当前用户无结果发布权限");
         }
-        pvmReconciliationValidator.validate(current);
+        if (runStore != null) runStore.assertPublishable(current);
         CalculationResult published = current.publish(operator.trim());
         AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
@@ -225,6 +310,24 @@ public class CalculationServiceImpl implements CalculationService {
         batchRepository.save(batch);
         saveResult(published);
         return published;
+    }
+
+    @Override
+    @Transactional
+    public synchronized CalculationResult withdraw(String batchNo, String reason,
+                                                   List<String> notificationTargets, String operator) {
+        // 撤回只改结果状态与撤回痕迹，不改金额与指标；已发布结果不可被静默覆盖。
+        if (operator == null || operator.trim().isEmpty()) {
+            throw new IllegalArgumentException("撤回人不能为空");
+        }
+        if (runStore != null) runStore.lockBatch(batchNo);
+        CalculationResult current = get(batchNo);
+        if (!permissionService.canPublish(operator.trim(), current.getPerspective(), resultScopes(current))) {
+            throw new IllegalStateException("当前用户无结果撤回权限");
+        }
+        CalculationResult withdrawn = current.withdraw(reason, notificationTargets, operator.trim());
+        saveResult(withdrawn);
+        return withdrawn;
     }
 
     private void saveResult(CalculationResult result) {
@@ -273,6 +376,12 @@ public class CalculationServiceImpl implements CalculationService {
         private BigDecimal budgetOutsourcingCost = BigDecimal.ZERO;
         private BigDecimal budgetVariableManufacturingCost = BigDecimal.ZERO;
         private BigDecimal budgetFixedManufacturingCost = BigDecimal.ZERO;
+        private BigDecimal operatingExpense = BigDecimal.ZERO;
+        private BigDecimal salesExpense = BigDecimal.ZERO;
+        private BigDecimal adminExpense = BigDecimal.ZERO;
+        private BigDecimal budgetOperatingExpense = BigDecimal.ZERO;
+        private BigDecimal budgetSalesExpense = BigDecimal.ZERO;
+        private BigDecimal budgetAdminExpense = BigDecimal.ZERO;
 
         void add(PnlFact fact) {
             volume = volume.add(fact.getVolume());
@@ -303,20 +412,27 @@ public class CalculationServiceImpl implements CalculationService {
             budgetOutsourcingCost = budgetOutsourcingCost.add(fact.getBudgetOutsourcingCost());
             budgetVariableManufacturingCost = budgetVariableManufacturingCost.add(fact.getBudgetVariableManufacturingCost());
             budgetFixedManufacturingCost = budgetFixedManufacturingCost.add(fact.getBudgetFixedManufacturingCost());
+            operatingExpense = operatingExpense.add(fact.getOperatingExpense());
+            salesExpense = salesExpense.add(fact.getSalesExpense());
+            adminExpense = adminExpense.add(fact.getAdminExpense());
+            budgetOperatingExpense = budgetOperatingExpense.add(fact.getBudgetOperatingExpense());
+            budgetSalesExpense = budgetSalesExpense.add(fact.getBudgetSalesExpense());
+            budgetAdminExpense = budgetAdminExpense.add(fact.getBudgetAdminExpense());
         }
 
-        Map<String, BigDecimal> toLines() {
+        Map<String, BigDecimal> toLines(AnalysisPerspective perspective) {
             BigDecimal grossProfit = revenue.subtract(salesCost);
+            BigDecimal pnlGrossProfit = grossProfit.subtract(idleExpense);
+            BigDecimal projectProfit = pnlGrossProfit.subtract(baseExpense);
             BigDecimal otherLoss = assetImpairment.add(creditImpairment);
-            BigDecimal netProfit = grossProfit.subtract(idleExpense).subtract(baseExpense)
-                    .subtract(rdExpense).subtract(otherLoss).add(otherIncome);
+            BigDecimal netProfit = netProfit(perspective, projectProfit, otherLoss);
             BigDecimal profitRate = revenue.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
                     : netProfit.divide(revenue, 8, RoundingMode.HALF_UP);
             BigDecimal budgetGrossProfit = budgetRevenue.subtract(budgetSalesCost);
+            BigDecimal budgetPnlGrossProfit = budgetGrossProfit.subtract(budgetIdleExpense);
+            BigDecimal budgetProjectProfit = budgetPnlGrossProfit.subtract(budgetBaseExpense);
             BigDecimal budgetOtherLoss = budgetAssetImpairment.add(budgetCreditImpairment);
-            BigDecimal budgetNetProfit = budgetGrossProfit.subtract(budgetIdleExpense)
-                    .subtract(budgetBaseExpense).subtract(budgetRdExpense)
-                    .subtract(budgetOtherLoss).add(budgetOtherIncome);
+            BigDecimal budgetNetProfit = budgetNetProfit(perspective, budgetProjectProfit, budgetOtherLoss);
             BigDecimal budgetProfitRate = budgetRevenue.compareTo(BigDecimal.ZERO) == 0 ? BigDecimal.ZERO
                     : budgetNetProfit.divide(budgetRevenue, 8, RoundingMode.HALF_UP);
             Map<String, BigDecimal> lines = new LinkedHashMap<String, BigDecimal>();
@@ -324,24 +440,36 @@ public class CalculationServiceImpl implements CalculationService {
             lines.put("REVENUE", revenue);
             lines.put("SALES_COST", salesCost);
             lines.put("GROSS_PROFIT", grossProfit);
+            lines.put("PRODUCT_GROSS_PROFIT", grossProfit);
+            lines.put("PNL_GROSS_PROFIT", pnlGrossProfit);
+            lines.put("PROJECT_PROFIT", projectProfit);
             lines.put("IDLE_EXPENSE", idleExpense);
             lines.put("BASE_EXPENSE", baseExpense);
             lines.put("RD_EXPENSE", rdExpense);
             lines.put("ASSET_IMPAIRMENT", assetImpairment);
             lines.put("CREDIT_IMPAIRMENT", creditImpairment);
             lines.put("OTHER_INCOME", otherIncome);
+            lines.put("OPERATING_EXPENSE", operatingExpense);
+            lines.put("SALES_EXPENSE", salesExpense);
+            lines.put("ADMIN_EXPENSE", adminExpense);
             lines.put("NET_PROFIT", netProfit);
             lines.put("PROFIT_RATE", profitRate);
             lines.put("BUDGET_VOLUME", budgetVolume);
             lines.put("BUDGET_REVENUE", budgetRevenue);
             lines.put("BUDGET_SALES_COST", budgetSalesCost);
             lines.put("BUDGET_GROSS_PROFIT", budgetGrossProfit);
+            lines.put("BUDGET_PRODUCT_GROSS_PROFIT", budgetGrossProfit);
+            lines.put("BUDGET_PNL_GROSS_PROFIT", budgetPnlGrossProfit);
+            lines.put("BUDGET_PROJECT_PROFIT", budgetProjectProfit);
             lines.put("BUDGET_IDLE_EXPENSE", budgetIdleExpense);
             lines.put("BUDGET_BASE_EXPENSE", budgetBaseExpense);
             lines.put("BUDGET_RD_EXPENSE", budgetRdExpense);
             lines.put("BUDGET_ASSET_IMPAIRMENT", budgetAssetImpairment);
             lines.put("BUDGET_CREDIT_IMPAIRMENT", budgetCreditImpairment);
             lines.put("BUDGET_OTHER_INCOME", budgetOtherIncome);
+            lines.put("BUDGET_OPERATING_EXPENSE", budgetOperatingExpense);
+            lines.put("BUDGET_SALES_EXPENSE", budgetSalesExpense);
+            lines.put("BUDGET_ADMIN_EXPENSE", budgetAdminExpense);
             lines.put("MATERIAL_COST", materialCost);
             lines.put("LABOR_COST", laborCost);
             lines.put("OUTSOURCING_COST", outsourcingCost);
@@ -358,6 +486,8 @@ public class CalculationServiceImpl implements CalculationService {
             lines.put("GAP_REVENUE", revenue.subtract(budgetRevenue));
             lines.put("GAP_SALES_COST", salesCost.subtract(budgetSalesCost));
             lines.put("GAP_GROSS_PROFIT", grossProfit.subtract(budgetGrossProfit));
+            lines.put("GAP_PNL_GROSS_PROFIT", pnlGrossProfit.subtract(budgetPnlGrossProfit));
+            lines.put("GAP_PROJECT_PROFIT", projectProfit.subtract(budgetProjectProfit));
             lines.put("GAP_NET_PROFIT", netProfit.subtract(budgetNetProfit));
             lines.put("GAP_PROFIT_RATE", profitRate.subtract(budgetProfitRate));
             lines.put("GAP_MATERIAL_COST", materialCost.subtract(budgetMaterialCost));
@@ -365,7 +495,35 @@ public class CalculationServiceImpl implements CalculationService {
             lines.put("GAP_OUTSOURCING_COST", outsourcingCost.subtract(budgetOutsourcingCost));
             lines.put("GAP_VARIABLE_MFG_COST", variableManufacturingCost.subtract(budgetVariableManufacturingCost));
             lines.put("GAP_FIXED_MFG_COST", fixedManufacturingCost.subtract(budgetFixedManufacturingCost));
+            lines.put("GAP_OPERATING_EXPENSE", operatingExpense.subtract(budgetOperatingExpense));
+            lines.put("GAP_SALES_EXPENSE", salesExpense.subtract(budgetSalesExpense));
+            lines.put("GAP_ADMIN_EXPENSE", adminExpense.subtract(budgetAdminExpense));
             return lines;
+        }
+
+        /** 一期三视角独立损益公式（08 §2）：基地扣运营费用并加其他收益，产品线只扣研发与减值，事业部扣销售/管理费用。 */
+        private BigDecimal netProfit(AnalysisPerspective perspective, BigDecimal projectProfit,
+                                     BigDecimal otherLoss) {
+            if (perspective == AnalysisPerspective.BASE) {
+                return projectProfit.subtract(rdExpense).subtract(operatingExpense).subtract(otherLoss).add(otherIncome);
+            }
+            if (perspective == AnalysisPerspective.BUSINESS_UNIT) {
+                return projectProfit.subtract(rdExpense).subtract(salesExpense).subtract(adminExpense).subtract(otherLoss);
+            }
+            return projectProfit.subtract(rdExpense).subtract(otherLoss);
+        }
+
+        private BigDecimal budgetNetProfit(AnalysisPerspective perspective, BigDecimal projectProfit,
+                                           BigDecimal otherLoss) {
+            if (perspective == AnalysisPerspective.BASE) {
+                return projectProfit.subtract(budgetRdExpense).subtract(budgetOperatingExpense)
+                        .subtract(otherLoss).add(budgetOtherIncome);
+            }
+            if (perspective == AnalysisPerspective.BUSINESS_UNIT) {
+                return projectProfit.subtract(budgetRdExpense).subtract(budgetSalesExpense)
+                        .subtract(budgetAdminExpense).subtract(otherLoss);
+            }
+            return projectProfit.subtract(budgetRdExpense).subtract(otherLoss);
         }
     }
 }

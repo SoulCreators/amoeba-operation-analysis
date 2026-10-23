@@ -2,12 +2,20 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.BatchReadinessService;
+import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
+import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.security.Principal;
+import java.time.LocalDateTime;
+
+import java.util.Collections;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.mock;
@@ -23,13 +31,21 @@ class BatchReadinessControllerExceptionMappingMockMvcTest {
     private static final String USER_ID = "U001";
 
     private BatchReadinessService service;
+    private BatchService batchService;
+    private PermissionService permissionService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         service = mock(BatchReadinessService.class);
+        batchService = mock(BatchService.class);
+        permissionService = mock(PermissionService.class);
+        when(batchService.get(BATCH_NO)).thenReturn(new AnalysisBatch(1L, BATCH_NO, "2026-08",
+                AnalysisPerspective.BASE, BatchStatus.DRAFT, USER_ID, LocalDateTime.now()));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new BatchReadinessController(service))
+                .standaloneSetup(new BatchReadinessController(service, batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }

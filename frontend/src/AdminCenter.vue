@@ -6,7 +6,7 @@ import {
   type AdminRole,
   type AdminScopeGrant,
   type AdminUser,
-} from './api'
+} from './shared/api'
 
 type AdminMode = 'users' | 'roles' | 'menus' | 'scopes'
 

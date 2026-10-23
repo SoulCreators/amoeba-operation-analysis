@@ -20,7 +20,8 @@ public class BatchServiceImpl implements BatchService {
     }
 
     @Override
-    public AnalysisBatch create(String batchNo, String period, AnalysisPerspective perspective, String createdBy) {
+    public AnalysisBatch create(String batchNo, String period, AnalysisPerspective perspective,
+                                String scopeCode, String createdBy) {
         if (isBlank(batchNo) || isBlank(period) || perspective == null || isBlank(createdBy)) {
             throw new IllegalArgumentException("batchNo、period、perspective、createdBy均不能为空");
         }
@@ -30,7 +31,7 @@ public class BatchServiceImpl implements BatchService {
         if (repository.findByBatchNo(batchNo).isPresent()) {
             throw new IllegalStateException("批次号已存在: " + batchNo);
         }
-        return repository.save(new AnalysisBatch(null, batchNo, period, perspective,
+        return repository.save(new AnalysisBatch(null, batchNo, period, perspective, scopeCode,
                 BatchStatus.DRAFT, createdBy, LocalDateTime.now()));
     }
 

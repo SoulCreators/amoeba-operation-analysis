@@ -2,6 +2,10 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.DataQualityService;
+import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
+import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
+import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.DataQualityReport;
 import com.sunwoda.evb.finance.analysis.domain.model.DatasetReadiness;
@@ -12,6 +16,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.security.Principal;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 
@@ -19,6 +24,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,13 +36,20 @@ class DataQualityControllerMockMvcContractTest {
     private static final String USER_ID = "U-QUALITY-001";
 
     private DataQualityService service;
+    private BatchService batchService;
+    private PermissionService permissionService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         service = mock(DataQualityService.class);
+        batchService = mock(BatchService.class);
+        permissionService = mock(PermissionService.class);
+        when(batchService.get(BATCH_NO)).thenReturn(batch());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new DataQualityController(service))
+                .standaloneSetup(new DataQualityController(service, batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -58,6 +71,9 @@ class DataQualityControllerMockMvcContractTest {
                         new DatasetReadiness("SALES", "销售数据", true, true, "INVALID", 2, "TASK-SALES"),
                         new DatasetReadiness("COST", "成本数据", true, false, "MISSING", 1, null)));
         when(service.get(BATCH_NO)).thenReturn(report);
+        when(batchService.get(BATCH_NO)).thenReturn(batch());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}/quality", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -80,6 +96,8 @@ class DataQualityControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.data.datasets[1].taskNo").value(nullValue()));
 
         verify(service).get(BATCH_NO);
+        verify(batchService).get(BATCH_NO);
+        verify(permissionService).canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL");
     }
 
     @Test
@@ -90,7 +108,19 @@ class DataQualityControllerMockMvcContractTest {
         assertUnauthenticated(qualityRequest(principal("")));
         assertUnauthenticated(qualityRequest(principal("   ")));
 
-        verifyNoInteractions(service);
+        verifyNoInteractions(service, batchService, permissionService);
+    }
+
+    @Test
+    void authenticatedUserWithoutBatchPerspectiveScopeReceivesForbiddenWithoutReadingQuality() throws Exception {
+        when(batchService.get(BATCH_NO)).thenReturn(batch());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL")).thenReturn(false);
+
+        mockMvc.perform(qualityRequest(principal(USER_ID)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("A0002"));
+
+        verify(service, never()).get(BATCH_NO);
     }
 
     @Test
@@ -137,5 +167,10 @@ class DataQualityControllerMockMvcContractTest {
 
     private Principal principal(String name) {
         return () -> name;
+    }
+
+    private AnalysisBatch batch() {
+        return new AnalysisBatch(1L, BATCH_NO, "2026-08", AnalysisPerspective.BASE,
+                BatchStatus.DRAFT, USER_ID, LocalDateTime.now());
     }
 }

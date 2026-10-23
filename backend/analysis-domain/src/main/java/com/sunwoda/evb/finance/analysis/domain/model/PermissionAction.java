@@ -18,5 +18,7 @@ public enum PermissionAction {
     CONFIRM,
     PUBLISH,
     MANUAL_REVISION,
-    COMPENSATE
+    COMPENSATE,
+    // 本次新增：调整单作为独立写动作，与人工修订（版本链接）区分。
+    ADJUSTMENT
 }

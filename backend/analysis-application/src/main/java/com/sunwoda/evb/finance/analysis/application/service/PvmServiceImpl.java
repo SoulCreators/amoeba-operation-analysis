@@ -19,11 +19,11 @@ public class PvmServiceImpl implements PvmService {
     private static final String BUSINESS_UNIT_LOGIC_CODE = "BUSINESS_UNIT_VOLUME_PRICE_COST";
 
     private final CalculationService calculationService;
-    private final PvmReconciliationValidator reconciliationValidator;
+    private final SamplePvmCalculator sampleCalculator;
 
     public PvmServiceImpl(CalculationService calculationService) {
         this.calculationService = calculationService;
-        this.reconciliationValidator = new PvmReconciliationValidator();
+        this.sampleCalculator = new SamplePvmCalculator();
     }
 
     @Override
@@ -39,20 +39,29 @@ public class PvmServiceImpl implements PvmService {
             BigDecimal actualRevenue = value(v, "REVENUE");
             BigDecimal budgetCost = value(v, "BUDGET_SALES_COST");
             BigDecimal actualCost = value(v, "SALES_COST");
-            PvmReconciliationValidator.Checks checks = reconciliationValidator.calculate(pnl);
+            Map<String, BigDecimal> impacts = sampleCalculator.calculate(pnl, calculation.getFacts());
+            BigDecimal revenueGap = actualRevenue.subtract(budgetRevenue);
+            BigDecimal costGap = actualCost.subtract(budgetCost);
+            BigDecimal grossProfitGap = actualRevenue.subtract(actualCost)
+                    .subtract(budgetRevenue.subtract(budgetCost));
+            BigDecimal revenueBridge = value(impacts, "REVENUE_PRICE_IMPACT")
+                    .add(value(impacts, "REVENUE_VOLUME_IMPACT"))
+                    .add(value(impacts, "REVENUE_STRUCTURE_IMPACT"));
+            BigDecimal profitBridge = value(impacts, "PROFIT_PRICE_IMPACT")
+                    .add(value(impacts, "PROFIT_VOLUME_IMPACT"))
+                    .add(value(impacts, "PROFIT_COST_IMPACT"))
+                    .add(value(impacts, "PROFIT_STRUCTURE_IMPACT"));
             Map<String, BigDecimal> values = new LinkedHashMap<String, BigDecimal>();
             values.put("BUDGET_VOLUME", budgetVolume);
             values.put("ACTUAL_VOLUME", actualVolume);
             values.put("VOLUME_GAP", actualVolume.subtract(budgetVolume));
             values.put("BUDGET_REVENUE", budgetRevenue);
             values.put("ACTUAL_REVENUE", actualRevenue);
-            values.put("REVENUE_GAP", checks.getRevenueGap());
-            values.put("REVENUE_VOLUME_IMPACT", checks.getVolumeImpact());
-            values.put("REVENUE_PRICE_IMPACT", checks.getPriceImpact());
+            values.put("REVENUE_GAP", revenueGap);
             values.put("BUDGET_COST", budgetCost);
             values.put("ACTUAL_COST", actualCost);
-            values.put("COST_GAP", checks.getCostGap());
-            values.put("GROSS_PROFIT_GAP", checks.getGrossProfitGap());
+            values.put("COST_GAP", costGap);
+            values.put("GROSS_PROFIT_GAP", grossProfitGap);
             BigDecimal materialGap = value(v, "GAP_MATERIAL_COST");
             BigDecimal laborGap = value(v, "GAP_LABOR_COST");
             BigDecimal outsourcingGap = value(v, "GAP_OUTSOURCING_COST");
@@ -63,16 +72,9 @@ public class PvmServiceImpl implements PvmService {
             values.put("OUTSOURCING_GAP", outsourcingGap);
             values.put("VARIABLE_MFG_GAP", variableMfgGap);
             values.put("FIXED_MFG_GAP", fixedMfgGap);
-            values.put("PROFIT_VOLUME_IMPACT", checks.getVolumeImpact());
-            values.put("PROFIT_PRICE_IMPACT", checks.getPriceImpact());
-            values.put("PROFIT_COST_IMPACT", checks.getCostGap().negate());
-            values.put("PROFIT_MATERIAL_IMPACT", materialGap.negate());
-            values.put("PROFIT_LABOR_IMPACT", laborGap.negate());
-            values.put("PROFIT_OUTSOURCING_IMPACT", outsourcingGap.negate());
-            values.put("PROFIT_VARIABLE_MFG_IMPACT", variableMfgGap.negate());
-            values.put("PROFIT_FIXED_MFG_IMPACT", fixedMfgGap.negate());
-            values.put("REVENUE_CHECK_DIFF", checks.getRevenueCheckDiff());
-            values.put("GROSS_PROFIT_CHECK_DIFF", checks.getGrossProfitCheckDiff());
+            values.putAll(impacts);
+            values.put("REVENUE_CHECK_DIFF", revenueGap.subtract(revenueBridge));
+            values.put("GROSS_PROFIT_CHECK_DIFF", grossProfitGap.subtract(profitBridge));
             result.add(new PvmResult(pnl.getScopeCode(), logicCode, values));
         }
         return result;

@@ -1,12 +1,12 @@
 # 部署目录
 
-存放API、Worker、前端、Nginx、数据库迁移、环境变量模板、备份恢复和监控配置。
+当前提供 API/Worker Dockerfile、构建脚本、工具链辅助和可选 Maven 镜像。完整 Nginx、备份恢复和监控配置仍需按部署环境补齐。
 
 生产密钥只能通过公司密钥管理平台或环境变量注入，不得写入配置文件或提交到GitHub。
 
 ## 本地工具链
 
-本项目支持用户级工具链，不要求管理员权限。准备好 `.toolchain/` 后，在项目根目录执行：
+本项目可使用系统已安装工具或用户级 `.toolchain/`。准备 JDK 8、Maven、Node 和隔离测试数据库后，在项目根目录执行：
 
 ```bash
 source deploy/scripts/env-local.sh
@@ -19,8 +19,8 @@ source deploy/scripts/env-local.sh
 
 ```bash
 source deploy/scripts/env-local.sh
-mvn -pl backend/analysis-api -am spring-boot:run \
-  -Dspring-boot.run.profiles=local
+java -jar backend/analysis-api/target/analysis-api-0.1.0-SNAPSHOT.jar \
+  --spring.profiles.active=local --server.address=127.0.0.1
 ```
 
 本地 Profile 会使用脱敏/内存适配器，并将 `X-User-Id` 转成本地 `Principal`，便于前端联调。它不是生产认证方案；生产环境必须关闭 `local`，由统一认证网关注入用户主体。
@@ -46,4 +46,4 @@ Worker 运行时配置：
 - `ANALYSIS_WORKER_ID`、`ANALYSIS_WORKER_CLEANUP_BATCH_SIZE`：可选的 Worker 标识和单次清理批量上限。
 
 只启用 `db` 或只启用 `filesystem` 都不会运行清理任务；两者同时启用时，`ExportCleanupWorker` 每十分钟执行一次有界清理。数据库不可用时，Worker 启动接线测试不代表数据库契约通过；请另行提供 `AMOEBA_DB_URL` 运行 PostgreSQL 契约测试。
-Maven 依赖缓存也固定在 `.toolchain/m2`，避免修改用户目录。
+构建脚本默认将 Maven 缓存放入 `.toolchain/m2`，可通过 `MAVEN_REPO_LOCAL` 覆盖。完整验证及配置边界见 [本地开发说明](../docs/development/local-development.md)。

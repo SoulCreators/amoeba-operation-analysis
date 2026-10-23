@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
@@ -15,6 +16,7 @@ import java.security.Principal;
 import java.time.LocalDateTime;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -28,13 +30,15 @@ class BatchControllerMockMvcContractTest {
     private static final String USER_ID = "U001";
 
     private BatchService batchService;
+    private PermissionService permissionService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         batchService = mock(BatchService.class);
+        permissionService = mock(PermissionService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new BatchController(batchService))
+                .standaloneSetup(new BatchController(batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -42,7 +46,8 @@ class BatchControllerMockMvcContractTest {
     @Test
     void authenticatedCreateReturnsSuccessfulEnvelopePassesPrincipalAndConvertsBasePerspective() throws Exception {
         AnalysisBatch batch = batch(BatchStatus.DRAFT);
-        when(batchService.create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, USER_ID))
+        when(permissionService.canCalculate(USER_ID, AnalysisPerspective.BASE)).thenReturn(true);
+        when(batchService.create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, "ALL", USER_ID))
                 .thenReturn(batch);
 
         mockMvc.perform(post("/api/v1/batches")
@@ -59,13 +64,15 @@ class BatchControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.createdBy").value(USER_ID));
 
-        verify(batchService).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, USER_ID);
+        verify(batchService).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, "ALL", USER_ID);
     }
 
     @Test
     void authenticatedGetReturnsSuccessfulEnvelope() throws Exception {
         AnalysisBatch batch = batch(BatchStatus.READY_FOR_CALCULATION);
         when(batchService.get(BATCH_NO)).thenReturn(batch);
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -81,26 +88,74 @@ class BatchControllerMockMvcContractTest {
     }
 
     @Test
-    void authenticatedMoveReturnsSuccessfulEnvelopeAndConvertsBatchStatus() throws Exception {
-        AnalysisBatch batch = batch(BatchStatus.CALCULATING);
-        when(batchService.move(BATCH_NO, BatchStatus.CALCULATING)).thenReturn(batch);
+    void batchReadIsRejectedWhenBatchScopeNotGranted() throws Exception {
+        when(batchService.get(BATCH_NO)).thenReturn(batch(BatchStatus.DRAFT, "BASE-001"));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "BASE-001"))
+                .thenReturn(false);
 
+        mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isForbidden());
+
+        verify(batchService).get(BATCH_NO);
+    }
+
+    @Test
+    void authorizedPreparationTransitionReachesBatchService() throws Exception {
+        AnalysisBatch batch = batch(BatchStatus.CHECKING);
+        when(batchService.get(BATCH_NO)).thenReturn(batch);
+        when(permissionService.canCalculate(USER_ID, AnalysisPerspective.BASE)).thenReturn(true);
+        when(batchService.move(BATCH_NO, BatchStatus.CHECKING)).thenReturn(batch);
+
+        mockMvc.perform(post("/api/v1/batches/{batchNo}/status", BATCH_NO)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CHECKING\"}")
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CHECKING"));
+
+        verify(batchService).move(BATCH_NO, BatchStatus.CHECKING);
+    }
+
+    @Test
+    void batchCreationRequiresFinanceActionPermission() throws Exception {
+        mockMvc.perform(post("/api/v1/batches")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"batchNo\":\"BATCH-001\",\"period\":\"2026-09\",\"perspective\":\"BASE\"}")
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isForbidden());
+
+        verify(batchService, never()).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, "ALL", USER_ID);
+    }
+
+    @Test
+    void genericStatusMutationIsForbiddenAndDoesNotReachBatchService() throws Exception {
         mockMvc.perform(post("/api/v1/batches/{batchNo}/status", BATCH_NO)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"CALCULATING\"}")
                         .principal(principal(USER_ID)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.code").value("OK"))
-                .andExpect(jsonPath("$.message").value("成功"))
-                .andExpect(jsonPath("$.data.batchNo").value(BATCH_NO))
-                .andExpect(jsonPath("$.data.status").value("CALCULATING"));
+                .andExpect(status().isForbidden());
 
-        verify(batchService).move(BATCH_NO, BatchStatus.CALCULATING);
+        verify(batchService, never()).move(BATCH_NO, BatchStatus.CALCULATING);
+    }
+
+    @Test
+    void batchNumberDoesNotGrantReadAccessWithoutPerspectiveScope() throws Exception {
+        when(batchService.get(BATCH_NO)).thenReturn(batch(BatchStatus.DRAFT));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isForbidden());
     }
 
     private AnalysisBatch batch(BatchStatus status) {
-        return new AnalysisBatch(1L, BATCH_NO, "2026-09", AnalysisPerspective.BASE,
+        return batch(status, "ALL");
+    }
+
+    private AnalysisBatch batch(BatchStatus status, String scopeCode) {
+        return new AnalysisBatch(1L, BATCH_NO, "2026-09", AnalysisPerspective.BASE, scopeCode,
                 status, USER_ID, LocalDateTime.of(2026, 10, 20, 10, 0));
     }
 

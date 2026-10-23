@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { api, type AuditEvent } from './api'
+import { api, type AuditEvent } from './shared/api'
 
 const rows = ref<AuditEvent[]>([])
 const loading = ref(false)

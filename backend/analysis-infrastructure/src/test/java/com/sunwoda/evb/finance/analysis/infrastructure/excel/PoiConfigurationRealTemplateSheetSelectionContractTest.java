@@ -36,7 +36,7 @@ class PoiConfigurationRealTemplateSheetSelectionContractTest {
         // Current behavior: 21_销售项目映射 is absent, so the first sheet is used.
         assertEquals(ImportStatus.VALID, result.getStatus());
         assertEquals(1, result.getRowCount());
-        assertEquals(Arrays.asList("客户简称", "客户项目", "电芯型号", "产品线", "事业部", "是否有效"),
+        assertEquals(Arrays.asList("出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "是否有效"),
                 result.getHeaders());
     }
 
@@ -71,7 +71,7 @@ class PoiConfigurationRealTemplateSheetSelectionContractTest {
         // Current behavior: the named business sheet wins over its position.
         assertEquals(ImportStatus.VALID, result.getStatus());
         assertEquals(1, result.getRowCount());
-        assertEquals("客户简称", result.getHeaders().get(0));
+        assertEquals("出货基地", result.getHeaders().get(0));
     }
 
     @Test
@@ -92,8 +92,8 @@ class PoiConfigurationRealTemplateSheetSelectionContractTest {
     private void addSalesSheet(XSSFWorkbook workbook, String name) {
         org.apache.poi.ss.usermodel.Sheet sheet = workbook.createSheet(name);
         org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
-        String[] headers = {"客户简称", "客户项目", "电芯型号", "产品线", "事业部", "是否有效"};
-        String[] values = {"客户A", "项目A", "106Ah", "动力", "一部", "是"};
+        String[] headers = {"出货基地", "客户简称", "客户项目改", "电芯型号", "产品线", "事业部", "是否有效"};
+        String[] values = {"义乌", "客户A", "项目A", "106Ah", "动力", "一部", "是"};
         org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
         for (int i = 0; i < headers.length; i++) {
             header.createCell(i).setCellValue(headers[i]);

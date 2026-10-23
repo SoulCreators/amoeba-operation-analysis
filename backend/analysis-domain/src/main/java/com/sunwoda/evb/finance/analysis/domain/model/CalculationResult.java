@@ -19,6 +19,10 @@ public class CalculationResult {
     private final LocalDateTime calculatedAt;
     private final LocalDateTime confirmedAt;
     private final LocalDateTime publishedAt;
+    private final String withdrawnBy;
+    private final LocalDateTime withdrawnAt;
+    private final String withdrawReason;
+    private final List<String> notificationTargets;
 
     public CalculationResult(String batchNo, AnalysisPerspective perspective, List<PnlResult> results) {
         this(batchNo, perspective, results, batchNo + "-R1", CalculationResultStatus.CALCULATED,
@@ -39,6 +43,18 @@ public class CalculationResult {
                               String confirmedBy, String publishedBy,
                               LocalDateTime calculatedAt, LocalDateTime confirmedAt,
                               LocalDateTime publishedAt, List<PnlFact> facts) {
+        this(batchNo, perspective, results, versionNo, status, confirmedBy, publishedBy,
+                calculatedAt, confirmedAt, publishedAt, facts, null, null, null,
+                Collections.<String>emptyList());
+    }
+
+    public CalculationResult(String batchNo, AnalysisPerspective perspective, List<PnlResult> results,
+                              String versionNo, CalculationResultStatus status,
+                              String confirmedBy, String publishedBy,
+                              LocalDateTime calculatedAt, LocalDateTime confirmedAt,
+                              LocalDateTime publishedAt, List<PnlFact> facts,
+                              String withdrawnBy, LocalDateTime withdrawnAt,
+                              String withdrawReason, List<String> notificationTargets) {
         this.batchNo = batchNo;
         this.perspective = perspective;
         this.results = Collections.unmodifiableList(results);
@@ -51,6 +67,12 @@ public class CalculationResult {
         this.calculatedAt = calculatedAt;
         this.confirmedAt = confirmedAt;
         this.publishedAt = publishedAt;
+        this.withdrawnBy = withdrawnBy;
+        this.withdrawnAt = withdrawnAt;
+        this.withdrawReason = withdrawReason;
+        this.notificationTargets = Collections.unmodifiableList(
+                new ArrayList<String>(notificationTargets == null
+                        ? Collections.<String>emptyList() : notificationTargets));
     }
 
     public String getBatchNo() { return batchNo; }
@@ -64,6 +86,11 @@ public class CalculationResult {
     public LocalDateTime getCalculatedAt() { return calculatedAt; }
     public LocalDateTime getConfirmedAt() { return confirmedAt; }
     public LocalDateTime getPublishedAt() { return publishedAt; }
+    public String getWithdrawnBy() { return withdrawnBy; }
+    public LocalDateTime getWithdrawnAt() { return withdrawnAt; }
+    public String getWithdrawReason() { return withdrawReason; }
+    public List<String> getNotificationTargets() { return notificationTargets; }
+    public boolean isWithdrawn() { return status == CalculationResultStatus.WITHDRAWN; }
 
     public CalculationResult confirm(String operator) {
         if (status != CalculationResultStatus.CALCULATED) {
@@ -83,6 +110,22 @@ public class CalculationResult {
                 calculatedAt, confirmedAt, LocalDateTime.now(), facts);
     }
 
+    public CalculationResult withdraw(String reason, List<String> notificationTargets, String operator) {
+        if (status != CalculationResultStatus.PUBLISHED) {
+            throw new IllegalStateException("只有已发布结果可以撤回: " + status);
+        }
+        if (reason == null || reason.trim().isEmpty()) {
+            throw new IllegalArgumentException("撤回原因不能为空");
+        }
+        if (operator == null || operator.trim().isEmpty()) {
+            throw new IllegalArgumentException("撤回人不能为空");
+        }
+        return new CalculationResult(batchNo, perspective, results, versionNo,
+                CalculationResultStatus.WITHDRAWN, confirmedBy, publishedBy,
+                calculatedAt, confirmedAt, publishedAt, facts,
+                operator, LocalDateTime.now(), reason, notificationTargets);
+    }
+
     public CalculationResult filterScopes(Set<String> allowedScopes) {
         if (allowedScopes == null || allowedScopes.isEmpty()) {
             throw new IllegalArgumentException("没有可查看的授权范围");
@@ -97,6 +140,7 @@ public class CalculationResult {
             if (allowedScopes.contains(fact.getScopeCode())) filteredFacts.add(fact);
         }
         return new CalculationResult(batchNo, perspective, filtered, versionNo, status,
-                confirmedBy, publishedBy, calculatedAt, confirmedAt, publishedAt, filteredFacts);
+                confirmedBy, publishedBy, calculatedAt, confirmedAt, publishedAt, filteredFacts,
+                withdrawnBy, withdrawnAt, withdrawReason, notificationTargets);
     }
 }

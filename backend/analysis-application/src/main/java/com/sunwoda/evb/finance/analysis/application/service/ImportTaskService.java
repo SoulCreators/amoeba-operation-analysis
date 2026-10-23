@@ -14,5 +14,7 @@ public interface ImportTaskService {
     ImportTask get(String taskNo);
     ImportTask move(String taskNo, ImportStatus status, int issueCount);
     ImportValidationResult validate(String taskNo, InputStream inputStream);
+    List<ImportTask> importWorkbook(String batchNo, String fileName, InputStream inputStream,
+                                    String createdBy);
     List<ImportIssue> issues(String taskNo);
 }

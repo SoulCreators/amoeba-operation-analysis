@@ -34,7 +34,7 @@ public class PoiTemplateValidator implements TemplateValidator {
         List<String> headers = new ArrayList<String>();
         int rowCount = 0;
         try (Workbook workbook = WorkbookFactory.create(inputStream)) {
-            Sheet sheet = workbook.getSheetAt(0);
+            Sheet sheet = PoiSheetLocator.locate(workbook, definition.getCode());
             Row headerRow = sheet.getRow(0);
             if (headerRow == null) {
                 issues.add(new ImportIssue(1, null, "HEADER_MISSING", "Excel第一行必须为字段标题", null));

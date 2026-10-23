@@ -4,7 +4,9 @@ import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
 import com.sunwoda.evb.finance.analysis.application.port.TemplateValidator;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactTaskReader;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactSourceReader;
+import com.sunwoda.evb.finance.analysis.application.port.WorkbookDatasetDetector;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
+import com.sunwoda.evb.finance.analysis.domain.model.DatasetDefinition;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportIssue;
 import com.sunwoda.evb.finance.analysis.domain.model.ImportFileSnapshot;
@@ -22,11 +24,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.UUID;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class ImportTaskServiceImpl implements ImportTaskService {
@@ -44,6 +49,8 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     private PnlFactSourceReader sourceReader;
     @Autowired(required = false)
     private PnlFactSourceWriter sourceWriter;
+    @Autowired(required = false)
+    private WorkbookDatasetDetector workbookDatasetDetector;
 
     public ImportTaskServiceImpl(AnalysisBatchRepository batchRepository,
                                  ImportTaskRepository taskRepository,
@@ -72,9 +79,7 @@ public class ImportTaskServiceImpl implements ImportTaskService {
         if (taskRepository.existsByBatchAndDataset(batchNo, datasetCode)) {
             throw new IllegalStateException("该批次已存在同类数据集导入任务: " + datasetCode);
         }
-        String taskNo = "IMP-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        return taskRepository.save(new ImportTask(null, taskNo, batchNo, datasetCode,
-                fileName, checksum, createdBy, LocalDateTime.now()));
+        return newTask(batchNo, datasetCode, fileName, checksum, createdBy);
     }
 
     @Override
@@ -94,19 +99,52 @@ public class ImportTaskServiceImpl implements ImportTaskService {
     @Transactional
     public ImportValidationResult validate(String taskNo, InputStream inputStream) {
         if (inputStream == null) throw new IllegalArgumentException("导入文件不能为空");
-        ImportTask task = get(taskNo);
+        return validateContent(get(taskNo), readBytes(inputStream));
+    }
+
+    @Override
+    @Transactional
+    public List<ImportTask> importWorkbook(String batchNo, String fileName,
+                                           InputStream inputStream, String createdBy) {
+        requireText(batchNo, "batchNo");
+        requireText(fileName, "fileName");
+        requireText(createdBy, "createdBy");
+        if (inputStream == null) throw new IllegalArgumentException("导入文件不能为空");
+        AnalysisBatch batch = batchRepository.findByBatchNo(batchNo)
+                .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + batchNo));
+        if (workbookDatasetDetector == null) {
+            throw new IllegalStateException("整本导入未配置工作簿数据集识别器");
+        }
+        byte[] content = readBytes(inputStream);
+        List<String> candidates = new ArrayList<String>();
+        for (DatasetDefinition definition : datasetCatalog.list(batch.getPerspective())) {
+            candidates.add(definition.getCode());
+        }
+        Set<String> present = workbookDatasetDetector.detectPresentDatasets(content, candidates);
+        List<ImportTask> imported = new ArrayList<ImportTask>();
+        for (String datasetCode : candidates) {
+            if (!present.contains(datasetCode)) continue;
+            if (taskRepository.existsByBatchAndDataset(batchNo, datasetCode)) continue;
+            ImportTask task = newTask(batchNo, datasetCode, fileName, null, createdBy);
+            validateContent(task, content);
+            imported.add(task);
+        }
+        return imported;
+    }
+
+    private ImportValidationResult validateContent(ImportTask task, byte[] content) {
+        String taskNo = task.getTaskNo();
         AnalysisBatch batch = batchRepository.findByBatchNo(task.getBatchNo())
                 .orElseThrow(() -> new IllegalArgumentException("批次不存在: " + task.getBatchNo()));
         task.moveTo(ImportStatus.VALIDATING, 0);
         taskRepository.save(task);
-        byte[] content = readBytes(inputStream);
         Optional<ImportFileSnapshot> previousFile = fileRepository.snapshot(taskNo);
         if (previousFile == null) previousFile = Optional.empty();
         try {
             fileRepository.save(taskNo, task.getFileName(), content);
             ImportValidationResult result = templateValidator.validate(taskNo,
                     datasetCatalog.require(task.getDatasetCode(), batch.getPerspective()),
-                    new java.io.ByteArrayInputStream(content));
+                    new ByteArrayInputStream(content));
             issueRepository.replace(taskNo, result.getIssues());
             task.moveTo(result.getStatus(), result.getIssues().size());
             taskRepository.save(task);
@@ -130,6 +168,13 @@ public class ImportTaskServiceImpl implements ImportTaskService {
             restoreAfterFailure(taskNo, previousFile, ex);
             throw ex;
         }
+    }
+
+    private ImportTask newTask(String batchNo, String datasetCode, String fileName,
+                               String checksum, String createdBy) {
+        String taskNo = "IMP-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        return taskRepository.save(new ImportTask(null, taskNo, batchNo, datasetCode,
+                fileName, checksum, createdBy, LocalDateTime.now()));
     }
 
     private void restoreAfterFailure(String taskNo, Optional<ImportFileSnapshot> previousFile,

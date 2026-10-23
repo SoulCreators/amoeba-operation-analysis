@@ -3,6 +3,7 @@ package com.sunwoda.evb.finance.analysis.application.service;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
+import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.model.PvmResult;
 import org.junit.jupiter.api.Test;
 
@@ -86,13 +87,13 @@ class PvmServiceImplTest {
         lines.put("BUDGET_REVENUE", decimal(1000));
         lines.put("REVENUE", decimal(1210));
         lines.put("BUDGET_SALES_COST", decimal(700));
-        lines.put("SALES_COST", decimal(770));
-        lines.put("GAP_GROSS_PROFIT", decimal(140));
+        lines.put("SALES_COST", decimal(880));
+        lines.put("GAP_GROSS_PROFIT", decimal(30));
 
         Map<String, BigDecimal> values = analyze(lines).get(0).getValues();
 
-        assertEquals(0, values.get("COST_GAP").compareTo(decimal(70)));
-        assertEquals(0, values.get("PROFIT_COST_IMPACT").compareTo(decimal(-70)));
+        assertEquals(0, values.get("COST_GAP").compareTo(decimal(180)));
+        assertEquals(0, values.get("PROFIT_COST_IMPACT").compareTo(decimal(-110)));
         assertEquals(0, values.get("GROSS_PROFIT_CHECK_DIFF").compareTo(BigDecimal.ZERO));
     }
 
@@ -122,6 +123,41 @@ class PvmServiceImplTest {
                 .get("REVENUE_CHECK_DIFF").compareTo(BigDecimal.ZERO));
         assertEquals(0, analyze(zeroActualVolume).get(0).getValues()
                 .get("REVENUE_CHECK_DIFF").compareTo(BigDecimal.ZERO));
+    }
+
+    @Test
+    void sampleStructureUsesBudgetVolumeSharesAcrossModels() {
+        Map<String, BigDecimal> lines = new LinkedHashMap<String, BigDecimal>();
+        lines.put("BUDGET_VOLUME", decimal(20));
+        lines.put("VOLUME", decimal(30));
+        lines.put("BUDGET_REVENUE", decimal(300));
+        lines.put("REVENUE", decimal(520));
+        lines.put("BUDGET_SALES_COST", decimal(180));
+        lines.put("SALES_COST", decimal(320));
+        List<PnlFact> facts = Arrays.asList(
+                fact("A", 10, 120, 70, 10, 100, 60),
+                fact("B", 20, 400, 250, 10, 200, 120));
+        CalculationResult calculation = new CalculationResult("B-PVM-STRUCTURE", AnalysisPerspective.BASE,
+                Arrays.asList(new PnlResult("南昌", lines)), "B-PVM-STRUCTURE-R1",
+                com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus.CALCULATED,
+                null, null, null, null, null, facts);
+
+        Map<String, BigDecimal> values = new PvmServiceImpl(new StubCalculationService(calculation))
+                .analyze("B-PVM-STRUCTURE", "U001").get(0).getValues();
+
+        assertEquals(0, values.get("REVENUE_VOLUME_IMPACT").compareTo(decimal(150)));
+        assertEquals(0, values.get("REVENUE_STRUCTURE_IMPACT").compareTo(decimal(50)));
+        assertEquals(0, values.get("PROFIT_STRUCTURE_IMPACT").compareTo(decimal(20)));
+        assertEquals(0, values.get("REVENUE_CHECK_DIFF").compareTo(BigDecimal.ZERO));
+    }
+
+    private static PnlFact fact(String model, int actualVolume, int actualRevenue, int actualCost,
+                                int budgetVolume, int budgetRevenue, int budgetCost) {
+        BigDecimal z = BigDecimal.ZERO;
+        return new PnlFact("南昌", "南昌", model, null,
+                decimal(actualVolume), decimal(actualRevenue), decimal(actualCost), z, z, z, z, z, z,
+                decimal(budgetVolume), decimal(budgetRevenue), decimal(budgetCost), z, z, z, z, z, z,
+                z, z, z, z, z, z, z, z, z, z);
     }
 
     private static List<PvmResult> analyze(Map<String, BigDecimal> lines) {

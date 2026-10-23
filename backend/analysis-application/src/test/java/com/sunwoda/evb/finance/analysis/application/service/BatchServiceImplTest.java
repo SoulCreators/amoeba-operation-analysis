@@ -24,8 +24,9 @@ class BatchServiceImplTest {
         BatchService service = new BatchServiceImpl(repository, new FakeReadinessService(ready()));
 
         AnalysisBatch created = service.create("B20260801", "2026-08",
-                AnalysisPerspective.BASE, "finance");
+                AnalysisPerspective.BASE, "ALL", "finance");
         assertEquals(BatchStatus.DRAFT, created.getStatus());
+        assertEquals("ALL", created.getScopeCode());
 
         service.move("B20260801", BatchStatus.CHECKING);
         AnalysisBatch moved = service.move("B20260801", BatchStatus.READY_FOR_CALCULATION);
@@ -99,9 +100,9 @@ class BatchServiceImplTest {
     void shouldRejectDuplicatedBatch() {
         BatchService service = new BatchServiceImpl(new FakeRepository(),
                 new FakeReadinessService(ready()));
-        service.create("B20260801", "2026-08", AnalysisPerspective.BASE, "finance");
+        service.create("B20260801", "2026-08", AnalysisPerspective.BASE, "ALL", "finance");
         assertThrows(IllegalStateException.class, () ->
-                service.create("B20260801", "2026-08", AnalysisPerspective.BASE, "finance"));
+                service.create("B20260801", "2026-08", AnalysisPerspective.BASE, "ALL", "finance"));
     }
 
     private FakeRepository repositoryWithStatus(BatchStatus status) {
@@ -156,7 +157,8 @@ class BatchServiceImplTest {
             saveCount++;
             if (batch.getId() == null) {
                 batch = new AnalysisBatch(id++, batch.getBatchNo(), batch.getPeriod(),
-                        batch.getPerspective(), batch.getStatus(), batch.getCreatedBy(), batch.getCreatedAt());
+                        batch.getPerspective(), batch.getScopeCode(), batch.getStatus(),
+                        batch.getCreatedBy(), batch.getCreatedAt());
             }
             store.put(batch.getBatchNo(), batch);
             return batch;

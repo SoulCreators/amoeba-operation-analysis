@@ -102,6 +102,34 @@ class CalculationControllerGetContractTest {
         verifyNoInteractions(service);
     }
 
+    @Test
+    void authenticatedCumulativeGetPassesPrincipalToServiceAndPreservesEnvelope() throws Exception {
+        when(service.getCumulativeForUser(BATCH_NO, USER_ID)).thenReturn(result());
+
+        mockMvc.perform(get("/api/v1/calculations/{batchNo}/cumulative", BATCH_NO)
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.message").value("成功"))
+                .andExpect(jsonPath("$.data.batchNo").value(BATCH_NO))
+                .andExpect(jsonPath("$.data.perspective").value("BASE"));
+
+        verify(service).getCumulativeForUser(BATCH_NO, USER_ID);
+        verifyNoMoreInteractions(service);
+    }
+
+    @Test
+    void anonymousCumulativeGetReturnsA0002WithoutCallingService() throws Exception {
+        mockMvc.perform(get("/api/v1/calculations/{batchNo}/cumulative", BATCH_NO))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("A0002"))
+                .andExpect(jsonPath("$.message").value("未获取到认证用户，拒绝返回累计经营结果"));
+
+        verifyNoInteractions(service);
+    }
+
     /** 校验当前异常处理器对匿名/空白主体的既有 HTTP 包络，不引入新的参数或权限判断。 */
     private void assertUnauthenticated(RequestBuilder request) throws Exception {
         mockMvc.perform(request)

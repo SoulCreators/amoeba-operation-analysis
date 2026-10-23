@@ -4,6 +4,7 @@ import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResultStatus;
 import com.sunwoda.evb.finance.analysis.domain.model.PnlResult;
+import com.sunwoda.evb.finance.analysis.domain.model.PnlFact;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationResultRepository;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
@@ -17,6 +18,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +43,12 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         Long batchId = jdbc.queryForObject("SELECT id FROM meta.analysis_batch WHERE batch_no = ?",
                 Long.class, result.getBatchNo());
         String calculationVersionId = findCalculationVersionId(batchId, result);
+        if (calculationVersionId != null && isOrdinaryVersion(calculationVersionId)
+                && jdbc.queryForObject("SELECT count(*) FROM calc.pnl_result WHERE calculation_version_id = ?",
+                        Integer.class, calculationVersionId) > 0) {
+            updateLifecycleOnly(result, calculationVersionId);
+            return result;
+        }
         // 本次修改：有版本头时只替换该版本的结果；没有版本头时只清理遗留 NULL 版本，避免误删同批次历史版本。
         if (calculationVersionId == null) {
             deleteResultDetails(batchId, null);
@@ -51,22 +59,27 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
             final String sql = calculationVersionId == null
                     ? "INSERT INTO calc.pnl_result "
                     + "(batch_id, perspective, scope_code, result_status, version_no, calculated_at, confirmed_by, confirmed_at, "
-                    + "published_by, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
+                    + "published_by, published_at, withdrawn_by, withdrawn_at, withdraw_reason, notification_targets) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id"
                     : "INSERT INTO calc.pnl_result "
                     + "(batch_id, perspective, scope_code, result_status, version_no, calculated_at, confirmed_by, confirmed_at, "
-                    + "published_by, published_at, calculation_version_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
+                    + "published_by, published_at, withdrawn_by, withdrawn_at, withdraw_reason, notification_targets, calculation_version_id) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
             Long resultId;
             if (calculationVersionId == null) {
                 resultId = jdbc.queryForObject(sql, Long.class, batchId,
                         result.getPerspective().getCode(), pnl.getScopeCode(), result.getStatus().name(),
                         result.getVersionNo(), timestamp(result.getCalculatedAt()), result.getConfirmedBy(),
-                        timestamp(result.getConfirmedAt()), result.getPublishedBy(), timestamp(result.getPublishedAt()));
+                        timestamp(result.getConfirmedAt()), result.getPublishedBy(), timestamp(result.getPublishedAt()),
+                        result.getWithdrawnBy(), timestamp(result.getWithdrawnAt()), result.getWithdrawReason(),
+                        joinTargets(result.getNotificationTargets()));
             } else {
                 resultId = jdbc.queryForObject(sql, Long.class, batchId,
                         result.getPerspective().getCode(), pnl.getScopeCode(), result.getStatus().name(),
                         result.getVersionNo(), timestamp(result.getCalculatedAt()), result.getConfirmedBy(),
                         timestamp(result.getConfirmedAt()), result.getPublishedBy(), timestamp(result.getPublishedAt()),
-                        calculationVersionId);
+                        result.getWithdrawnBy(), timestamp(result.getWithdrawnAt()), result.getWithdrawReason(),
+                        joinTargets(result.getNotificationTargets()), calculationVersionId);
             }
             for (Map.Entry<String, BigDecimal> line : pnl.getLines().entrySet()) {
                 if (calculationVersionId == null) {
@@ -87,7 +100,8 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
     public Optional<CalculationResult> findByBatchNo(String batchNo) {
         String calculationVersionId = findReadableVersionId(batchNo);
         List<Header> headers = jdbc.query("SELECT p.perspective, p.result_status, p.version_no, p.confirmed_by, "
-                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
+                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id, "
+                        + "p.withdrawn_by, p.withdrawn_at, p.withdraw_reason, p.notification_targets "
                         + "FROM calc.pnl_result p JOIN meta.analysis_batch b ON b.id = p.batch_id "
                         + "WHERE b.batch_no = ? AND " + versionPredicate(calculationVersionId)
                         + " ORDER BY p.id", (rs, row) -> new Header(
@@ -95,15 +109,29 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
                         CalculationResultStatus.valueOf(rs.getString("result_status")),
                         rs.getString("version_no"), localDateTime(rs.getTimestamp("calculated_at")), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
                         rs.getString("published_by"), localDateTime(rs.getTimestamp("published_at")),
-                        rs.getString("scope_code"), rs.getLong("id")), queryParameters(batchNo, calculationVersionId));
+                        rs.getString("scope_code"), rs.getLong("id"),
+                        rs.getString("withdrawn_by"), localDateTime(rs.getTimestamp("withdrawn_at")),
+                        rs.getString("withdraw_reason"), splitTargets(rs.getString("notification_targets"))),
+                queryParameters(batchNo, calculationVersionId));
         return assemble(batchNo, headers);
     }
 
     @Override
     public Optional<CalculationResult> findByBatchNoForUser(String batchNo, String userId) {
-        String calculationVersionId = findReadableVersionId(batchNo);
+        return findScoped(batchNo, userId, findReadableVersionId(batchNo));
+    }
+
+    @Override
+    public Optional<CalculationResult> findVersionForUser(String batchNo, String versionNo, String userId) {
+        List<String> ids = jdbc.query("SELECT calculation_version_id FROM calc.calculation_version "
+                + "WHERE batch_no = ? AND version_no = ?", (rs, n) -> rs.getString(1), batchNo, versionNo);
+        return ids.isEmpty() ? Optional.empty() : findScoped(batchNo, userId, ids.get(0));
+    }
+
+    private Optional<CalculationResult> findScoped(String batchNo, String userId, String calculationVersionId) {
         List<Header> headers = jdbc.query("SELECT p.perspective, p.result_status, p.version_no, p.confirmed_by, "
-                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
+                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id, "
+                        + "p.withdrawn_by, p.withdrawn_at, p.withdraw_reason, p.notification_targets "
                         + "FROM calc.pnl_result p JOIN meta.analysis_batch b ON b.id = p.batch_id "
                         + "WHERE b.batch_no = ? AND " + versionPredicate(calculationVersionId)
                         + " AND EXISTS (SELECT 1 FROM iam.user_scope s "
@@ -116,7 +144,10 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
                         CalculationResultStatus.valueOf(rs.getString("result_status")),
                         rs.getString("version_no"), localDateTime(rs.getTimestamp("calculated_at")), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
                         rs.getString("published_by"), localDateTime(rs.getTimestamp("published_at")),
-                        rs.getString("scope_code"), rs.getLong("id")), queryParameters(batchNo, calculationVersionId, userId));
+                        rs.getString("scope_code"), rs.getLong("id"),
+                        rs.getString("withdrawn_by"), localDateTime(rs.getTimestamp("withdrawn_at")),
+                        rs.getString("withdraw_reason"), splitTargets(rs.getString("notification_targets"))),
+                queryParameters(batchNo, calculationVersionId, userId));
 
         if (!headers.isEmpty()) return assemble(batchNo, headers);
         return Optional.empty();
@@ -126,7 +157,8 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
     public Optional<CalculationResult> findMetadataByBatchNo(String batchNo) {
         String calculationVersionId = findReadableVersionId(batchNo);
         List<Header> metadata = jdbc.query("SELECT p.perspective, p.result_status, p.version_no, p.confirmed_by, "
-                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id "
+                        + "p.calculated_at, p.confirmed_at, p.published_by, p.published_at, p.scope_code, p.id, "
+                        + "p.withdrawn_by, p.withdrawn_at, p.withdraw_reason, p.notification_targets "
                         + "FROM calc.pnl_result p JOIN meta.analysis_batch b ON b.id = p.batch_id "
                         + "WHERE b.batch_no = ? AND " + versionPredicate(calculationVersionId)
                         + " ORDER BY p.id LIMIT 1", (rs, row) -> new Header(
@@ -134,12 +166,16 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
                         CalculationResultStatus.valueOf(rs.getString("result_status")),
                         rs.getString("version_no"), localDateTime(rs.getTimestamp("calculated_at")), rs.getString("confirmed_by"), localDateTime(rs.getTimestamp("confirmed_at")),
                         rs.getString("published_by"), localDateTime(rs.getTimestamp("published_at")),
-                        rs.getString("scope_code"), rs.getLong("id")), queryParameters(batchNo, calculationVersionId));
+                        rs.getString("scope_code"), rs.getLong("id"),
+                        rs.getString("withdrawn_by"), localDateTime(rs.getTimestamp("withdrawn_at")),
+                        rs.getString("withdraw_reason"), splitTargets(rs.getString("notification_targets"))),
+                queryParameters(batchNo, calculationVersionId));
         if (metadata.isEmpty()) return Optional.empty();
         Header first = metadata.get(0);
         return Optional.of(new CalculationResult(batchNo, first.perspective, new ArrayList<PnlResult>(),
                 first.versionNo, first.status, first.confirmedBy, first.publishedBy, first.calculatedAt,
-                first.confirmedAt, first.publishedAt));
+                first.confirmedAt, first.publishedAt, Collections.<PnlFact>emptyList(),
+                first.withdrawnBy, first.withdrawnAt, first.withdrawReason, first.notificationTargets));
     }
 
     private Optional<CalculationResult> assemble(String batchNo, List<Header> headers) {
@@ -154,7 +190,63 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         }
         Header first = headers.get(0);
         return Optional.of(new CalculationResult(batchNo, first.perspective, results, first.versionNo,
-                first.status, first.confirmedBy, first.publishedBy, first.calculatedAt, first.confirmedAt, first.publishedAt));
+                first.status, first.confirmedBy, first.publishedBy, first.calculatedAt, first.confirmedAt, first.publishedAt,
+                frozenFacts(batchNo, first.versionNo), first.withdrawnBy, first.withdrawnAt, first.withdrawReason,
+                first.notificationTargets));
+    }
+
+    private boolean isOrdinaryVersion(String id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT s.schema_version = 'ORDINARY-1' "
+                + "FROM calc.calculation_version v JOIN calc.calculation_snapshot s ON s.snapshot_id = v.snapshot_id "
+                + "WHERE v.calculation_version_id = ?", Boolean.class, id));
+    }
+
+    private void updateLifecycleOnly(CalculationResult result, String id) {
+        Map<String, Object> version = jdbc.queryForMap("SELECT status, current_flag FROM calc.calculation_version "
+                + "WHERE calculation_version_id = ? FOR UPDATE", id);
+        String previous = (String) version.get("status");
+        String next = result.getStatus().name();
+        if (!Boolean.TRUE.equals(version.get("current_flag")) || !("CALCULATED".equals(previous) && "CONFIRMED".equals(next)
+                || "CONFIRMED".equals(previous) && "PUBLISHED".equals(next)
+                || "PUBLISHED".equals(previous) && "WITHDRAWN".equals(next))) {
+            throw new IllegalStateException("禁止覆盖已保存版本或修改历史结果");
+        }
+        List<Header> headers = jdbc.query("SELECT id, scope_code FROM calc.pnl_result WHERE calculation_version_id = ?",
+                (rs, row) -> new Header(result.getPerspective(), result.getStatus(), result.getVersionNo(),
+                        null, null, null, null, null, rs.getString("scope_code"), rs.getLong("id"),
+                        null, null, null, Collections.<String>emptyList()), id);
+        if (headers.size() != result.getResults().size()) throw new IllegalStateException("生命周期操作不能改变结果范围");
+        for (Header header : headers) {
+            PnlResult incoming = result.getResults().stream().filter(p -> p.getScopeCode().equals(header.scopeCode))
+                    .findFirst().orElseThrow(() -> new IllegalStateException("生命周期操作不能改变结果范围"));
+            Map<String, BigDecimal> stored = new LinkedHashMap<>();
+            jdbc.query("SELECT line_code, line_value FROM calc.pnl_result_line WHERE result_id = ?",
+                    (RowCallbackHandler) rs -> stored.put(rs.getString(1), rs.getBigDecimal(2)), header.resultId);
+            if (!stored.keySet().equals(incoming.getLines().keySet())) throw new IllegalStateException("禁止改写版本指标");
+            for (String code : stored.keySet()) {
+                if (stored.get(code).compareTo(incoming.getLines().get(code)) != 0) throw new IllegalStateException("禁止改写版本金额");
+            }
+        }
+        jdbc.update("UPDATE calc.pnl_result SET result_status = ?, confirmed_by = ?, confirmed_at = ?, "
+                + "published_by = ?, published_at = ?, withdrawn_by = ?, withdrawn_at = ?, withdraw_reason = ?, "
+                + "notification_targets = ? WHERE calculation_version_id = ?", next, result.getConfirmedBy(),
+                timestamp(result.getConfirmedAt()), result.getPublishedBy(), timestamp(result.getPublishedAt()),
+                result.getWithdrawnBy(), timestamp(result.getWithdrawnAt()), result.getWithdrawReason(),
+                joinTargets(result.getNotificationTargets()), id);
+        jdbc.update("UPDATE calc.calculation_version SET status = ?, confirmed_by = ?, confirmed_at = ?, "
+                + "published_by = ?, published_at = ? WHERE calculation_version_id = ?", next, result.getConfirmedBy(),
+                timestamp(result.getConfirmedAt()), result.getPublishedBy(), timestamp(result.getPublishedAt()), id);
+        jdbc.update("INSERT INTO flow.calculation_event_outbox(event_id, aggregate_type, aggregate_id, event_type, "
+                + "calculation_version_id, payload_json) VALUES (?, 'CALCULATION_VERSION', ?, ?, ?, '{}'::jsonb)",
+                "EVENT-" + java.util.UUID.randomUUID(), id, next, id);
+    }
+
+    private List<PnlFact> frozenFacts(String batchNo, String versionNo) {
+        return jdbc.query("SELECT f.* FROM calc.calculation_version v "
+                + "JOIN calc.calculation_snapshot s ON s.snapshot_id = v.snapshot_id "
+                + "CROSS JOIN LATERAL jsonb_populate_recordset(NULL::raw.pnl_fact, s.content_json->'facts') f "
+                + "WHERE v.batch_no = ? AND v.version_no = ? AND s.schema_version = 'ORDINARY-1' ORDER BY f.id",
+                JdbcPnlFactDetailProvider::mapFact, batchNo, versionNo);
     }
 
     private void deleteResultDetails(Long batchId, String calculationVersionId) {
@@ -231,10 +323,15 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
         final LocalDateTime publishedAt;
         final String scopeCode;
         final Long resultId;
+        final String withdrawnBy;
+        final LocalDateTime withdrawnAt;
+        final String withdrawReason;
+        final List<String> notificationTargets;
 
         Header(AnalysisPerspective perspective, CalculationResultStatus status, String versionNo,
                LocalDateTime calculatedAt, String confirmedBy, LocalDateTime confirmedAt, String publishedBy,
-               LocalDateTime publishedAt, String scopeCode, Long resultId) {
+               LocalDateTime publishedAt, String scopeCode, Long resultId,
+               String withdrawnBy, LocalDateTime withdrawnAt, String withdrawReason, List<String> notificationTargets) {
             this.perspective = perspective;
             this.status = status;
             this.versionNo = versionNo;
@@ -245,6 +342,30 @@ public class JdbcCalculationResultRepository implements CalculationResultReposit
             this.publishedAt = publishedAt;
             this.scopeCode = scopeCode;
             this.resultId = resultId;
+            this.withdrawnBy = withdrawnBy;
+            this.withdrawnAt = withdrawnAt;
+            this.withdrawReason = withdrawReason;
+            this.notificationTargets = notificationTargets;
         }
+    }
+
+    private static String joinTargets(List<String> targets) {
+        if (targets == null || targets.isEmpty()) return null;
+        StringBuilder joined = new StringBuilder();
+        for (String target : targets) {
+            if (target == null || target.trim().isEmpty()) continue;
+            if (joined.length() > 0) joined.append(',');
+            joined.append(target.trim());
+        }
+        return joined.length() == 0 ? null : joined.toString();
+    }
+
+    private static List<String> splitTargets(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return Collections.emptyList();
+        List<String> targets = new ArrayList<String>();
+        for (String token : raw.split(",")) {
+            if (token != null && !token.trim().isEmpty()) targets.add(token.trim());
+        }
+        return targets;
     }
 }

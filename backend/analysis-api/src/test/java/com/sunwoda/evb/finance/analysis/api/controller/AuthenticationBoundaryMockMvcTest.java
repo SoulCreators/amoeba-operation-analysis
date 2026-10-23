@@ -3,6 +3,8 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.AiAnalysisService;
 import com.sunwoda.evb.finance.analysis.application.service.BatchReadinessService;
+import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import com.sunwoda.evb.finance.analysis.application.service.ExportAuthorizationException;
 import com.sunwoda.evb.finance.analysis.application.service.ExportService;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 class AuthenticationBoundaryMockMvcTest {
     private BatchReadinessService batchReadinessService;
+    private BatchService batchService;
+    private PermissionService permissionService;
     private AiAnalysisService aiAnalysisService;
     private ExportService exportService;
 
@@ -35,11 +39,13 @@ class AuthenticationBoundaryMockMvcTest {
     @BeforeEach
     void setUp() {
         batchReadinessService = mock(BatchReadinessService.class);
+        batchService = mock(BatchService.class);
+        permissionService = mock(PermissionService.class);
         aiAnalysisService = mock(AiAnalysisService.class);
         exportService = mock(ExportService.class);
 
         batchReadinessMockMvc = MockMvcBuilders
-                .standaloneSetup(new BatchReadinessController(batchReadinessService))
+                .standaloneSetup(new BatchReadinessController(batchReadinessService, batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
         aiAnalysisMockMvc = MockMvcBuilders

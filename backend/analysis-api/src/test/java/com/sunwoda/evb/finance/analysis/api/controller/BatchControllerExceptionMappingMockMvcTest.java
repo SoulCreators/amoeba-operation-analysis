@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.exception.ApiExceptionHandler;
 import com.sunwoda.evb.finance.analysis.application.service.BatchService;
+import com.sunwoda.evb.finance.analysis.application.service.PermissionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -34,7 +35,7 @@ class BatchControllerExceptionMappingMockMvcTest {
     void setUp() {
         service = mock(BatchService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new BatchController(service))
+                .standaloneSetup(new BatchController(service, mock(PermissionService.class)))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }

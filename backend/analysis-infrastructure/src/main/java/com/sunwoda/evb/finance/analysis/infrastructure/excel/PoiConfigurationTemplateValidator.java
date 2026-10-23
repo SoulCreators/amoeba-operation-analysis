@@ -78,7 +78,8 @@ public class PoiConfigurationTemplateValidator implements ConfigurationTemplateV
                 aliases("metricname", "指标名称", "名称"),
                 aliases("formulaexpression", "计算公式", "公式", "指标公式")));
         result.put(ConfigurationImportType.SALES_PROJECT_MAPPING, Arrays.asList(
-                aliases("客户简称"), aliases("产品线"), aliases("事业部"), aliases("是否有效")));
+                aliases("出货基地"), aliases("客户简称"), aliases("客户项目改"), aliases("电芯型号"),
+                aliases("产品线"), aliases("事业部"), aliases("是否有效")));
         result.put(ConfigurationImportType.INVENTORY_MAPPING, Arrays.asList(
                 aliases("物料编码"), aliases("电芯型号"), aliases("产品线"), aliases("事业部"), aliases("是否有效")));
         result.put(ConfigurationImportType.EXPENSE_CATEGORY, Arrays.asList(
