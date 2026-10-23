@@ -31,8 +31,8 @@ public class DataQualityController {
     public ApiResult<DataQualityReport> get(@PathVariable String batchNo, Principal principal) {
         String userId = requiredUser(principal);
         AnalysisBatch batch = batchService.get(batchNo);
-        if (permissionService.viewableScopes(userId, batch.getPerspective()).isEmpty()) {
-            throw new IllegalStateException("当前用户无批次所属视角的查看权限");
+        if (!permissionService.canViewScope(userId, batch.getPerspective(), batch.getScopeCode())) {
+            throw new IllegalStateException("当前用户无批次所属范围的查看权限");
         }
         return ApiResult.ok(service.get(batchNo));
     }

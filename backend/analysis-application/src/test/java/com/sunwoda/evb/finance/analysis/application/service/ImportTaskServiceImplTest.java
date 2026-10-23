@@ -4,6 +4,7 @@ import com.sunwoda.evb.finance.analysis.application.port.DatasetCatalog;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactSourceReader;
 import com.sunwoda.evb.finance.analysis.application.port.PnlFactTaskReader;
 import com.sunwoda.evb.finance.analysis.application.port.TemplateValidator;
+import com.sunwoda.evb.finance.analysis.application.port.WorkbookDatasetDetector;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisBatch;
 import com.sunwoda.evb.finance.analysis.domain.model.AnalysisPerspective;
 import com.sunwoda.evb.finance.analysis.domain.model.BatchStatus;
@@ -24,15 +25,19 @@ import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ImportTaskServiceImplTest {
     @Test
@@ -115,6 +120,111 @@ class ImportTaskServiceImplTest {
 
         assertThrows(IllegalStateException.class,
                 () -> service.validate("IMP-006", new ByteArrayInputStream(new byte[]{1})));
+    }
+
+    @Test
+    void importWorkbookCreatesOneTaskPerDetectedDataset() throws Exception {
+        FakeBatchRepository batches = new FakeBatchRepository();
+        batches.save(batch("B-WB"));
+        FakeImportTaskRepository tasks = new FakeImportTaskRepository();
+        ImportTaskServiceImpl service = new ImportTaskServiceImpl(batches, tasks,
+                catalog("BASE_ACT_INC_COST", "BASE_BUD_INC_COST"),
+                new FakeTemplateValidator(), new FakeImportIssueRepository(),
+                new FakeImportFileRepository());
+        setField(service, "workbookDatasetDetector", detector("BASE_ACT_INC_COST", "BASE_BUD_INC_COST"));
+
+        List<ImportTask> imported = service.importWorkbook("B-WB", "样表.xlsx",
+                new ByteArrayInputStream(new byte[]{1}), "tester");
+
+        assertEquals(2, imported.size());
+        assertTrue(imported.stream().allMatch(task -> task.getStatus() == ImportStatus.VALID));
+        assertTrue(imported.stream().anyMatch(task -> "BASE_ACT_INC_COST".equals(task.getDatasetCode())));
+        assertTrue(imported.stream().anyMatch(task -> "BASE_BUD_INC_COST".equals(task.getDatasetCode())));
+    }
+
+    @Test
+    void importWorkbookSkipsAlreadyImportedDataset() throws Exception {
+        FakeBatchRepository batches = new FakeBatchRepository();
+        batches.save(batch("B-WB2"));
+        FakeImportTaskRepository tasks = new FakeImportTaskRepository();
+        tasks.save(task("IMP-WB-EXISTING", "B-WB2"));
+        ImportTaskServiceImpl service = new ImportTaskServiceImpl(batches, tasks,
+                catalog("BASE_ACT_INC_COST", "BASE_BUD_INC_COST"),
+                new FakeTemplateValidator(), new FakeImportIssueRepository(),
+                new FakeImportFileRepository());
+        setField(service, "workbookDatasetDetector", detector("BASE_ACT_INC_COST", "BASE_BUD_INC_COST"));
+
+        List<ImportTask> imported = service.importWorkbook("B-WB2", "样表.xlsx",
+                new ByteArrayInputStream(new byte[]{1}), "tester");
+
+        assertEquals(1, imported.size());
+        assertEquals("BASE_BUD_INC_COST", imported.get(0).getDatasetCode());
+    }
+
+    @Test
+    void importWorkbookSkipsDatasetsWithoutMatchingSheet() throws Exception {
+        FakeBatchRepository batches = new FakeBatchRepository();
+        batches.save(batch("B-WB3"));
+        FakeImportTaskRepository tasks = new FakeImportTaskRepository();
+        ImportTaskServiceImpl service = new ImportTaskServiceImpl(batches, tasks,
+                catalog("BASE_ACT_INC_COST", "BASE_BUD_INC_COST"),
+                new FakeTemplateValidator(), new FakeImportIssueRepository(),
+                new FakeImportFileRepository());
+        setField(service, "workbookDatasetDetector", detector("BASE_ACT_INC_COST"));
+
+        List<ImportTask> imported = service.importWorkbook("B-WB3", "样表.xlsx",
+                new ByteArrayInputStream(new byte[]{1}), "tester");
+
+        assertEquals(1, imported.size());
+        assertEquals("BASE_ACT_INC_COST", imported.get(0).getDatasetCode());
+    }
+
+    @Test
+    void importWorkbookRejectsWhenDetectorMissing() {
+        FakeBatchRepository batches = new FakeBatchRepository();
+        batches.save(batch("B-WB4"));
+        ImportTaskServiceImpl service = new ImportTaskServiceImpl(batches,
+                new FakeImportTaskRepository(), catalog("BASE_ACT_INC_COST"),
+                new FakeTemplateValidator(), new FakeImportIssueRepository(),
+                new FakeImportFileRepository());
+
+        assertThrows(IllegalStateException.class,
+                () -> service.importWorkbook("B-WB4", "样表.xlsx",
+                        new ByteArrayInputStream(new byte[]{1}), "tester"));
+    }
+
+    private DatasetCatalog catalog(String... codes) {
+        return new DatasetCatalog() {
+            @Override
+            public List<DatasetDefinition> list(AnalysisPerspective perspective) {
+                List<DatasetDefinition> result = new java.util.ArrayList<DatasetDefinition>();
+                for (String code : codes) {
+                    result.add(new DatasetDefinition(code, code, "MONTHLY", true,
+                            Collections.singletonList(AnalysisPerspective.BASE)));
+                }
+                return result;
+            }
+
+            @Override
+            public DatasetDefinition require(String datasetCode, AnalysisPerspective perspective) {
+                return new DatasetDefinition(datasetCode, datasetCode, "MONTHLY", true,
+                        Collections.singletonList(AnalysisPerspective.BASE));
+            }
+        };
+    }
+
+    private WorkbookDatasetDetector detector(String... present) {
+        final Set<String> presentSet = new LinkedHashSet<String>(Arrays.asList(present));
+        return new WorkbookDatasetDetector() {
+            @Override
+            public Set<String> detectPresentDatasets(byte[] content, List<String> candidateCodes) {
+                Set<String> result = new LinkedHashSet<String>();
+                for (String code : candidateCodes) {
+                    if (presentSet.contains(code)) result.add(code);
+                }
+                return result;
+            }
+        };
     }
 
     private ImportTaskServiceImpl serviceWithPersistence(String taskNo, String batchNo)

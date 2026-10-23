@@ -72,7 +72,7 @@ class JdbcAnalysisBatchRepositoryRoundTripPostgresContractTest {
         // 本次修改：验证无 id 保存生成主键、save 返回对象当前字段及 findByBatchNo 的完整字段回读。
         LocalDateTime createdAt = LocalDateTime.of(2026, 10, 20, 10, 11, 12);
         AnalysisBatch input = new AnalysisBatch(null, batchNo, "2026-10",
-                AnalysisPerspective.PRODUCT_LINE, BatchStatus.CHECKING,
+                AnalysisPerspective.PRODUCT_LINE, "PL-002", BatchStatus.CHECKING,
                 "batch-jdbc-001-a", createdAt);
 
         AnalysisBatch saved = repository.save(input);
@@ -81,6 +81,7 @@ class JdbcAnalysisBatchRepositoryRoundTripPostgresContractTest {
         assertEquals(batchNo, saved.getBatchNo());
         assertEquals("2026-10", saved.getPeriod());
         assertEquals(AnalysisPerspective.PRODUCT_LINE, saved.getPerspective());
+        assertEquals("PL-002", saved.getScopeCode());
         assertEquals(BatchStatus.CHECKING, saved.getStatus());
         assertEquals("batch-jdbc-001-a", saved.getCreatedBy());
         assertEquals(createdAt, saved.getCreatedAt());
@@ -92,6 +93,7 @@ class JdbcAnalysisBatchRepositoryRoundTripPostgresContractTest {
         assertEquals(batchNo, persisted.getBatchNo());
         assertEquals("2026-10", persisted.getPeriod());
         assertEquals(AnalysisPerspective.PRODUCT_LINE, persisted.getPerspective());
+        assertEquals("PL-002", persisted.getScopeCode());
         assertEquals(BatchStatus.CHECKING, persisted.getStatus());
         assertEquals("batch-jdbc-001-a", persisted.getCreatedBy());
         assertEquals(createdAt, persisted.getCreatedAt());

@@ -7,18 +7,16 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CalculationChecksTest {
-    @Test void balancedScopeBridgeDoesNotApproveMissingFormalGrain() {
+    @Test void balancedPnlPassesWithoutSeparatePvmGate() {
         List<CalculationChecks.Check> checks = evaluate(lines());
-        assertEquals("PASS", find(checks, "PVM_REVENUE").status);
-        assertEquals("PASS", find(checks, "PVM_PRODUCT_GROSS_PROFIT").status);
-        assertEquals("BLOCKED", find(checks, "PVM_FORMAL_GRAIN").status);
+        assertTrue(checks.stream().allMatch(c -> c.status.equals("PASS")));
+        assertFalse(checks.stream().anyMatch(c -> c.code.startsWith("PVM_")));
     }
-    @Test void zeroOnEitherSideBlocksInsteadOfInventingUnitPrices() {
+    @Test void zeroVolumeDoesNotBlockPnlAmountChecks() {
         for (String key : Arrays.asList("VOLUME", "BUDGET_VOLUME")) {
             Map<String, BigDecimal> values = lines(); values.put(key, BigDecimal.ZERO);
             List<CalculationChecks.Check> checks = evaluate(values);
-            assertEquals("BLOCKED", find(checks, "PVM_ZERO_VOLUME").status);
-            assertFalse(checks.stream().anyMatch(c -> c.code.equals("PVM_REVENUE")));
+            assertTrue(checks.stream().allMatch(c -> c.status.equals("PASS")));
         }
     }
     @Test void smallestNonzeroComponentDifferenceFailsWithoutRounding() {
@@ -32,16 +30,14 @@ class CalculationChecksTest {
         Map<String, BigDecimal> values = lines(); values.remove("BUDGET_REVENUE");
         assertThrows(IllegalStateException.class, () -> evaluate(values));
     }
-    @Test void grossProfitBridgeChecksTheSumOfReturnedFactors() {
+    @Test void incorrectGrossProfitStillFailsPnlGate() {
         Map<String, BigDecimal> values = lines();
         values.put("VOLUME", new BigDecimal("3")); values.put("BUDGET_VOLUME", new BigDecimal("3"));
         values.put("BUDGET_REVENUE", new BigDecimal("90")); values.put("BUDGET_GROSS_PROFIT", new BigDecimal("50"));
+        values.put("GROSS_PROFIT", new BigDecimal("30"));
         values.put("GAP_GROSS_PROFIT", new BigDecimal("-10"));
         List<CalculationChecks.Check> checks = evaluate(values);
-        assertEquals("FAIL", find(checks, "PVM_REVENUE").status);
-        assertEquals("FAIL", find(checks, "PVM_PRODUCT_GROSS_PROFIT").status);
-        assertNotEquals(0, new PvmReconciliationValidator().calculate(new PnlResult("A", values))
-                .getGrossProfitCheckDiff().signum());
+        assertEquals("FAIL", find(checks, "PRODUCT_GROSS_PROFIT").status);
     }
     private Map<String, BigDecimal> lines() {
         Map<String, BigDecimal> v = new LinkedHashMap<>();

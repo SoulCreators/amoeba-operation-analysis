@@ -44,8 +44,8 @@ class BatchReadinessControllerContractTest {
         when(service.get("BATCH-001")).thenReturn(blocked);
         when(batchService.get("BATCH-001")).thenReturn(new AnalysisBatch(1L, "BATCH-001", "2026-08",
                 AnalysisPerspective.BASE, BatchStatus.DRAFT, "authenticated-user", LocalDateTime.now()));
-        when(permissionService.viewableScopes("authenticated-user", AnalysisPerspective.BASE))
-                .thenReturn(Collections.singleton("BASE-001"));
+        when(permissionService.canViewScope("authenticated-user", AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
 
         ApiResult<BatchReadiness> result = controller.get("BATCH-001", () -> "authenticated-user");
 

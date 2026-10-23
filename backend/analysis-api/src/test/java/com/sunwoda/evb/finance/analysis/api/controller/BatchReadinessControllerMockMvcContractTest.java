@@ -60,8 +60,8 @@ class BatchReadinessControllerMockMvcContractTest {
                         "SALES", "销售数据", true, true, "READY", 0, "TASK-001")));
         when(service.get(BATCH_NO)).thenReturn(readiness);
         when(batchService.get(BATCH_NO)).thenReturn(batch());
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
-                .thenReturn(Collections.singleton("BASE-001"));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}/readiness", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -77,7 +77,7 @@ class BatchReadinessControllerMockMvcContractTest {
 
         verify(service).get(BATCH_NO);
         verify(batchService).get(BATCH_NO);
-        verify(permissionService).viewableScopes(USER_ID, AnalysisPerspective.BASE);
+        verify(permissionService).canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL");
     }
 
     @Test
@@ -94,7 +94,7 @@ class BatchReadinessControllerMockMvcContractTest {
     @Test
     void authenticatedUserWithoutBatchPerspectiveScopeReceivesForbiddenWithoutReadingReadiness() throws Exception {
         when(batchService.get(BATCH_NO)).thenReturn(batch());
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE)).thenReturn(Collections.emptySet());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL")).thenReturn(false);
 
         mockMvc.perform(readinessRequest(principal(USER_ID)))
                 .andExpect(status().isForbidden())

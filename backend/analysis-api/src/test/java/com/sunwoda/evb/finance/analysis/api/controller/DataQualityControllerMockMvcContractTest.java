@@ -46,8 +46,8 @@ class DataQualityControllerMockMvcContractTest {
         batchService = mock(BatchService.class);
         permissionService = mock(PermissionService.class);
         when(batchService.get(BATCH_NO)).thenReturn(batch());
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
-                .thenReturn(Collections.singleton("BASE-001"));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new DataQualityController(service, batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())
@@ -72,8 +72,8 @@ class DataQualityControllerMockMvcContractTest {
                         new DatasetReadiness("COST", "成本数据", true, false, "MISSING", 1, null)));
         when(service.get(BATCH_NO)).thenReturn(report);
         when(batchService.get(BATCH_NO)).thenReturn(batch());
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
-                .thenReturn(Collections.singleton("BASE-001"));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}/quality", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -97,7 +97,7 @@ class DataQualityControllerMockMvcContractTest {
 
         verify(service).get(BATCH_NO);
         verify(batchService).get(BATCH_NO);
-        verify(permissionService).viewableScopes(USER_ID, AnalysisPerspective.BASE);
+        verify(permissionService).canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL");
     }
 
     @Test
@@ -114,7 +114,7 @@ class DataQualityControllerMockMvcContractTest {
     @Test
     void authenticatedUserWithoutBatchPerspectiveScopeReceivesForbiddenWithoutReadingQuality() throws Exception {
         when(batchService.get(BATCH_NO)).thenReturn(batch());
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE)).thenReturn(Collections.emptySet());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL")).thenReturn(false);
 
         mockMvc.perform(qualityRequest(principal(USER_ID)))
                 .andExpect(status().isForbidden())

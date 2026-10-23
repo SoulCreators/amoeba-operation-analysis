@@ -29,15 +29,17 @@ public class BatchController {
         if (!permissionService.canCalculate(userId, perspective)) {
             throw new IllegalStateException("当前用户无权限创建批次");
         }
-        return ApiResult.ok(batchService.create(request.getBatchNo(), request.getPeriod(), perspective, userId));
+        String scopeCode = normalizeScope(request.getScopeCode());
+        return ApiResult.ok(batchService.create(request.getBatchNo(), request.getPeriod(), perspective,
+                scopeCode, userId));
     }
 
     @GetMapping("/{batchNo}")
     public ApiResult<AnalysisBatch> get(@PathVariable String batchNo, Principal principal) {
         String userId = requiredUser(principal);
         AnalysisBatch batch = batchService.get(batchNo);
-        if (permissionService.viewableScopes(userId, batch.getPerspective()).isEmpty()) {
-            throw new IllegalStateException("当前用户无批次所属视角的查看权限");
+        if (!permissionService.canViewScope(userId, batch.getPerspective(), batch.getScopeCode())) {
+            throw new IllegalStateException("当前用户无批次所属范围的查看权限");
         }
         return ApiResult.ok(batch);
     }
@@ -64,5 +66,9 @@ public class BatchController {
             throw new IllegalStateException("未获取到认证用户");
         }
         return principal.getName().trim();
+    }
+
+    private String normalizeScope(String scopeCode) {
+        return (scopeCode == null || scopeCode.trim().isEmpty()) ? "ALL" : scopeCode.trim();
     }
 }

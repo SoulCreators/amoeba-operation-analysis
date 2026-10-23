@@ -86,6 +86,8 @@ public class InMemoryDatasetCatalog implements DatasetCatalog {
                 field("项目", "客户项目", "TEXT", true),
                 field("客户", "客户简称-改2", "TEXT", true),
                 field("型号", "电芯型号", "TEXT", true),
+                field("产品线", "产品线", "TEXT", false),
+                field("事业部", "事业部", "TEXT", false),
                 field("收入", "销售收入", "DECIMAL", true),
                 field("成本", "销售成本", "DECIMAL", true));
     }

@@ -42,8 +42,8 @@ class BatchReadinessControllerExceptionMappingMockMvcTest {
         permissionService = mock(PermissionService.class);
         when(batchService.get(BATCH_NO)).thenReturn(new AnalysisBatch(1L, BATCH_NO, "2026-08",
                 AnalysisPerspective.BASE, BatchStatus.DRAFT, USER_ID, LocalDateTime.now()));
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
-                .thenReturn(Collections.singleton("BASE-001"));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new BatchReadinessController(service, batchService, permissionService))
                 .setControllerAdvice(new ApiExceptionHandler())

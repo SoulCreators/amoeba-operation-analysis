@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.api.controller;
 
 import com.sunwoda.evb.finance.analysis.api.dto.CalculateRequest;
 import com.sunwoda.evb.finance.analysis.api.dto.ResultLifecycleRequest;
+import com.sunwoda.evb.finance.analysis.api.dto.WithdrawRequest;
 import com.sunwoda.evb.finance.analysis.application.service.CalculationService;
 import com.sunwoda.evb.finance.analysis.common.ApiResult;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationResult;
@@ -38,6 +39,13 @@ public class CalculationController {
                 requiredUser(principal, "未获取到认证用户，拒绝返回经营结果")));
     }
 
+    @GetMapping("/{batchNo}/cumulative")
+    public ApiResult<CalculationResult> cumulative(@PathVariable String batchNo,
+                                                   Principal principal) {
+        return ApiResult.ok(service.getCumulativeForUser(batchNo,
+                requiredUser(principal, "未获取到认证用户，拒绝返回累计经营结果")));
+    }
+
     @GetMapping("/{batchNo}/versions/{versionNo}/result")
     public ApiResult<CalculationResult> versionResult(@PathVariable String batchNo, @PathVariable String versionNo,
                                                      Principal principal) {
@@ -52,6 +60,13 @@ public class CalculationController {
     @PostMapping("/publish")
     public ApiResult<CalculationResult> publish(@RequestBody ResultLifecycleRequest request, Principal principal) {
         return ApiResult.ok(service.publish(request.getBatchNo(), requiredUser(principal)));
+    }
+
+    @PostMapping("/withdraw")
+    public ApiResult<CalculationResult> withdraw(@RequestBody WithdrawRequest request, Principal principal) {
+        // 本次修改：撤回以认证主体为可信操作者，客户端只提交批次、原因与通知对象，不提交授权凭据。
+        return ApiResult.ok(service.withdraw(request.getBatchNo(), request.getReason(),
+                request.getNotificationTargets(), requiredUser(principal)));
     }
 
     private String requiredUser(Principal principal) {

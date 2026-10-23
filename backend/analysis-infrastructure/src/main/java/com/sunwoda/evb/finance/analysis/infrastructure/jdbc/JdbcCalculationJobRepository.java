@@ -2,6 +2,7 @@ package com.sunwoda.evb.finance.analysis.infrastructure.jdbc;
 
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJob;
 import com.sunwoda.evb.finance.analysis.domain.model.CalculationJobStatus;
+import com.sunwoda.evb.finance.analysis.domain.model.CalculationStage;
 import com.sunwoda.evb.finance.analysis.domain.repository.CalculationJobRepository;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
@@ -28,20 +29,27 @@ public class JdbcCalculationJobRepository implements CalculationJobRepository {
     private static final String UPSERT_SQL =
             "INSERT INTO flow.calculation_job "
                     + "(job_id, request_key, batch_no, status, attempt_no, last_error, "
-                    + "created_at, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    + "created_at, started_at, finished_at, stage, heartbeat_at, error_code, "
+                    + "trace_id, processed_rows, issue_count) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     + "ON CONFLICT (job_id) DO UPDATE SET request_key = EXCLUDED.request_key, "
                     + "batch_no = EXCLUDED.batch_no, status = EXCLUDED.status, "
                     + "attempt_no = EXCLUDED.attempt_no, last_error = EXCLUDED.last_error, "
                     + "created_at = EXCLUDED.created_at, started_at = EXCLUDED.started_at, "
-                    + "finished_at = EXCLUDED.finished_at";
+                    + "finished_at = EXCLUDED.finished_at, stage = EXCLUDED.stage, "
+                    + "heartbeat_at = EXCLUDED.heartbeat_at, error_code = EXCLUDED.error_code, "
+                    + "trace_id = EXCLUDED.trace_id, processed_rows = EXCLUDED.processed_rows, "
+                    + "issue_count = EXCLUDED.issue_count";
 
     private static final String FIND_BY_JOB_ID_SQL =
             "SELECT job_id, request_key, batch_no, status, attempt_no, last_error, "
-                    + "created_at, started_at, finished_at FROM flow.calculation_job WHERE job_id = ?";
+                    + "created_at, started_at, finished_at, stage, heartbeat_at, error_code, "
+                    + "trace_id, processed_rows, issue_count FROM flow.calculation_job WHERE job_id = ?";
 
     private static final String FIND_ACTIVE_BY_REQUEST_KEY_SQL =
             "SELECT job_id, request_key, batch_no, status, attempt_no, last_error, "
-                    + "created_at, started_at, finished_at FROM flow.calculation_job "
+                    + "created_at, started_at, finished_at, stage, heartbeat_at, error_code, "
+                    + "trace_id, processed_rows, issue_count FROM flow.calculation_job "
                     + "WHERE request_key = ? AND status IN ('QUEUED', 'RUNNING') "
                     + "ORDER BY created_at, job_id LIMIT 1";
 
@@ -59,10 +67,12 @@ public class JdbcCalculationJobRepository implements CalculationJobRepository {
         if (job == null) {
             throw new IllegalArgumentException("job 不能为空");
         }
-        // 本次修改：按 jobId 持久化全部现有字段，保留状态恢复所需的时间和错误信息。
+        // 本次修改：按 jobId 持久化全部现有字段与阶段进度/心跳字段，保留状态恢复所需的时间和错误信息。
         jdbc.update(UPSERT_SQL, job.getJobId(), job.getRequestKey(), job.getBatchNo(),
                 job.getStatus().name(), job.getAttemptNo(), job.getLastError(),
-                timestamp(job.getCreatedAt()), timestamp(job.getStartedAt()), timestamp(job.getFinishedAt()));
+                timestamp(job.getCreatedAt()), timestamp(job.getStartedAt()), timestamp(job.getFinishedAt()),
+                stageName(job), timestamp(job.getHeartbeatAt()), job.getErrorCode(),
+                job.getTraceId(), job.getProcessedRows(), job.getIssueCount());
         return job;
     }
 
@@ -96,7 +106,21 @@ public class JdbcCalculationJobRepository implements CalculationJobRepository {
                 rs.getInt("attempt_no"),
                 rs.getString("last_error"),
                 localDateTime(rs.getTimestamp("started_at")),
-                localDateTime(rs.getTimestamp("finished_at")));
+                localDateTime(rs.getTimestamp("finished_at")),
+                stage(rs.getString("stage")),
+                localDateTime(rs.getTimestamp("heartbeat_at")),
+                rs.getString("error_code"),
+                rs.getString("trace_id"),
+                rs.getLong("processed_rows"),
+                rs.getInt("issue_count"));
+    }
+
+    private static String stageName(CalculationJob job) {
+        return job.getStage() == null ? null : job.getStage().name();
+    }
+
+    private static CalculationStage stage(String value) {
+        return value == null ? null : CalculationStage.valueOf(value);
     }
 
     private Timestamp timestamp(LocalDateTime value) {

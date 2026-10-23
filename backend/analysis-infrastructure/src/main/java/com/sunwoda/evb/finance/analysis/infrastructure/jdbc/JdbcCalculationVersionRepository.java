@@ -116,6 +116,15 @@ public class JdbcCalculationVersionRepository implements CalculationVersionRepos
                 (rs, rowNum) -> map(rs), normalizedBatchNo, perspective.getCode());
     }
 
+    @Override
+    public Optional<CalculationVersion> findByTraceId(String traceId) {
+        String normalizedTraceId = required(traceId, "traceId");
+        return jdbc.query("SELECT " + VERSION_COLUMNS + " FROM calc.calculation_version v "
+                        + "WHERE v.trace_id = ? "
+                        + "ORDER BY v.calculated_at DESC, v.calculation_version_id DESC LIMIT 1",
+                this::one, normalizedTraceId);
+    }
+
     private Optional<CalculationVersion> one(ResultSet rs) throws SQLException {
         if (!rs.next()) {
             return Optional.empty();

@@ -97,6 +97,22 @@ class CalculationServiceAuthorizationTest {
                 () -> service(results, scopes).getForUser("B-AUTH", "U-OPS"));
     }
 
+    @Test
+    void nonPublishRoleCannotWithdrawPublishedResult() {
+        FixedResults results = new FixedResults();
+        results.save(result(CalculationResultStatus.PUBLISHED));
+        Scopes scopes = new Scopes();
+        scopes.save(scope("U-OPS", "BASE_OPS", "NANCHANG"));
+
+        CalculationService service = service(results, scopes);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> service.withdraw("B-AUTH", "数据口径错误",
+                        Collections.singletonList("finance-lead@example.com"), "U-OPS"));
+
+        assertEquals("当前用户无结果撤回权限", error.getMessage());
+    }
+
     private static CalculationService service(FixedResults results, Scopes scopes) {
         PnlFactProvider provider = batch -> Collections.<PnlFact>emptyList();
         return new CalculationServiceImpl(new EmptyBatches(), provider, scopes, results);

@@ -112,6 +112,25 @@ class CalculationControllerMockMvcContractTest {
     }
 
     @Test
+    void authenticatedWithdrawCommandUsesPrincipalAndReachesService() throws Exception {
+        when(service.withdraw(BATCH_NO, "数据口径错误",
+                Collections.singletonList("finance-lead@example.com"), USER_ID)).thenReturn(result());
+
+        mockMvc.perform(post("/api/v1/calculations/withdraw")
+                        .principal(principal(USER_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"batchNo\":\"BATCH-001\",\"reason\":\"数据口径错误\","
+                                + "\"notificationTargets\":[\"finance-lead@example.com\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.batchNo").value(BATCH_NO));
+
+        verify(service).withdraw(BATCH_NO, "数据口径错误",
+                Collections.singletonList("finance-lead@example.com"), USER_ID);
+    }
+
+    @Test
     void permissionDeniedLifecycleCommandReturnsStandard403AndDoesNotExposeSuccess() throws Exception {
         when(service.confirm(BATCH_NO, USER_ID))
                 .thenThrow(new IllegalStateException("当前用户无结果确认权限"));
@@ -165,15 +184,18 @@ class CalculationControllerMockMvcContractTest {
         assertUnauthenticated(calculateRequest(null));
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/confirm", null));
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/publish", null));
+        assertUnauthenticated(withdrawRequest(null));
 
         assertUnauthenticated(calculateRequest(principal("")));
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/confirm", principal("")));
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/publish", principal("")));
+        assertUnauthenticated(withdrawRequest(principal("")));
 
-        // 本次认证边界补充 Principal 对象存在但 getName() 返回 null 的 HTTP 请求，三类命令均应拒绝且不触发 Service。
+        // 本次认证边界补充 Principal 对象存在但 getName() 返回 null 的 HTTP 请求，四类命令均应拒绝且不触发 Service。
         assertUnauthenticated(calculateRequest(principal(null)));
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/confirm", principal(null)));
         assertUnauthenticated(lifecycleRequest("/api/v1/calculations/publish", principal(null)));
+        assertUnauthenticated(withdrawRequest(principal(null)));
 
         verifyNoInteractions(service);
     }
@@ -199,6 +221,15 @@ class CalculationControllerMockMvcContractTest {
         org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request = post(path)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"batchNo\":\"BATCH-001\",\"operator\":\"request-operator\"}");
+        return principal == null ? request : request.principal(principal);
+    }
+
+    private RequestBuilder withdrawRequest(Principal principal) {
+        org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request = post(
+                "/api/v1/calculations/withdraw")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"batchNo\":\"BATCH-001\",\"reason\":\"数据口径错误\","
+                        + "\"notificationTargets\":[\"finance-lead@example.com\"]}");
         return principal == null ? request : request.principal(principal);
     }
 

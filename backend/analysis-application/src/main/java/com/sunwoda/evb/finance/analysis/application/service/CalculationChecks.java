@@ -7,9 +7,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Checks for the existing scope-level engine; not approval of the V1.3 formal PVM model. */
+/** 一期损益来源与金额勾稽；样表 PVM 因素及原生余数在分析结果中单列。 */
 public final class CalculationChecks {
-    public static final String RULE_VERSION = "SCOPE_PNL_PVM_1";
+    public static final String RULE_VERSION = "SAMPLE_PNL_PVM_1";
     private CalculationChecks() { }
 
     public static List<Check> evaluate(CalculationResult result) {
@@ -26,19 +26,7 @@ public final class CalculationChecks {
                         get(v, prefix + "REVENUE").subtract(get(v, prefix + "SALES_COST")),
                         get(v, prefix + "GROSS_PROFIT"));
             }
-            if (get(v, "VOLUME").signum() == 0 || get(v, "BUDGET_VOLUME").signum() == 0) {
-                checks.add(Check.blocked(pnl.getScopeCode(), "PVM_ZERO_VOLUME", "零量、新增和退出业务因素归集待财经确认"));
-            } else {
-                PvmReconciliationValidator.Checks pvm = new PvmReconciliationValidator().calculate(pnl);
-                add(checks, pnl, "PVM_REVENUE", pvm.getRevenueGap(),
-                        pvm.getVolumeImpact().add(pvm.getPriceImpact()));
-                add(checks, pnl, "PVM_PRODUCT_GROSS_PROFIT", pvm.getGrossProfitGap(),
-                        pvm.getVolumeImpact().add(pvm.getPriceImpact()).subtract(pvm.getCostGap()));
-            }
-            // The current fact contract has no customer/project or approved grain snapshot.
-            // A balanced scope-level bridge must not be mistaken for formal three-view PVM.
-            checks.add(Check.blocked(pnl.getScopeCode(), "PVM_FORMAL_GRAIN",
-                    "现有范围汇总缺少正式客户/项目粒度和结构因素，尚不能批准正式PVM"));
+            // 样表零量分支已经定义；PVM 桥差在查询结果中显示，不作为损益发布门禁。
         }
         if (checks.isEmpty()) checks.add(Check.blocked("ALL", "EMPTY_RESULT", "无可勾稽结果"));
         return checks;

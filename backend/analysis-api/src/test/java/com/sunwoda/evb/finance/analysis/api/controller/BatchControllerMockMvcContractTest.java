@@ -47,7 +47,7 @@ class BatchControllerMockMvcContractTest {
     void authenticatedCreateReturnsSuccessfulEnvelopePassesPrincipalAndConvertsBasePerspective() throws Exception {
         AnalysisBatch batch = batch(BatchStatus.DRAFT);
         when(permissionService.canCalculate(USER_ID, AnalysisPerspective.BASE)).thenReturn(true);
-        when(batchService.create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, USER_ID))
+        when(batchService.create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, "ALL", USER_ID))
                 .thenReturn(batch);
 
         mockMvc.perform(post("/api/v1/batches")
@@ -64,15 +64,15 @@ class BatchControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.createdBy").value(USER_ID));
 
-        verify(batchService).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, USER_ID);
+        verify(batchService).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, "ALL", USER_ID);
     }
 
     @Test
     void authenticatedGetReturnsSuccessfulEnvelope() throws Exception {
         AnalysisBatch batch = batch(BatchStatus.READY_FOR_CALCULATION);
         when(batchService.get(BATCH_NO)).thenReturn(batch);
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
-                .thenReturn(java.util.Collections.singleton("NORTH"));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(true);
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -83,6 +83,19 @@ class BatchControllerMockMvcContractTest {
                 .andExpect(jsonPath("$.data.batchNo").value(BATCH_NO))
                 .andExpect(jsonPath("$.data.perspective").value("BASE"))
                 .andExpect(jsonPath("$.data.status").value("READY_FOR_CALCULATION"));
+
+        verify(batchService).get(BATCH_NO);
+    }
+
+    @Test
+    void batchReadIsRejectedWhenBatchScopeNotGranted() throws Exception {
+        when(batchService.get(BATCH_NO)).thenReturn(batch(BatchStatus.DRAFT, "BASE-001"));
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "BASE-001"))
+                .thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
+                        .principal(principal(USER_ID)))
+                .andExpect(status().isForbidden());
 
         verify(batchService).get(BATCH_NO);
     }
@@ -112,7 +125,7 @@ class BatchControllerMockMvcContractTest {
                         .principal(principal(USER_ID)))
                 .andExpect(status().isForbidden());
 
-        verify(batchService, never()).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, USER_ID);
+        verify(batchService, never()).create(BATCH_NO, "2026-09", AnalysisPerspective.BASE, "ALL", USER_ID);
     }
 
     @Test
@@ -129,8 +142,8 @@ class BatchControllerMockMvcContractTest {
     @Test
     void batchNumberDoesNotGrantReadAccessWithoutPerspectiveScope() throws Exception {
         when(batchService.get(BATCH_NO)).thenReturn(batch(BatchStatus.DRAFT));
-        when(permissionService.viewableScopes(USER_ID, AnalysisPerspective.BASE))
-                .thenReturn(java.util.Collections.<String>emptySet());
+        when(permissionService.canViewScope(USER_ID, AnalysisPerspective.BASE, "ALL"))
+                .thenReturn(false);
 
         mockMvc.perform(get("/api/v1/batches/{batchNo}", BATCH_NO)
                         .principal(principal(USER_ID)))
@@ -138,7 +151,11 @@ class BatchControllerMockMvcContractTest {
     }
 
     private AnalysisBatch batch(BatchStatus status) {
-        return new AnalysisBatch(1L, BATCH_NO, "2026-09", AnalysisPerspective.BASE,
+        return batch(status, "ALL");
+    }
+
+    private AnalysisBatch batch(BatchStatus status, String scopeCode) {
+        return new AnalysisBatch(1L, BATCH_NO, "2026-09", AnalysisPerspective.BASE, scopeCode,
                 status, USER_ID, LocalDateTime.of(2026, 10, 20, 10, 0));
     }
 

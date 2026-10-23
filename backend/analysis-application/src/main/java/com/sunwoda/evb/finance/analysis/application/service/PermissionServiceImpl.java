@@ -132,6 +132,7 @@ public class PermissionServiceImpl implements PermissionService {
             case PUBLISH:
             case MANUAL_REVISION:
             case COMPENSATE:
+            case ADJUSTMENT:
                 // 本次新增：所有新增写动作只授予当前视角下有授权范围的总部财经角色。
                 // 本次新增：ADMIN 即使拥有全量读取范围，也不会命中总部财经写动作分支。
                 return hasHeadquartersFinanceRole(userId, perspective);
@@ -164,6 +165,7 @@ public class PermissionServiceImpl implements PermissionService {
             case PUBLISH:
             case MANUAL_REVISION:
             case COMPENSATE:
+            case ADJUSTMENT:
                 // 本次新增：HQ_FINANCE 的最大业务权限仍受当前动作涉及的实际 scope 限制。
                 return hasHeadquartersFinanceGrant(userId, perspective, scopeCode);
             default:

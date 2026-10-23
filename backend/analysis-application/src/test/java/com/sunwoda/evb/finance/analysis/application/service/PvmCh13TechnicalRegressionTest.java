@@ -19,8 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * PVM-CH13-001-TECH-001~004 的增量技术回归。
- * 只验证当前公式、阻断和技术状态，不定义新的正式业务口径。
+ * 一期样表 PVM 口径及原有单位效率技术状态回归。
  */
 class PvmCh13TechnicalRegressionTest {
     @Test
@@ -40,7 +39,7 @@ class PvmCh13TechnicalRegressionTest {
             assertDecimalEquals(decimal(-200), first.get("REVENUE_VOLUME_IMPACT"));
             assertDecimalEquals(decimal(-80), first.get("REVENUE_PRICE_IMPACT"));
             assertDecimalEquals(decimal(-100), first.get("COST_GAP"));
-            assertDecimalEquals(decimal(100), first.get("PROFIT_COST_IMPACT"));
+            assertDecimalEquals(decimal(-20), first.get("PROFIT_COST_IMPACT"));
             assertDecimalEquals(BigDecimal.ZERO, first.get("REVENUE_CHECK_DIFF"));
             assertDecimalEquals(BigDecimal.ZERO, first.get("GROSS_PROFIT_CHECK_DIFF"));
 
@@ -48,7 +47,7 @@ class PvmCh13TechnicalRegressionTest {
             assertDecimalEquals(decimal(100), second.get("REVENUE_VOLUME_IMPACT"));
             assertDecimalEquals(decimal(120), second.get("REVENUE_PRICE_IMPACT"));
             assertDecimalEquals(decimal(90), second.get("COST_GAP"));
-            assertDecimalEquals(decimal(-90), second.get("PROFIT_COST_IMPACT"));
+            assertDecimalEquals(decimal(-30), second.get("PROFIT_COST_IMPACT"));
             assertDecimalEquals(BigDecimal.ZERO, second.get("REVENUE_CHECK_DIFF"));
             assertDecimalEquals(BigDecimal.ZERO, second.get("GROSS_PROFIT_CHECK_DIFF"));
         }
@@ -65,7 +64,7 @@ class PvmCh13TechnicalRegressionTest {
         assertDecimalEquals(decimal(-280), values.get("REVENUE_GAP"));
         assertDecimalEquals(decimal(-200), values.get("REVENUE_VOLUME_IMPACT"));
         assertDecimalEquals(decimal(-80), values.get("REVENUE_PRICE_IMPACT"));
-        assertDecimalEquals(decimal(100), values.get("PROFIT_COST_IMPACT"));
+        assertDecimalEquals(decimal(-20), values.get("PROFIT_COST_IMPACT"));
         assertDecimalEquals(BigDecimal.ZERO, values.get("REVENUE_CHECK_DIFF"));
         assertDecimalEquals(BigDecimal.ZERO, values.get("GROSS_PROFIT_CHECK_DIFF"));
         assertFinite(values);
@@ -88,7 +87,7 @@ class PvmCh13TechnicalRegressionTest {
         assertDecimalEquals(BigDecimal.ZERO, values.get("COST_GAP"));
         assertDecimalEquals(BigDecimal.ZERO, values.get("PROFIT_COST_IMPACT"));
         assertDecimalEquals(BigDecimal.ZERO, values.get("REVENUE_CHECK_DIFF"));
-        assertDecimalEquals(decimal(20), values.get("GROSS_PROFIT_CHECK_DIFF"));
+        assertDecimalEquals(BigDecimal.ZERO, values.get("GROSS_PROFIT_CHECK_DIFF"));
         assertFinite(values);
     }
 
